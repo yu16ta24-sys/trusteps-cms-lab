@@ -20,7 +20,14 @@ class CompanyController extends Controller
     public function index(Request $request): View
     {
         $query = Company::query()
-            ->with(['industry', 'municipality.prefecture', 'primaryDomain', 'mergedInto'])
+            ->with([
+                'industry',
+                'municipality.prefecture',
+                'primaryDomain',
+                'mergedInto',
+                'scores' => fn ($scoreQuery) => $scoreQuery->where('algo_version', 'v1'),
+            ])
+            ->withCount(['sourceLinks', 'domains', 'killFlags'])
             ->latest('id');
 
         if ($request->filled('q')) {
@@ -44,6 +51,16 @@ class CompanyController extends Controller
             $query->where('status', $request->input('status'));
         }
 
+        if ($request->filled('kill_state')) {
+            if ($request->input('kill_state') === 'active') {
+                $query->where('is_killed', false);
+            }
+
+            if ($request->input('kill_state') === 'killed') {
+                $query->where('is_killed', true);
+            }
+        }
+
         $companies = $query->paginate(30)->withQueryString();
 
         $industries = Industry::query()
@@ -53,8 +70,20 @@ class CompanyController extends Controller
             ->get();
 
         $totalCount = Company::query()->count();
+        $activeCount = Company::query()->where('is_killed', false)->count();
+        $killedCount = Company::query()->where('is_killed', true)->count();
+        $scoredCount = Company::query()
+            ->whereHas('scores', fn ($scoreQuery) => $scoreQuery->where('algo_version', 'v1'))
+            ->count();
 
-        return view('companies.index', compact('companies', 'industries', 'totalCount'));
+        return view('companies.index', compact(
+            'companies',
+            'industries',
+            'totalCount',
+            'activeCount',
+            'killedCount',
+            'scoredCount'
+        ));
     }
 
     public function show(Company $company): View
