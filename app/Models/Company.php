@@ -27,18 +27,12 @@ class Company extends Model
         'merged_at',
         'merged_by',
         'merge_reason',
-        'hp_observation_json',
-        'hp_observation_note',
-        'hp_observed_at',
-        'hp_observed_by',
     ];
 
     protected $casts = [
         'alias_names_json' => 'array',
         'is_killed' => 'boolean',
         'merged_at' => 'datetime',
-        'hp_observation_json' => 'array',
-        'hp_observed_at' => 'datetime',
     ];
 
     public function mergedInto()

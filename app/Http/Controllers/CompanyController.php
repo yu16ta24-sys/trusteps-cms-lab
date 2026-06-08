@@ -322,11 +322,7 @@ class CompanyController extends Controller
             ->where('algo_version', 'v1')
             ->keyBy('axis');
 
-        $hpObservation = is_array($company->hp_observation_json ?? null)
-            ? $company->hp_observation_json
-            : [];
-
-        return view('companies.show', compact('company', 'scoreAxes', 'scoresByAxis', 'hpObservation'));
+        return view('companies.show', compact('company', 'scoreAxes', 'scoresByAxis'));
     }
 
     public function createFromSource(SourceRecord $sourceRecord): View|RedirectResponse
@@ -591,42 +587,6 @@ class CompanyController extends Controller
             ->with('status', "company #{$company->id} の統合をUndoした。");
     }
 
-
-
-    public function storeHpObservationMemo(Request $request, Company $company): RedirectResponse
-    {
-        $validated = $request->validate([
-            'homepage_status' => ['nullable', 'in:exists,none,unknown'],
-            'ssl_status' => ['nullable', 'in:enabled,disabled,unknown'],
-            'mobile_status' => ['nullable', 'in:good,weak,none,unknown'],
-            'update_status' => ['nullable', 'in:active,stale,unknown'],
-            'contact_status' => ['nullable', 'in:good,weak,none,unknown'],
-            'cms_guess' => ['nullable', 'in:wordpress,wix,jimdo,static,other,unknown'],
-            'portal_dependency' => ['nullable', 'in:low,medium,high,unknown'],
-            'update_targets_text' => ['nullable', 'string', 'max:5000'],
-            'observation_note' => ['nullable', 'string', 'max:20000'],
-        ]);
-
-        $company->forceFill([
-            'hp_observation_json' => [
-                'homepage_status' => $validated['homepage_status'] ?? 'unknown',
-                'ssl_status' => $validated['ssl_status'] ?? 'unknown',
-                'mobile_status' => $validated['mobile_status'] ?? 'unknown',
-                'update_status' => $validated['update_status'] ?? 'unknown',
-                'contact_status' => $validated['contact_status'] ?? 'unknown',
-                'cms_guess' => $validated['cms_guess'] ?? 'unknown',
-                'portal_dependency' => $validated['portal_dependency'] ?? 'unknown',
-                'update_targets_text' => trim((string) ($validated['update_targets_text'] ?? '')) ?: null,
-            ],
-            'hp_observation_note' => trim((string) ($validated['observation_note'] ?? '')) ?: null,
-            'hp_observed_at' => now(),
-            'hp_observed_by' => auth()->user()?->email ?? 'manual',
-        ])->save();
-
-        return redirect()
-            ->route('companies.show', $company)
-            ->with('status', 'HP観測メモを保存した。');
-    }
 
 
     public function storeScores(Request $request, Company $company): RedirectResponse
