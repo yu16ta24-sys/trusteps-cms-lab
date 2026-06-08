@@ -48,6 +48,58 @@
                     <span class="badge gray">algo_version=v1</span>
                 </div>
 
+                @php
+                    $hpWeakness = optional($scoresByAxis->get('hp_weakness'))->value;
+                    $selfUpdateFit = optional($scoresByAxis->get('self_update_fit'))->value;
+                    $devDifficulty = optional($scoresByAxis->get('dev_difficulty'))->value;
+                    $portalDependence = optional($scoresByAxis->get('portal_dependence'))->value;
+
+                    $scoredAxesCount = collect([$hpWeakness, $selfUpdateFit, $devDifficulty, $portalDependence])
+                        ->filter(fn ($value) => $value !== null)
+                        ->count();
+
+                    $opportunityScore = ($hpWeakness ?? 0) + ($selfUpdateFit ?? 0);
+                    $riskScore = ($devDifficulty ?? 0) + ($portalDependence ?? 0);
+
+                    if ($scoredAxesCount < 4) {
+                        $scoreJudgment = '未採点あり';
+                        $scoreJudgmentClass = 'gray';
+                    } elseif ($opportunityScore >= 7 && $riskScore <= 3) {
+                        $scoreJudgment = '高機会・低リスク';
+                        $scoreJudgmentClass = 'green';
+                    } elseif ($opportunityScore >= 7 && $riskScore >= 7) {
+                        $scoreJudgment = '高機会・高リスク';
+                        $scoreJudgmentClass = 'gray';
+                    } elseif ($opportunityScore <= 3 && $riskScore >= 7) {
+                        $scoreJudgment = '低機会・高リスク';
+                        $scoreJudgmentClass = 'red';
+                    } elseif ($opportunityScore <= 3 && $riskScore <= 3) {
+                        $scoreJudgment = '低機会・低リスク';
+                        $scoreJudgmentClass = 'gray';
+                    } else {
+                        $scoreJudgment = '要確認';
+                        $scoreJudgmentClass = 'gray';
+                    }
+                @endphp
+
+                <div class="grid" style="margin-top:18px;">
+                    <div class="mini-card" style="background:#f0fdf4;">
+                        <span class="badge green">機会</span>
+                        <h3 style="margin:10px 0 4px; font-size:28px;">{{ $opportunityScore }} / 10</h3>
+                        <p class="muted" style="margin:0;">hp_weakness + self_update_fit</p>
+                    </div>
+                    <div class="mini-card" style="background:#fff7ed;">
+                        <span class="badge gray">リスク</span>
+                        <h3 style="margin:10px 0 4px; font-size:28px;">{{ $riskScore }} / 10</h3>
+                        <p class="muted" style="margin:0;">dev_difficulty + portal_dependence</p>
+                    </div>
+                    <div class="mini-card">
+                        <span class="badge {{ $scoreJudgmentClass }}">簡易判定</span>
+                        <h3 style="margin:10px 0 4px; font-size:24px;">{{ $scoreJudgment }}</h3>
+                        <p class="muted" style="margin:0;">採点済み：{{ $scoredAxesCount }} / 4軸</p>
+                    </div>
+                </div>
+
                 <form method="POST" action="{{ route('companies.scores.store', $company) }}" style="margin-top:18px;">
                     @csrf
 
@@ -102,13 +154,18 @@
                                 </div>
 
                                 @if ($currentScore)
-                                    <p class="muted" style="font-size:12px;">
-                                        現在：{{ $currentScore->value }}点 / confidence {{ $currentScore->confidence }}<br>
-                                        scored_by：{{ $currentScore->scored_by ?? '-' }}<br>
-                                        scored_at：{{ optional($currentScore->scored_at)->format('Y-m-d H:i:s') ?? '-' }}
-                                    </p>
+                                    <div style="margin-top:12px; padding:10px; border-radius:12px; background:#ffffff; border:1px solid #d1d5db;">
+                                        <div style="font-size:20px; font-weight:800;">現在：{{ $currentScore->value }}点</div>
+                                        <div class="muted" style="font-size:12px; margin-top:4px;">
+                                            confidence {{ $currentScore->confidence }}<br>
+                                            scored_by：{{ $currentScore->scored_by ?? '-' }}<br>
+                                            scored_at：{{ optional($currentScore->scored_at)->format('Y-m-d H:i:s') ?? '-' }}
+                                        </div>
+                                    </div>
                                 @else
-                                    <p class="muted" style="font-size:12px;">未採点</p>
+                                    <div style="margin-top:12px; padding:10px; border-radius:12px; background:#ffffff; border:1px solid #e5e7eb;">
+                                        <div class="muted" style="font-size:14px;">未採点</div>
+                                    </div>
                                 @endif
                             </div>
                         @endforeach
