@@ -68,12 +68,43 @@
                         </select>
                     </div>
 
+                    @php
+                        $selectedMunicipalityId = old('municipality_id', $defaults['municipality_id']);
+                        $selectedMunicipality = $municipalities->firstWhere('id', (int) $selectedMunicipalityId);
+                        $selectedPrefectureId = old('prefecture_filter_id', $selectedMunicipality?->prefecture_id);
+                        $prefecturesForFilter = $municipalities
+                            ->pluck('prefecture')
+                            ->filter()
+                            ->unique('id')
+                            ->sortBy('id')
+                            ->values();
+                    @endphp
+
+                    <div class="field">
+                        <label for="prefecture_filter_id">都道府県で絞り込み</label>
+                        <select id="prefecture_filter_id" name="prefecture_filter_id">
+                            <option value="">すべて</option>
+                            @foreach ($prefecturesForFilter as $prefecture)
+                                <option value="{{ $prefecture->id }}" @selected((string) $selectedPrefectureId === (string) $prefecture->id)>
+                                    {{ $prefecture->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                        <p class="muted" style="font-size:12px; margin:6px 0 0;">
+                            全国マスタが増えても探しやすいよう、先に都道府県で絞る。
+                        </p>
+                    </div>
+
                     <div class="field">
                         <label for="municipality_id">地域（市区町村マスタ）</label>
                         <select id="municipality_id" name="municipality_id">
                             <option value="">未設定</option>
                             @foreach ($municipalities as $municipality)
-                                <option value="{{ $municipality->id }}" @selected((string) old('municipality_id', $defaults['municipality_id']) === (string) $municipality->id)>
+                                <option
+                                    value="{{ $municipality->id }}"
+                                    data-prefecture-id="{{ $municipality->prefecture_id }}"
+                                    @selected((string) $selectedMunicipalityId === (string) $municipality->id)
+                                >
                                     {{ $municipality->prefecture->name }} / {{ $municipality->name }}
                                 </option>
                             @endforeach
@@ -114,4 +145,53 @@
             </form>
         </section>
     </main>
+
+    <script>
+        (() => {
+            const prefSelect = document.getElementById('prefecture_filter_id');
+            const municipalitySelect = document.getElementById('municipality_id');
+            if (!prefSelect || !municipalitySelect) return;
+
+            const allOptions = Array.from(municipalitySelect.options).map((option) => ({
+                value: option.value,
+                text: option.text,
+                prefId: option.dataset.prefectureId || '',
+                selected: option.selected,
+            }));
+
+            const rebuildMunicipalityOptions = () => {
+                const selectedPrefId = prefSelect.value;
+                const currentValue = municipalitySelect.value;
+
+                municipalitySelect.innerHTML = '';
+
+                allOptions.forEach((item) => {
+                    if (item.value !== '' && selectedPrefId !== '' && item.prefId !== selectedPrefId) {
+                        return;
+                    }
+
+                    const option = document.createElement('option');
+                    option.value = item.value;
+                    option.textContent = item.text;
+                    if (item.prefId) {
+                        option.dataset.prefectureId = item.prefId;
+                    }
+
+                    if (item.value === currentValue) {
+                        option.selected = true;
+                    }
+
+                    municipalitySelect.appendChild(option);
+                });
+
+                const currentStillExists = Array.from(municipalitySelect.options).some((option) => option.value === currentValue);
+                if (!currentStillExists) {
+                    municipalitySelect.value = '';
+                }
+            };
+
+            prefSelect.addEventListener('change', rebuildMunicipalityOptions);
+            rebuildMunicipalityOptions();
+        })();
+    </script>
 @endsection
