@@ -308,7 +308,7 @@ if "%MODE%"=="1" (
 echo.
 echo [9/10] Running server deploy...
 
-ssh -i "%SSH_KEY%" %SERVER_USER%@%SERVER_HOST% "cd %APP_DIR% && if [ ! -f deploy.sh ]; then git fetch origin && git reset --hard origin/main; fi && cp deploy.sh /tmp/trusteps_cms_lab_deploy.sh && bash /tmp/trusteps_cms_lab_deploy.sh"
+ssh -i "%SSH_KEY%" %SERVER_USER%@%SERVER_HOST% "cd %APP_DIR% && git fetch origin && git reset --hard origin/main && cp deploy.sh /tmp/trusteps_cms_lab_deploy.sh && bash /tmp/trusteps_cms_lab_deploy.sh"
 
 if %ERRORLEVEL% NEQ 0 (
   echo.
