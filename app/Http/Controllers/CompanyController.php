@@ -145,8 +145,8 @@ class CompanyController extends Controller
                 'name_norm' => $this->normalizeName($validated['display_name']),
                 'alias_names_json' => null,
                 'corporate_number' => $this->normalizeCorporateNumber($validated['corporate_number'] ?? null),
-                'pref' => $validated['pref'] ?? null,
-                'city' => $validated['city'] ?? null,
+                'pref' => !empty($validated['municipality_id']) ? null : ($validated['pref'] ?? null),
+                'city' => !empty($validated['municipality_id']) ? null : ($validated['city'] ?? null),
                 'is_killed' => false,
             ]);
 

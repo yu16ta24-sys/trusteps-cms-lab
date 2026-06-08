@@ -28,7 +28,7 @@
                         <tr><th>source_type</th><td>{{ $sourceRecord->source_type }}</td></tr>
                         <tr><th>name_norm</th><td>{{ $sourceRecord->name_norm ?? '-' }}</td></tr>
                         <tr><th>source_url</th><td style="overflow-wrap:anywhere;">{{ $sourceRecord->source_url ?? '-' }}</td></tr>
-                        <tr><th>pref/city</th><td>{{ $sourceRecord->pref ?? '-' }} / {{ $sourceRecord->city ?? '-' }}</td></tr>
+                        <tr><th>source pref/city</th><td>{{ $sourceRecord->pref ?? '-' }} / {{ $sourceRecord->city ?? '-' }}</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -69,7 +69,7 @@
                     </div>
 
                     <div class="field">
-                        <label for="municipality_id">市区町村</label>
+                        <label for="municipality_id">地域（市区町村マスタ）</label>
                         <select id="municipality_id" name="municipality_id">
                             <option value="">未設定</option>
                             @foreach ($municipalities as $municipality)
@@ -78,6 +78,9 @@
                                 </option>
                             @endforeach
                         </select>
+                        <p class="muted" style="font-size:12px; margin:6px 0 0;">
+                            基本はここだけ選ぶ。都道府県・市区町村名の手入力は矛盾防止のため非表示。
+                        </p>
                     </div>
 
                     <div class="field">
@@ -85,15 +88,8 @@
                         <input id="corporate_number" name="corporate_number" type="text" value="{{ old('corporate_number', $defaults['corporate_number']) }}">
                     </div>
 
-                    <div class="field">
-                        <label for="pref">都道府県</label>
-                        <input id="pref" name="pref" type="text" value="{{ old('pref', $defaults['pref']) }}">
-                    </div>
-
-                    <div class="field">
-                        <label for="city">市区町村名</label>
-                        <input id="city" name="city" type="text" value="{{ old('city', $defaults['city']) }}">
-                    </div>
+                    <input type="hidden" name="pref" value="">
+                    <input type="hidden" name="city" value="">
 
                     <div class="field">
                         <label for="primary_url">公式HP URL</label>
@@ -111,7 +107,7 @@
                 <div class="field">
                     <label for="note">判断メモ</label>
                     <textarea id="note" name="note">{{ old('note') }}</textarea>
-                    <p class="muted">v0.6ではnoteはまだ保存しない。画面上の判断補助だけ。</p>
+                    <p class="muted">現時点ではnoteは保存しない。画面上の判断補助だけ。</p>
                 </div>
 
                 <button class="button" type="submit">companyを作成する</button>
