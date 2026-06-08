@@ -35,12 +35,13 @@
         a { color: inherit; }
         .page { min-height: 100vh; display: flex; flex-direction: column; }
         .topbar {
-            height: 64px;
-            display: flex;
+            min-height: 68px;
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 18px;
             align-items: center;
-            justify-content: space-between;
-            padding: 0 28px;
-            background: rgba(17, 24, 39, 0.92);
+            padding: 12px 28px;
+            background: rgba(17, 24, 39, 0.94);
             color: #fff;
             box-shadow: 0 8px 30px rgba(15, 23, 42, .18);
             backdrop-filter: blur(14px);
@@ -48,7 +49,60 @@
             top: 0;
             z-index: 20;
         }
-        .brand { font-weight: 800; letter-spacing: .03em; }
+        .brand {
+            font-weight: 900;
+            letter-spacing: .03em;
+            white-space: nowrap;
+        }
+        .nav {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .nav-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 38px;
+            padding: 9px 13px;
+            border-radius: 999px;
+            text-decoration: none;
+            color: #d1d5db;
+            font-size: 14px;
+            font-weight: 800;
+            border: 1px solid transparent;
+            transition: background .15s ease, color .15s ease, border-color .15s ease;
+            white-space: nowrap;
+        }
+        .nav-link:hover {
+            background: rgba(255, 255, 255, .08);
+            color: #fff;
+        }
+        .nav-link.active {
+            background: #ffffff;
+            color: #111827;
+            border-color: rgba(255, 255, 255, .18);
+        }
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
+            white-space: nowrap;
+        }
+        .user-chip {
+            display: inline-flex;
+            align-items: center;
+            min-height: 34px;
+            padding: 8px 10px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, .08);
+            color: #e5e7eb;
+            font-size: 12px;
+            font-weight: 700;
+        }
         .content { width: min(1280px, calc(100% - 32px)); margin: 32px auto; flex: 1; }
         .card {
             background: var(--card);
@@ -172,10 +226,20 @@
             background: #f8fafc;
         }
         tbody tr:last-child td, tbody tr:last-child th { border-bottom: 0; }
+        @media (max-width: 980px) {
+            .topbar {
+                grid-template-columns: 1fr;
+                align-items: stretch;
+            }
+            .nav { justify-content: flex-start; }
+            .topbar-right { justify-content: space-between; }
+        }
         @media (max-width: 720px) {
             .content { width: min(100%, calc(100% - 20px)); margin: 18px auto; }
             .card { padding: 20px; border-radius: 16px; }
-            .topbar { padding: 0 16px; }
+            .topbar { padding: 12px 16px; }
+            .nav-link { font-size: 13px; padding: 8px 10px; }
+            .user-chip { display: none; }
         }
     </style>
 </head>
@@ -184,10 +248,29 @@
     @auth
         <header class="topbar">
             <div class="brand">TRUSTEPS CMS Lab</div>
-            <form method="POST" action="{{ route('logout') }}">
-                @csrf
-                <button class="button secondary" type="submit">ログアウト</button>
-            </form>
+
+            <nav class="nav" aria-label="グローバルナビゲーション">
+                <a class="nav-link {{ request()->routeIs('dashboard') ? 'active' : '' }}" href="{{ route('dashboard') }}">
+                    Dashboard
+                </a>
+                <a class="nav-link {{ request()->routeIs('source-records.*') ? 'active' : '' }}" href="{{ route('source-records.index') }}">
+                    source_records
+                </a>
+                <a class="nav-link {{ request()->routeIs('companies.index') || request()->routeIs('companies.show') || request()->routeIs('companies.merge-form') ? 'active' : '' }}" href="{{ route('companies.index') }}">
+                    companies
+                </a>
+                <a class="nav-link {{ request()->routeIs('companies.candidates') ? 'active' : '' }}" href="{{ route('companies.candidates') }}">
+                    営業候補
+                </a>
+            </nav>
+
+            <div class="topbar-right">
+                <span class="user-chip">{{ auth()->user()?->email }}</span>
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button class="button secondary" type="submit">ログアウト</button>
+                </form>
+            </div>
         </header>
     @endauth
 
