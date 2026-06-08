@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SourceRecordController extends Controller
 {
@@ -102,17 +103,74 @@ class SourceRecordController extends Controller
 
     public function importForm(): View
     {
-        return view('source_records.import');
+        return view('source_records.import', [
+            'templateHeaders' => $this->csvTemplateHeaders(),
+        ]);
     }
 
-    public function import(Request $request): RedirectResponse
+    public function importTemplate(): StreamedResponse
+    {
+        $headers = $this->csvTemplateHeaders();
+
+        return response()->streamDownload(function () use ($headers) {
+            $handle = fopen('php://output', 'w');
+
+            // Excelで開いたときの文字化け対策。
+            fwrite($handle, "\xEF\xBB\xBF");
+            fputcsv($handle, $headers);
+            fputcsv($handle, [
+                'public_list',
+                '長野県 建設業者名簿',
+                'https://example.jp/list-page',
+                'サンプル工務店株式会社',
+                '長野県松本市サンプル1-2-3',
+                '0263-00-0000',
+                'https://example-koumuten.jp',
+                '建設業',
+                '長野県',
+                '松本市',
+                now()->toDateString(),
+                'Phase1テスト用サンプル',
+            ]);
+
+            fclose($handle);
+        }, 'source_records_import_template_v0.12.0.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function import(Request $request): RedirectResponse|View
     {
         $request->validate([
             'csv_file' => ['required', 'file', 'max:10240'],
             'default_source_type' => ['required', 'string', 'max:80'],
+            'dry_run' => ['nullable', 'boolean'],
         ]);
 
         $file = $request->file('csv_file');
+        $dryRun = $request->boolean('dry_run');
+
+        $result = $this->processCsvImport(
+            file: $file,
+            defaultSourceType: (string) $request->input('default_source_type'),
+            shouldPersist: !$dryRun,
+        );
+
+        if ($dryRun) {
+            return view('source_records.import', [
+                'templateHeaders' => $this->csvTemplateHeaders(),
+                'previewResult' => $result,
+            ]);
+        }
+
+        return redirect()
+            ->route('source-records.import')
+            ->with('status', "CSV取り込み完了。登録 {$result['imported']} 件 / スキップ {$result['skipped']} 件。")
+            ->with('import_summary', $result);
+    }
+
+    private function processCsvImport($file, string $defaultSourceType, bool $shouldPersist): array
+    {
         $content = file_get_contents($file->getRealPath());
 
         $encoding = mb_detect_encoding($content, ['UTF-8', 'SJIS-win', 'CP932', 'EUC-JP'], true) ?: 'UTF-8';
@@ -126,22 +184,51 @@ class SourceRecordController extends Controller
 
         $header = fgetcsv($stream);
         if (!$header) {
-            return back()->withErrors(['csv_file' => 'CSVのヘッダー行を読み取れなかった。']);
+            fclose($stream);
+
+            return $this->emptyImportResult([
+                'CSVのヘッダー行を読み取れなかった。',
+            ]);
         }
 
         $header = array_map(fn ($value) => $this->normalizeHeader((string) $value), $header);
 
-        $imported = 0;
-        $skipped = 0;
-        $errors = [];
+        $result = [
+            'mode' => $shouldPersist ? 'import' : 'preview',
+            'file_name' => $file->getClientOriginalName(),
+            'detected_encoding' => $encoding,
+            'header' => $header,
+            'total_rows' => 0,
+            'imported' => 0,
+            'valid_rows' => 0,
+            'skipped' => 0,
+            'with_domain' => 0,
+            'with_phone' => 0,
+            'without_url' => 0,
+            'duplicate_hints' => 0,
+            'warnings' => [],
+            'errors' => [],
+            'samples' => [],
+        ];
+
+        $rowNumber = 1;
 
         while (($row = fgetcsv($stream)) !== false) {
+            $rowNumber++;
+
             if ($this->isEmptyCsvRow($row)) {
                 continue;
             }
 
+            $result['total_rows']++;
+
             $assoc = $this->combineCsvRow($header, $row);
-            $canonical = $this->extractCanonicalFields($assoc, $request->input('default_source_type'));
+            $canonical = $this->extractCanonicalFields($assoc, $defaultSourceType);
+            $normalizedCorporateNumber = $this->normalizeCorporateNumber($canonical['corporate_number'] ?? null);
+            $normalizedDomain = $this->normalizeDomain($canonical['source_url'] ?? null);
+            $normalizedPhone = $this->normalizePhone($canonical['phone'] ?? null);
+            $nameNorm = $this->normalizeName($canonical['company_name'] ?? null);
+            $fetchedAt = $this->parseFetchedAt($canonical['fetched_at'] ?? null, $rowNumber, $result['warnings']);
 
             $validator = Validator::make($canonical, [
                 'source_type' => ['required', 'string', 'max:80'],
@@ -154,8 +241,44 @@ class SourceRecordController extends Controller
             ]);
 
             if ($validator->fails()) {
-                $skipped++;
-                $errors[] = '会社名がない行をスキップした。';
+                $result['skipped']++;
+                $result['errors'][] = "{$rowNumber}行目：会社名がない、または項目が長すぎるためスキップ。";
+                continue;
+            }
+
+            $duplicateSignals = $this->duplicateSignals($normalizedCorporateNumber, $normalizedDomain, $nameNorm);
+            if ($duplicateSignals !== []) {
+                $result['duplicate_hints']++;
+            }
+
+            if ($normalizedDomain) {
+                $result['with_domain']++;
+            } else {
+                $result['without_url']++;
+            }
+
+            if ($normalizedPhone) {
+                $result['with_phone']++;
+            }
+
+            $result['valid_rows']++;
+
+            if (count($result['samples']) < 8) {
+                $result['samples'][] = [
+                    'row_number' => $rowNumber,
+                    'company_name' => $canonical['company_name'],
+                    'source_type' => $canonical['source_type'],
+                    'source_url' => $canonical['source_url'],
+                    'source_name' => $canonical['source_name'],
+                    'source_page_url' => $canonical['source_page_url'],
+                    'pref' => $canonical['pref'],
+                    'city' => $canonical['city'],
+                    'normalized_domain' => $normalizedDomain,
+                    'duplicate_signals' => $duplicateSignals,
+                ];
+            }
+
+            if (!$shouldPersist) {
                 continue;
             }
 
@@ -164,40 +287,141 @@ class SourceRecordController extends Controller
                 'source_url' => $canonical['source_url'] ?? null,
                 'raw_json' => [
                     'input_type' => 'csv',
+                    'schema_version' => 'source_records_csv_v0.12.0',
+                    'row_number' => $rowNumber,
                     'original_row' => $assoc,
                     'canonical' => $canonical,
+                    'duplicate_signals_at_import' => $duplicateSignals,
                     'uploaded_file_name' => $file->getClientOriginalName(),
                 ],
-                'corporate_number' => $this->normalizeCorporateNumber($canonical['corporate_number'] ?? null),
-                'normalized_domain' => $this->normalizeDomain($canonical['source_url'] ?? null),
-                'normalized_phone' => $this->normalizePhone($canonical['phone'] ?? null),
-                'name_norm' => $this->normalizeName($canonical['company_name']),
+                'corporate_number' => $normalizedCorporateNumber,
+                'normalized_domain' => $normalizedDomain,
+                'normalized_phone' => $normalizedPhone,
+                'name_norm' => $nameNorm,
                 'pref' => $canonical['pref'] ?? null,
                 'city' => $canonical['city'] ?? null,
-                'fetched_at' => now(),
+                'fetched_at' => $fetchedAt,
             ]);
 
-            $imported++;
+            $result['imported']++;
         }
 
         fclose($stream);
 
-        return redirect()
-            ->route('source-records.index')
-            ->with('status', "CSV取り込み完了。登録 {$imported} 件 / スキップ {$skipped} 件。");
+        $result['warnings'] = array_slice(array_values(array_unique($result['warnings'])), 0, 30);
+        $result['errors'] = array_slice($result['errors'], 0, 50);
+
+        return $result;
+    }
+
+    private function emptyImportResult(array $errors): array
+    {
+        return [
+            'mode' => 'preview',
+            'file_name' => null,
+            'detected_encoding' => null,
+            'header' => [],
+            'total_rows' => 0,
+            'imported' => 0,
+            'valid_rows' => 0,
+            'skipped' => 0,
+            'with_domain' => 0,
+            'with_phone' => 0,
+            'without_url' => 0,
+            'duplicate_hints' => 0,
+            'warnings' => [],
+            'errors' => $errors,
+            'samples' => [],
+        ];
     }
 
     private function extractCanonicalFields(array $assoc, string $defaultSourceType): array
     {
         return [
-            'source_type' => $this->firstValue($assoc, ['source_type', '取得元', 'ソース', 'source']) ?: $defaultSourceType,
-            'source_url' => $this->firstValue($assoc, ['source_url', 'url', 'website', 'hp_url', 'ホームページ', 'HP', 'ＨＰ', 'サイトURL']),
-            'company_name' => $this->firstValue($assoc, ['company_name', 'name', 'display_name', '会社名', '名称', '屋号', '法人名']),
+            'source_type' => $this->firstValue($assoc, ['source_type', '取得元種別', 'ソース種別', 'source']) ?: $defaultSourceType,
+            'source_name' => $this->firstValue($assoc, ['source_name', '取得元名', 'ソース名', '名簿名', 'source_title']),
+            'source_page_url' => $this->firstValue($assoc, ['source_page_url', 'list_url', '取得元URL', '取得元ページ', '名簿URL', '掲載元URL']),
+            'source_url' => $this->firstValue($assoc, ['company_url', 'raw_url', 'website', 'website_url', 'hp_url', 'ホームページ', 'HP', 'ＨＰ', 'サイトURL', 'url', 'source_url']),
+            'company_name' => $this->firstValue($assoc, ['company_name', 'raw_name', 'name', 'display_name', '会社名', '名称', '屋号', '法人名', '事業者名']),
+            'raw_address' => $this->firstValue($assoc, ['raw_address', 'address', '住所', '所在地']),
             'corporate_number' => $this->firstValue($assoc, ['corporate_number', '法人番号']),
-            'phone' => $this->firstValue($assoc, ['phone', 'tel', 'telephone', '電話', '電話番号']),
+            'phone' => $this->firstValue($assoc, ['phone', 'raw_phone', 'tel', 'telephone', '電話', '電話番号']),
+            'raw_industry' => $this->firstValue($assoc, ['raw_industry', 'industry', '業種', '業種名']),
             'pref' => $this->firstValue($assoc, ['pref', 'prefecture', '都道府県']),
             'city' => $this->firstValue($assoc, ['city', 'municipality', '市区町村', '市町村']),
+            'fetched_at' => $this->firstValue($assoc, ['fetched_at', '取得日', '取得日時', '調査日']),
+            'memo' => $this->firstValue($assoc, ['memo', 'note', 'メモ', '備考']),
         ];
+    }
+
+    private function csvTemplateHeaders(): array
+    {
+        return [
+            'source_type',
+            'source_name',
+            'source_page_url',
+            'raw_name',
+            'raw_address',
+            'raw_phone',
+            'raw_url',
+            'raw_industry',
+            'pref',
+            'city',
+            'fetched_at',
+            'memo',
+        ];
+    }
+
+    private function parseFetchedAt(?string $value, int $rowNumber, array &$warnings): Carbon
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return now();
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable $e) {
+            $warnings[] = "{$rowNumber}行目：fetched_atを日付として読めなかったため、現在時刻で保存。";
+            return now();
+        }
+    }
+
+    private function duplicateSignals(?string $corporateNumber, ?string $normalizedDomain, ?string $nameNorm): array
+    {
+        $signals = [];
+
+        if ($corporateNumber) {
+            $count = SourceRecord::query()
+                ->where('corporate_number', $corporateNumber)
+                ->count();
+
+            if ($count > 0) {
+                $signals[] = "法人番号一致 {$count}件";
+            }
+        }
+
+        if ($normalizedDomain && $nameNorm) {
+            $count = SourceRecord::query()
+                ->where('normalized_domain', $normalizedDomain)
+                ->where('name_norm', $nameNorm)
+                ->count();
+
+            if ($count > 0) {
+                $signals[] = "domain+name一致 {$count}件";
+            }
+        } elseif ($normalizedDomain) {
+            $count = SourceRecord::query()
+                ->where('normalized_domain', $normalizedDomain)
+                ->count();
+
+            if ($count > 0) {
+                $signals[] = "domain一致 {$count}件";
+            }
+        }
+
+        return $signals;
     }
 
     private function firstValue(array $assoc, array $keys): ?string

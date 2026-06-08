@@ -26,6 +26,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/source-records/create', [SourceRecordController::class, 'create'])->name('source-records.create');
     Route::post('/source-records', [SourceRecordController::class, 'store'])->name('source-records.store');
     Route::get('/source-records/import', [SourceRecordController::class, 'importForm'])->name('source-records.import');
+    Route::get('/source-records/import/template', [SourceRecordController::class, 'importTemplate'])->name('source-records.import.template');
     Route::post('/source-records/import', [SourceRecordController::class, 'import'])->name('source-records.import.store');
 
     Route::get('/source-records/{sourceRecord}/create-company', [CompanyController::class, 'createFromSource'])
