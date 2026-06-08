@@ -11,6 +11,14 @@
                 <div class="actions">
                     <a class="button light" href="{{ route('companies.index') }}">companies一覧へ</a>
                     <a class="button light" href="{{ route('source-records.index') }}">source_recordsへ</a>
+                    @if ($company->status !== 'merged')
+                        <a class="button" href="{{ route('companies.merge-form', $company) }}">このcompanyを統合</a>
+                    @else
+                        <form method="POST" action="{{ route('companies.undo-merge', $company) }}" onsubmit="return confirm('このcompanyの統合をUndoする？');">
+                            @csrf
+                            <button class="button danger" type="submit">統合をUndo</button>
+                        </form>
+                    @endif
                 </div>
             </div>
 
@@ -18,11 +26,27 @@
                 <div class="status" style="margin-top:20px;">{{ session('status') }}</div>
             @endif
 
+            @if ($company->status === 'merged')
+                <div class="error" style="margin-top:20px;">
+                    このcompanyは統合済み。統合先：
+                    @if ($company->mergedInto)
+                        <a href="{{ route('companies.show', $company->mergedInto) }}">#{{ $company->mergedInto->id }} {{ $company->mergedInto->display_name }}</a>
+                    @else
+                        不明
+                    @endif
+                </div>
+            @endif
+
             <div class="table-wrap" style="margin-top:24px;">
                 <table>
                     <tbody>
                     <tr><th>ID</th><td>{{ $company->id }}</td></tr>
                     <tr><th>status</th><td><span class="badge gray">{{ $company->status }}</span></td></tr>
+                    <tr><th>merge_previous_status</th><td>{{ $company->merge_previous_status ?? '-' }}</td></tr>
+                    <tr><th>merged_into</th><td>{{ $company->mergedInto ? '#' . $company->mergedInto->id . ' ' . $company->mergedInto->display_name : '-' }}</td></tr>
+                    <tr><th>merged_at</th><td>{{ optional($company->merged_at)->format('Y-m-d H:i:s') ?? '-' }}</td></tr>
+                    <tr><th>merged_by</th><td>{{ $company->merged_by ?? '-' }}</td></tr>
+                    <tr><th>merge_reason</th><td>{{ $company->merge_reason ?? '-' }}</td></tr>
                     <tr><th>display_name</th><td>{{ $company->display_name }}</td></tr>
                     <tr><th>legal_name</th><td>{{ $company->legal_name ?? '-' }}</td></tr>
                     <tr><th>name_norm</th><td>{{ $company->name_norm ?? '-' }}</td></tr>
@@ -35,6 +59,32 @@
                     </tbody>
                 </table>
             </div>
+
+            @if ($company->mergedChildren->count())
+                <h2>このcompanyに統合されたcompany</h2>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>display_name</th>
+                            <th>status</th>
+                            <th></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        @foreach ($company->mergedChildren as $child)
+                            <tr>
+                                <td>{{ $child->id }}</td>
+                                <td>{{ $child->display_name }}</td>
+                                <td>{{ $child->status }}</td>
+                                <td><a class="button small light" href="{{ route('companies.show', $child) }}">詳細</a></td>
+                            </tr>
+                        @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
 
             <h2>domains</h2>
             <div class="table-wrap">

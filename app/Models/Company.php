@@ -12,6 +12,7 @@ class Company extends Model
     protected $fillable = [
         'status',
         'merged_into_id',
+        'merge_previous_status',
         'municipality_id',
         'industry_id',
         'primary_domain_id',
@@ -33,6 +34,16 @@ class Company extends Model
         'is_killed' => 'boolean',
         'merged_at' => 'datetime',
     ];
+
+    public function mergedInto()
+    {
+        return $this->belongsTo(Company::class, 'merged_into_id');
+    }
+
+    public function mergedChildren()
+    {
+        return $this->hasMany(Company::class, 'merged_into_id');
+    }
 
     public function industry()
     {

@@ -41,5 +41,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/source-records/{sourceRecord}', [SourceRecordController::class, 'show'])->name('source-records.show');
 
     Route::get('/companies', [CompanyController::class, 'index'])->name('companies.index');
+    Route::get('/companies/{company}/merge', [CompanyController::class, 'mergeForm'])->name('companies.merge-form');
+    Route::post('/companies/{company}/merge', [CompanyController::class, 'merge'])->name('companies.merge');
+    Route::post('/companies/{company}/undo-merge', [CompanyController::class, 'undoMerge'])->name('companies.undo-merge');
     Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
 });

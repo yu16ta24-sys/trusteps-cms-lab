@@ -18,7 +18,7 @@ class CompanyController extends Controller
     public function index(Request $request): View
     {
         $query = Company::query()
-            ->with(['industry', 'municipality.prefecture', 'primaryDomain'])
+            ->with(['industry', 'municipality.prefecture', 'primaryDomain', 'mergedInto'])
             ->latest('id');
 
         if ($request->filled('q')) {
@@ -36,6 +36,10 @@ class CompanyController extends Controller
 
         if ($request->filled('industry_id')) {
             $query->where('industry_id', $request->input('industry_id'));
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->input('status'));
         }
 
         $companies = $query->paginate(30)->withQueryString();
@@ -59,6 +63,8 @@ class CompanyController extends Controller
             'primaryDomain',
             'domains',
             'sourceLinks.sourceRecord',
+            'mergedInto',
+            'mergedChildren',
         ]);
 
         return view('companies.show', compact('company'));
@@ -229,6 +235,101 @@ class CompanyController extends Controller
         return redirect()
             ->route('companies.show', $company)
             ->with('status', 'source_recordを既存companyへリンクした。');
+    }
+
+    public function mergeForm(Request $request, Company $company): View|RedirectResponse
+    {
+        if ($company->status === 'merged') {
+            return redirect()
+                ->route('companies.show', $company)
+                ->with('status', 'このcompanyはすでに統合済み。先にUndoしてから操作する。');
+        }
+
+        $query = Company::query()
+            ->with(['industry', 'municipality.prefecture', 'primaryDomain'])
+            ->where('id', '!=', $company->id)
+            ->where('status', '!=', 'merged')
+            ->latest('id');
+
+        if ($request->filled('q')) {
+            $q = trim((string) $request->input('q'));
+            $query->where(function ($inner) use ($q) {
+                $inner
+                    ->where('display_name', 'like', "%{$q}%")
+                    ->orWhere('legal_name', 'like', "%{$q}%")
+                    ->orWhere('name_norm', 'like', "%{$q}%")
+                    ->orWhere('corporate_number', 'like', "%{$q}%")
+                    ->orWhere('pref', 'like', "%{$q}%")
+                    ->orWhere('city', 'like', "%{$q}%");
+            });
+        }
+
+        $targetCompanies = $query->paginate(20)->withQueryString();
+
+        return view('companies.merge', compact('company', 'targetCompanies'));
+    }
+
+    public function merge(Request $request, Company $company): RedirectResponse
+    {
+        if ($company->status === 'merged') {
+            return redirect()
+                ->route('companies.show', $company)
+                ->with('status', 'このcompanyはすでに統合済み。');
+        }
+
+        $validated = $request->validate([
+            'target_company_id' => ['required', 'exists:companies,id'],
+            'merge_reason' => ['required', 'string', 'max:5000'],
+        ]);
+
+        if ((int) $validated['target_company_id'] === (int) $company->id) {
+            return back()->withErrors(['target_company_id' => '自分自身には統合できない。']);
+        }
+
+        $targetCompany = Company::query()
+            ->where('status', '!=', 'merged')
+            ->findOrFail($validated['target_company_id']);
+
+        $company->update([
+            'merge_previous_status' => $company->status,
+            'status' => 'merged',
+            'merged_into_id' => $targetCompany->id,
+            'merged_at' => now(),
+            'merged_by' => auth()->user()?->email ?? 'manual',
+            'merge_reason' => $validated['merge_reason'],
+        ]);
+
+        return redirect()
+            ->route('companies.show', $company)
+            ->with('status', "company #{$company->id} を company #{$targetCompany->id} へ統合した。source linksは書き換えていない。");
+    }
+
+    public function undoMerge(Company $company): RedirectResponse
+    {
+        if ($company->status !== 'merged') {
+            return redirect()
+                ->route('companies.show', $company)
+                ->with('status', 'このcompanyはmergedではないためUndo不要。');
+        }
+
+        $previousStatus = $company->merge_previous_status ?: 'candidate';
+
+        if (!in_array($previousStatus, ['candidate', 'confirmed'], true)) {
+            $previousStatus = 'candidate';
+        }
+
+        $company->update([
+            'status' => $previousStatus,
+            'merged_into_id' => null,
+            'merge_previous_status' => null,
+            'merged_at' => null,
+            'merged_by' => null,
+            'merge_reason' => null,
+        ]);
+
+        return redirect()
+            ->route('companies.show', $company)
+            ->with('status', "company #{$company->id} の統合をUndoした。");
     }
 
     private function defaultsFromSourceRecord(SourceRecord $sourceRecord): array
