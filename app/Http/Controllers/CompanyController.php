@@ -18,6 +18,8 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Throwable;
 use Illuminate\View\View;
 
 class CompanyController extends Controller
@@ -326,24 +328,47 @@ class CompanyController extends Controller
             ->where('algo_version', 'v1')
             ->keyBy('axis');
 
-        $domainIds = $company->domains->pluck('id');
-
-        $latestHpSnapshot = $domainIds->isEmpty()
-            ? null
-            : HpSnapshot::query()
-                ->with(['domain', 'fact', 'updateTargets.updateTarget'])
-                ->whereIn('domain_id', $domainIds)
-                ->orderByDesc('crawled_at')
-                ->orderByDesc('id')
-                ->first();
-
-        $updateTargets = UpdateTarget::query()
-            ->where('is_active', true)
-            ->orderBy('sort_order')
-            ->orderBy('id')
-            ->get();
-
+        $latestHpSnapshot = null;
+        $updateTargets = collect();
         $hpObservationOptions = $this->hpObservationOptions();
+        $hpObservationAvailable = false;
+        $hpObservationUnavailableReason = null;
+        $hpObservationHasNoteColumn = false;
+        $hpObservationHasPortalDependencyColumn = false;
+
+        try {
+            $requiredTables = ['domains', 'hp_snapshots', 'hp_facts', 'snapshot_update_targets', 'update_targets'];
+            foreach ($requiredTables as $table) {
+                if (!Schema::hasTable($table)) {
+                    throw new \RuntimeException("required table missing: {$table}");
+                }
+            }
+
+            $hpObservationHasNoteColumn = Schema::hasColumn('hp_snapshots', 'observation_note');
+            $hpObservationHasPortalDependencyColumn = Schema::hasColumn('hp_facts', 'portal_dependency_level');
+
+            $domainIds = $company->domains->pluck('id');
+
+            $latestHpSnapshot = $domainIds->isEmpty()
+                ? null
+                : HpSnapshot::query()
+                    ->with(['domain', 'fact', 'updateTargets.updateTarget'])
+                    ->whereIn('domain_id', $domainIds)
+                    ->orderByDesc('crawled_at')
+                    ->orderByDesc('id')
+                    ->first();
+
+            $updateTargets = UpdateTarget::query()
+                ->where('is_active', true)
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get();
+
+            $hpObservationAvailable = true;
+        } catch (Throwable $e) {
+            report($e);
+            $hpObservationUnavailableReason = 'HP観測のDB状態を確認できなかったため、このセクションだけ一時停止中。通常のcompany詳細・4軸スコア・kill_flagsはそのまま使える。';
+        }
 
         return view('companies.show', compact(
             'company',
@@ -352,6 +377,10 @@ class CompanyController extends Controller
             'latestHpSnapshot',
             'updateTargets',
             'hpObservationOptions',
+            'hpObservationAvailable',
+            'hpObservationUnavailableReason',
+            'hpObservationHasNoteColumn',
+            'hpObservationHasPortalDependencyColumn',
         ));
     }
 
@@ -621,6 +650,23 @@ class CompanyController extends Controller
 
     public function storeHpObservation(Request $request, Company $company): RedirectResponse
     {
+        try {
+            $requiredTables = ['domains', 'hp_snapshots', 'hp_facts', 'snapshot_update_targets', 'update_targets'];
+            foreach ($requiredTables as $table) {
+                if (!Schema::hasTable($table)) {
+                    return redirect()
+                        ->route('companies.show', $company)
+                        ->withErrors(['hp_observation' => "HP観測に必要なDBテーブルが未作成: {$table}"]);
+                }
+            }
+        } catch (Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('companies.show', $company)
+                ->withErrors(['hp_observation' => 'HP観測のDB状態確認でエラー。通常のcompany詳細は使える状態に戻した。']);
+        }
+
         $domainIds = $company->domains()->pluck('id')->all();
 
         if (empty($domainIds)) {
@@ -660,22 +706,27 @@ class CompanyController extends Controller
             ->findOrFail($validated['domain_id']);
 
         DB::transaction(function () use ($validated, $domain) {
-            $snapshot = HpSnapshot::create([
+            $snapshotPayload = [
                 'domain_id' => $domain->id,
                 'crawl_type' => 'manual_verify',
                 'snapshot_version' => 'manual_v1',
                 'requested_url' => $validated['requested_url'] ?: $domain->url,
                 'final_url' => $validated['final_url'] ?: null,
                 'http_status' => $validated['http_status'] ?? null,
-                'observation_note' => $validated['observation_note'] ?? null,
                 'crawled_at' => !empty($validated['crawled_at']) ? $validated['crawled_at'] : now(),
-            ]);
+            ];
+
+            if (Schema::hasColumn('hp_snapshots', 'observation_note')) {
+                $snapshotPayload['observation_note'] = $validated['observation_note'] ?? null;
+            }
+
+            $snapshot = HpSnapshot::create($snapshotPayload);
 
             $targetInputs = $validated['targets'] ?? [];
             $targetStatuses = collect($targetInputs)->pluck('status')->filter();
             $hasAnyPresentTarget = $targetStatuses->contains(fn ($status) => in_array($status, ['present_active', 'present_stopped'], true));
 
-            HpFact::create([
+            $hpFactPayload = [
                 'hp_snapshot_id' => $snapshot->id,
                 'has_ec' => $this->triStateBool($validated['has_ec']),
                 'has_reservation' => $this->triStateBool($validated['has_reservation']),
@@ -694,10 +745,15 @@ class CompanyController extends Controller
                 'mobile_friendly' => $this->triStateBool($validated['mobile_friendly']),
                 'ssl_enabled' => $this->triStateBool($validated['ssl_enabled']),
                 'footer_year_status' => $validated['footer_year_status'],
-                'portal_dependency_level' => $validated['portal_dependency_level'],
                 'extractor_version' => 'manual_v1',
                 'extracted_at' => now(),
-            ]);
+            ];
+
+            if (Schema::hasColumn('hp_facts', 'portal_dependency_level')) {
+                $hpFactPayload['portal_dependency_level'] = $validated['portal_dependency_level'];
+            }
+
+            HpFact::create($hpFactPayload);
 
             foreach ($targetInputs as $updateTargetId => $targetInput) {
                 $status = $targetInput['status'] ?? 'unknown';

@@ -383,7 +383,9 @@
                     <span class="badge blue">manual_v1</span>
                 </div>
 
-                @if ($latestHpSnapshot)
+                @if (!($hpObservationAvailable ?? false))
+                    <div class="error" style="margin-bottom:0;">{{ $hpObservationUnavailableReason ?? 'HP観測は一時的に利用できない状態。' }}</div>
+                @elseif ($latestHpSnapshot)
                     <div class="observation-current">
                         <div class="row" style="align-items:flex-start; gap:16px;">
                             <div>
@@ -401,7 +403,7 @@
                             </div>
                         </div>
 
-                        @if ($latestHpSnapshot->observation_note)
+                        @if (($hpObservationHasNoteColumn ?? false) && $latestHpSnapshot->observation_note)
                             <div class="empty-box" style="margin-top:14px;">{{ $latestHpSnapshot->observation_note }}</div>
                         @endif
 
@@ -439,7 +441,9 @@
                     <div class="empty-box" style="margin-bottom:18px;">まだHP観測データなし。まず1件だけ見たまま入力して、次の4軸自動提案の材料にする。</div>
                 @endif
 
-                @if ($company->domains->isEmpty())
+                @if (!($hpObservationAvailable ?? false))
+                    {{-- HP観測DBが未準備/不整合の時は、company詳細を落とさないため入力フォームを停止する。 --}}
+                @elseif ($company->domains->isEmpty())
                     <div class="error" style="margin-bottom:0;">domainがないためHP観測を保存できない。source_recordからURL付きでcompany化するか、domain登録UI追加が必要。</div>
                 @else
                     <form method="POST" action="{{ route('companies.hp-observation.store', $company) }}">
@@ -596,10 +600,14 @@
                             @endforeach
                         </div>
 
-                        <div class="field" style="margin-top:18px;">
-                            <label for="observation_note">観測メモ</label>
-                            <textarea id="observation_note" name="observation_note" placeholder="全体所感。例：HPは古いが施工事例の型はある。SNSは動いている。">{{ old('observation_note', $latestHpSnapshot?->observation_note) }}</textarea>
-                        </div>
+                        @if ($hpObservationHasNoteColumn ?? false)
+                            <div class="field" style="margin-top:18px;">
+                                <label for="observation_note">観測メモ</label>
+                                <textarea id="observation_note" name="observation_note" placeholder="全体所感。例：HPは古いが施工事例の型はある。SNSは動いている。">{{ old('observation_note', $latestHpSnapshot?->observation_note) }}</textarea>
+                            </div>
+                        @else
+                            <input type="hidden" name="observation_note" value="">
+                        @endif
 
                         <button class="button" type="submit">HP観測を保存</button>
                     </form>
