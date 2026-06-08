@@ -9,7 +9,6 @@ use App\Models\CompanySourceLink;
 use App\Models\Domain;
 use App\Models\Industry;
 use App\Models\Municipality;
-use App\Models\Prefecture;
 use App\Models\SourceRecord;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -127,24 +126,6 @@ class CompanyController extends Controller
             $query->where('status', $request->input('status'));
         }
 
-        if ($request->filled('pref')) {
-            $pref = $request->input('pref');
-            $query->where(function ($inner) use ($pref) {
-                $inner
-                    ->where('pref', $pref)
-                    ->orWhereHas('municipality.prefecture', fn ($prefectureQuery) => $prefectureQuery->where('name', $pref));
-            });
-        }
-
-        if ($request->filled('city')) {
-            $city = $request->input('city');
-            $query->where(function ($inner) use ($city) {
-                $inner
-                    ->where('city', $city)
-                    ->orWhereHas('municipality', fn ($municipalityQuery) => $municipalityQuery->where('name', $city));
-            });
-        }
-
         $companies = $query->get()
             ->map(function (Company $company) {
                 $scores = $company->scores->keyBy('axis');
@@ -194,6 +175,37 @@ class CompanyController extends Controller
             $companies = $companies->filter(fn ($company) => $company->scored_axes_count < 4);
         } elseif ($preset === 'all_active') {
             // no additional filter
+        }
+
+        $selectedPref = trim((string) $request->input('pref', ''));
+        $selectedCity = trim((string) $request->input('city', ''));
+
+        // 地域プルダウンは全国マスタではなく、現在の候補母集団に実在する値だけを出す。
+        // ここではキーワード/業種/状態/プリセット適用後、都道府県・市区町村フィルター適用前の候補から生成する。
+        $prefOptions = $companies
+            ->map(fn (Company $company) => $this->companyPrefLabel($company))
+            ->filter()
+            ->unique()
+            ->sort(SORT_NATURAL)
+            ->values();
+
+        $cityOptionSource = $selectedPref !== ''
+            ? $companies->filter(fn (Company $company) => $this->companyPrefLabel($company) === $selectedPref)
+            : $companies;
+
+        $cityOptions = $cityOptionSource
+            ->map(fn (Company $company) => $this->companyCityLabel($company))
+            ->filter()
+            ->unique()
+            ->sort(SORT_NATURAL)
+            ->values();
+
+        if ($selectedPref !== '') {
+            $companies = $companies->filter(fn (Company $company) => $this->companyPrefLabel($company) === $selectedPref);
+        }
+
+        if ($selectedCity !== '') {
+            $companies = $companies->filter(fn (Company $company) => $this->companyCityLabel($company) === $selectedCity);
         }
 
         $sort = (string) $request->input('sort', 'priority');
@@ -271,20 +283,6 @@ class CompanyController extends Controller
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
-
-        $prefOptions = Prefecture::query()
-            ->orderBy('code')
-            ->pluck('name');
-
-        $cityOptions = Municipality::query()
-            ->with('prefecture')
-            ->when($request->filled('pref'), function ($cityQuery) use ($request) {
-                $cityQuery->whereHas('prefecture', fn ($prefectureQuery) => $prefectureQuery->where('name', $request->input('pref')));
-            })
-            ->orderBy('code')
-            ->pluck('name')
-            ->unique()
-            ->values();
 
         $summaryBase = Company::query()
             ->where('is_killed', false)
@@ -660,6 +658,16 @@ class CompanyController extends Controller
         }
 
         return ['要確認', 'blue'];
+    }
+
+    private function companyPrefLabel(Company $company): ?string
+    {
+        return $company->municipality?->prefecture?->name ?: $company->pref;
+    }
+
+    private function companyCityLabel(Company $company): ?string
+    {
+        return $company->municipality?->name ?: $company->city;
     }
 
     private function scoreAxisOptions(): array

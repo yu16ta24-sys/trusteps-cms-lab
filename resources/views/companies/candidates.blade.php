@@ -75,17 +75,6 @@
                 color:#fff;
                 border-color:#111827;
             }
-            .candidates-index .rank {
-                width:42px;
-                height:42px;
-                border-radius:14px;
-                display:inline-flex;
-                align-items:center;
-                justify-content:center;
-                background:#111827;
-                color:#fff;
-                font-weight:900;
-            }
             .candidates-index .company-name {
                 font-weight:900;
                 font-size:15px;
@@ -250,7 +239,7 @@
                     <div>
                         <h2 style="margin:0; font-size:26px;">候補リスト</h2>
                         <p class="muted" style="margin:6px 0 0;">
-                            優先度 = 機会スコアを強めに、リスクを減点して並べる簡易指標。絶対値ではなく並び替え用。
+                            地域プルダウンは、現在の候補母集団に存在する都道府県・市区町村だけを表示。順位番号はソート時に意味が崩れるため非表示。
                         </p>
                     </div>
                     <span class="badge gray">表示 {{ $companies->count() }} / {{ number_format($companies->total()) }}</span>
@@ -260,7 +249,6 @@
                     <table>
                         <thead>
                         <tr>
-                            <th>順位</th>
                             <th><a href="{{ $sortUrl('display_name') }}">会社・屋号{{ $sortMark('display_name') }}</a></th>
                             <th>
                                 <a href="{{ $sortUrl('industry') }}">業種{{ $sortMark('industry') }}</a>
@@ -288,9 +276,6 @@
                         <tbody>
                         @forelse ($companies as $company)
                             <tr>
-                                <td class="tight">
-                                    <span class="rank">{{ ($companies->currentPage() - 1) * $companies->perPage() + $loop->iteration }}</span>
-                                </td>
                                 <td>
                                     <div class="company-name">{{ $company->display_name }}</div>
                                     @if ($company->legal_name)
@@ -340,7 +325,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="9" class="muted">
+                                <td colspan="8" class="muted">
                                     条件に合う営業候補がまだない。companyに4軸スコアを入れるか、プリセットを「全active」に変えて確認。
                                 </td>
                             </tr>
