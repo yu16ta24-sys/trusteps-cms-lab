@@ -79,4 +79,10 @@ class Company extends Model
     {
         return $this->hasMany(CompanyScore::class);
     }
+
+    public function hpSnapshots()
+    {
+        return $this->hasManyThrough(HpSnapshot::class, Domain::class);
+    }
 }
+

@@ -7,9 +7,13 @@ use App\Models\CompanyKillFlag;
 use App\Models\CompanyScore;
 use App\Models\CompanySourceLink;
 use App\Models\Domain;
+use App\Models\HpFact;
+use App\Models\HpSnapshot;
 use App\Models\Industry;
 use App\Models\Municipality;
+use App\Models\SnapshotUpdateTarget;
 use App\Models\SourceRecord;
+use App\Models\UpdateTarget;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -322,7 +326,33 @@ class CompanyController extends Controller
             ->where('algo_version', 'v1')
             ->keyBy('axis');
 
-        return view('companies.show', compact('company', 'scoreAxes', 'scoresByAxis'));
+        $domainIds = $company->domains->pluck('id');
+
+        $latestHpSnapshot = $domainIds->isEmpty()
+            ? null
+            : HpSnapshot::query()
+                ->with(['domain', 'fact', 'updateTargets.updateTarget'])
+                ->whereIn('domain_id', $domainIds)
+                ->orderByDesc('crawled_at')
+                ->orderByDesc('id')
+                ->first();
+
+        $updateTargets = UpdateTarget::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        $hpObservationOptions = $this->hpObservationOptions();
+
+        return view('companies.show', compact(
+            'company',
+            'scoreAxes',
+            'scoresByAxis',
+            'latestHpSnapshot',
+            'updateTargets',
+            'hpObservationOptions',
+        ));
     }
 
     public function createFromSource(SourceRecord $sourceRecord): View|RedirectResponse
@@ -589,6 +619,122 @@ class CompanyController extends Controller
 
 
 
+    public function storeHpObservation(Request $request, Company $company): RedirectResponse
+    {
+        $domainIds = $company->domains()->pluck('id')->all();
+
+        if (empty($domainIds)) {
+            return redirect()
+                ->route('companies.show', $company)
+                ->withErrors(['domain_id' => 'このcompanyにはdomainがないため、HP観測を保存できない。先にsource_recordからURL付きでcompany化して。']);
+        }
+
+        $validated = $request->validate([
+            'domain_id' => ['required', 'integer', 'in:' . implode(',', $domainIds)],
+            'requested_url' => ['nullable', 'string', 'max:2000'],
+            'final_url' => ['nullable', 'string', 'max:2000'],
+            'http_status' => ['nullable', 'integer', 'min:100', 'max:599'],
+            'crawled_at' => ['nullable', 'date'],
+            'ssl_enabled' => ['required', 'in:unknown,1,0'],
+            'mobile_friendly' => ['required', 'in:unknown,1,0'],
+            'update_status' => ['required', 'in:unknown,fresh,half_year_stale,one_year_stale,three_year_stale'],
+            'contact_method_type' => ['required', 'in:unknown,good,weak,none'],
+            'cms_type' => ['required', 'in:unknown,wordpress,wix,jimdo,static_html,other'],
+            'footer_year_status' => ['required', 'in:unknown,current,old,missing'],
+            'portal_dependency_level' => ['required', 'in:unknown,low,medium,high'],
+            'has_contact_form' => ['required', 'in:unknown,1,0'],
+            'has_sns_link' => ['required', 'in:unknown,1,0'],
+            'has_portal_link' => ['required', 'in:unknown,1,0'],
+            'has_reservation' => ['required', 'in:unknown,1,0'],
+            'has_ec' => ['required', 'in:unknown,1,0'],
+            'has_recruiting' => ['required', 'in:unknown,1,0'],
+            'observation_note' => ['nullable', 'string', 'max:10000'],
+            'targets' => ['nullable', 'array'],
+            'targets.*.status' => ['nullable', 'in:unknown,not_present,present_active,present_stopped'],
+            'targets.*.last_update_date' => ['nullable', 'date'],
+            'targets.*.note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $domain = Domain::query()
+            ->where('company_id', $company->id)
+            ->findOrFail($validated['domain_id']);
+
+        DB::transaction(function () use ($validated, $domain) {
+            $snapshot = HpSnapshot::create([
+                'domain_id' => $domain->id,
+                'crawl_type' => 'manual_verify',
+                'snapshot_version' => 'manual_v1',
+                'requested_url' => $validated['requested_url'] ?: $domain->url,
+                'final_url' => $validated['final_url'] ?: null,
+                'http_status' => $validated['http_status'] ?? null,
+                'observation_note' => $validated['observation_note'] ?? null,
+                'crawled_at' => !empty($validated['crawled_at']) ? $validated['crawled_at'] : now(),
+            ]);
+
+            $targetInputs = $validated['targets'] ?? [];
+            $targetStatuses = collect($targetInputs)->pluck('status')->filter();
+            $hasAnyPresentTarget = $targetStatuses->contains(fn ($status) => in_array($status, ['present_active', 'present_stopped'], true));
+
+            HpFact::create([
+                'hp_snapshot_id' => $snapshot->id,
+                'has_ec' => $this->triStateBool($validated['has_ec']),
+                'has_reservation' => $this->triStateBool($validated['has_reservation']),
+                'has_recruiting' => $this->triStateBool($validated['has_recruiting']),
+                'has_portal_link' => $this->triStateBool($validated['has_portal_link']),
+                'has_sns_link' => $this->triStateBool($validated['has_sns_link']),
+                'has_google_business_link' => null,
+                'has_contact_form' => $this->triStateBool($validated['has_contact_form']),
+                'has_public_email' => null,
+                'has_phone' => null,
+                'contact_method_type' => $validated['contact_method_type'],
+                'update_status' => $validated['update_status'],
+                'has_update_targets' => $targetStatuses->isEmpty() ? null : $hasAnyPresentTarget,
+                'cms_type' => $validated['cms_type'],
+                'builder_type' => in_array($validated['cms_type'], ['wix', 'jimdo'], true) ? $validated['cms_type'] : null,
+                'mobile_friendly' => $this->triStateBool($validated['mobile_friendly']),
+                'ssl_enabled' => $this->triStateBool($validated['ssl_enabled']),
+                'footer_year_status' => $validated['footer_year_status'],
+                'portal_dependency_level' => $validated['portal_dependency_level'],
+                'extractor_version' => 'manual_v1',
+                'extracted_at' => now(),
+            ]);
+
+            foreach ($targetInputs as $updateTargetId => $targetInput) {
+                $status = $targetInput['status'] ?? 'unknown';
+
+                if ($status === 'unknown') {
+                    continue;
+                }
+
+                [$isPresent, $isStopped] = match ($status) {
+                    'not_present' => [false, false],
+                    'present_active' => [true, false],
+                    'present_stopped' => [true, true],
+                    default => [null, null],
+                };
+
+                SnapshotUpdateTarget::create([
+                    'hp_snapshot_id' => $snapshot->id,
+                    'update_target_id' => (int) $updateTargetId,
+                    'is_present' => $isPresent,
+                    'is_stopped' => $isStopped,
+                    'last_update_date' => $targetInput['last_update_date'] ?? null,
+                    'evidence_json' => [
+                        'basis' => 'manual',
+                        'status' => $status,
+                        'note' => trim((string) ($targetInput['note'] ?? '')) ?: null,
+                    ],
+                    'extractor_version' => 'manual_v1',
+                ]);
+            }
+        });
+
+        return redirect()
+            ->route('companies.show', $company)
+            ->with('status', 'HP観測データを保存した。次はこの観測を元に4軸スコア自動提案へ進める。');
+    }
+
+
     public function storeScores(Request $request, Company $company): RedirectResponse
     {
         $axisKeys = array_keys($this->scoreAxisOptions());
@@ -632,6 +778,76 @@ class CompanyController extends Controller
         return redirect()
             ->route('companies.show', $company)
             ->with('status', '4軸スコアを保存した。');
+    }
+
+
+    private function triStateBool(string $value): ?bool
+    {
+        return match ($value) {
+            '1' => true,
+            '0' => false,
+            default => null,
+        };
+    }
+
+    private function hpObservationOptions(): array
+    {
+        return [
+            'tri_state' => [
+                'unknown' => '不明',
+                '1' => 'あり / はい',
+                '0' => 'なし / いいえ',
+            ],
+            'mobile_friendly' => [
+                'unknown' => '不明',
+                '1' => 'スマホ対応あり',
+                '0' => 'スマホ対応なし / 厳しい',
+            ],
+            'ssl_enabled' => [
+                'unknown' => '不明',
+                '1' => 'SSLあり',
+                '0' => 'SSLなし',
+            ],
+            'update_status' => [
+                'unknown' => '不明',
+                'fresh' => '新しい / 動いている',
+                'half_year_stale' => '半年以上止まり気味',
+                'one_year_stale' => '1年以上止まり気味',
+                'three_year_stale' => '3年以上止まり気味',
+            ],
+            'contact_method_type' => [
+                'unknown' => '不明',
+                'good' => '良い / 分かりやすい',
+                'weak' => '微妙 / 弱い',
+                'none' => 'なし / 見つからない',
+            ],
+            'cms_type' => [
+                'unknown' => '不明',
+                'wordpress' => 'WordPressっぽい',
+                'wix' => 'Wixっぽい',
+                'jimdo' => 'Jimdoっぽい',
+                'static_html' => '静的HTMLっぽい',
+                'other' => 'その他',
+            ],
+            'footer_year_status' => [
+                'unknown' => '不明',
+                'current' => '今年/最近',
+                'old' => '古い年のまま',
+                'missing' => '年表記なし',
+            ],
+            'portal_dependency_level' => [
+                'unknown' => '不明',
+                'low' => '低い',
+                'medium' => '中くらい',
+                'high' => '高い',
+            ],
+            'target_status' => [
+                'unknown' => '不明 / 未確認',
+                'not_present' => '存在しない',
+                'present_active' => '存在する・動いている',
+                'present_stopped' => '存在する・止まっている',
+            ],
+        ];
     }
 
 

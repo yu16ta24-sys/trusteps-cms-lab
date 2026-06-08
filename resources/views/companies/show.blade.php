@@ -34,6 +34,23 @@
                 $scoreJudgment = '要確認';
                 $scoreJudgmentClass = 'blue';
             }
+
+            $latestHpFact = $latestHpSnapshot?->fact;
+            $latestTargetsById = $latestHpSnapshot?->updateTargets?->keyBy('update_target_id') ?? collect();
+
+            $triStateValue = function ($value) {
+                if ($value === true) {
+                    return '1';
+                }
+                if ($value === false) {
+                    return '0';
+                }
+                return 'unknown';
+            };
+
+            $valueLabel = function ($options, $value) {
+                return $options[$value] ?? '不明';
+            };
         @endphp
 
         <style>
@@ -176,6 +193,25 @@
                 border-radius: 16px;
                 color: #667085;
                 background: #fbfcfe;
+            }
+            .company-show .observation-current {
+                border: 1px solid #dbeafe;
+                background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+                border-radius: 20px;
+                padding: 18px;
+                margin-bottom: 18px;
+            }
+            .company-show .target-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+            .company-show .target-card {
+                border: 1px solid #e8eef6;
+                background: #fbfcfe;
+                border-radius: 16px;
+                padding: 14px;
+            }
+            .company-show .target-card .target-name {
+                font-weight: 900;
+                margin-bottom: 10px;
+                line-height: 1.35;
             }
         </style>
 
@@ -336,6 +372,238 @@
                         <button class="button" type="submit">4軸スコアを保存</button>
                     </div>
                 </form>
+            </section>
+
+            <section class="section-card">
+                <div class="section-head row">
+                    <div>
+                        <h2 class="section-title">HP観測</h2>
+                        <p class="muted" style="margin:8px 0 0;">4軸スコア自動提案の材料になるHP状態を手動で記録する。ここでは自動採点せず、まず事実データを貯める。</p>
+                    </div>
+                    <span class="badge blue">manual_v1</span>
+                </div>
+
+                @if ($latestHpSnapshot)
+                    <div class="observation-current">
+                        <div class="row" style="align-items:flex-start; gap:16px;">
+                            <div>
+                                <div class="muted" style="font-size:12px; font-weight:800;">最新観測</div>
+                                <h3 style="margin:6px 0 8px; font-size:22px;">{{ optional($latestHpSnapshot->crawled_at)->format('Y-m-d H:i') ?? '-' }}</h3>
+                                <p class="muted" style="margin:0; overflow-wrap:anywhere;">
+                                    domain: {{ $latestHpSnapshot->domain?->normalized_domain ?? '-' }} / status: {{ $latestHpSnapshot->http_status ?? '-' }}
+                                </p>
+                            </div>
+                            <div class="actions">
+                                <span class="badge gray">SSL: {{ $valueLabel($hpObservationOptions['ssl_enabled'], $triStateValue($latestHpFact?->ssl_enabled)) }}</span>
+                                <span class="badge gray">SP: {{ $valueLabel($hpObservationOptions['mobile_friendly'], $triStateValue($latestHpFact?->mobile_friendly)) }}</span>
+                                <span class="badge gray">更新: {{ $valueLabel($hpObservationOptions['update_status'], $latestHpFact?->update_status ?? 'unknown') }}</span>
+                                <span class="badge gray">CMS: {{ $valueLabel($hpObservationOptions['cms_type'], $latestHpFact?->cms_type ?? 'unknown') }}</span>
+                            </div>
+                        </div>
+
+                        @if ($latestHpSnapshot->observation_note)
+                            <div class="empty-box" style="margin-top:14px;">{{ $latestHpSnapshot->observation_note }}</div>
+                        @endif
+
+                        @if ($latestHpSnapshot->updateTargets->count())
+                            <div class="table-wrap" style="margin-top:16px;">
+                                <table>
+                                    <thead>
+                                    <tr>
+                                        <th>更新対象</th>
+                                        <th>存在</th>
+                                        <th>停止</th>
+                                        <th>最終更新</th>
+                                        <th>メモ</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    @foreach ($latestHpSnapshot->updateTargets as $snapshotTarget)
+                                        @php
+                                            $evidence = $snapshotTarget->evidence_json ?? [];
+                                        @endphp
+                                        <tr>
+                                            <td>{{ $snapshotTarget->updateTarget?->name ?? '-' }}</td>
+                                            <td>{{ is_null($snapshotTarget->is_present) ? '-' : ($snapshotTarget->is_present ? 'あり' : 'なし') }}</td>
+                                            <td>{{ is_null($snapshotTarget->is_stopped) ? '-' : ($snapshotTarget->is_stopped ? '停止' : '動いてる') }}</td>
+                                            <td>{{ optional($snapshotTarget->last_update_date)->format('Y-m-d') ?? '-' }}</td>
+                                            <td>{{ $evidence['note'] ?? '-' }}</td>
+                                        </tr>
+                                    @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        @endif
+                    </div>
+                @else
+                    <div class="empty-box" style="margin-bottom:18px;">まだHP観測データなし。まず1件だけ見たまま入力して、次の4軸自動提案の材料にする。</div>
+                @endif
+
+                @if ($company->domains->isEmpty())
+                    <div class="error" style="margin-bottom:0;">domainがないためHP観測を保存できない。source_recordからURL付きでcompany化するか、domain登録UI追加が必要。</div>
+                @else
+                    <form method="POST" action="{{ route('companies.hp-observation.store', $company) }}">
+                        @csrf
+
+                        <div class="grid kv-grid">
+                            <div class="field">
+                                <label for="hp_domain_id">観測対象domain</label>
+                                <select id="hp_domain_id" name="domain_id" required>
+                                    @foreach ($company->domains as $domain)
+                                        <option value="{{ $domain->id }}" @selected((string) old('domain_id', $company->primary_domain_id ?: $company->domains->first()?->id) === (string) $domain->id)>
+                                            #{{ $domain->id }} {{ $domain->normalized_domain ?? $domain->url }}{{ $domain->is_primary ? '（primary）' : '' }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="requested_url">requested_url</label>
+                                <input id="requested_url" name="requested_url" type="text" value="{{ old('requested_url', $company->primaryDomain?->url) }}" placeholder="観測したURL">
+                            </div>
+                            <div class="field">
+                                <label for="final_url">final_url</label>
+                                <input id="final_url" name="final_url" type="text" value="{{ old('final_url', $latestHpSnapshot?->final_url) }}" placeholder="リダイレクト後URL。空でもOK">
+                            </div>
+                            <div class="field">
+                                <label for="http_status">HTTP status</label>
+                                <input id="http_status" name="http_status" type="number" min="100" max="599" value="{{ old('http_status', $latestHpSnapshot?->http_status) }}" placeholder="200など。空でもOK">
+                            </div>
+                            <div class="field">
+                                <label for="crawled_at">観測日時</label>
+                                <input id="crawled_at" name="crawled_at" type="datetime-local" value="{{ old('crawled_at') }}">
+                                <p class="muted" style="font-size:12px; margin:6px 0 0;">空なら保存時刻になる。</p>
+                            </div>
+                        </div>
+
+                        <h3 class="subsection-title">基本状態</h3>
+                        <div class="grid kv-grid">
+                            <div class="field">
+                                <label for="ssl_enabled">SSL</label>
+                                <select id="ssl_enabled" name="ssl_enabled" required>
+                                    @foreach ($hpObservationOptions['ssl_enabled'] as $value => $label)
+                                        <option value="{{ $value }}" @selected(old('ssl_enabled', $triStateValue($latestHpFact?->ssl_enabled)) === $value)>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="mobile_friendly">スマホ対応</label>
+                                <select id="mobile_friendly" name="mobile_friendly" required>
+                                    @foreach ($hpObservationOptions['mobile_friendly'] as $value => $label)
+                                        <option value="{{ $value }}" @selected(old('mobile_friendly', $triStateValue($latestHpFact?->mobile_friendly)) === $value)>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="update_status">全体更新状態</label>
+                                <select id="update_status" name="update_status" required>
+                                    @foreach ($hpObservationOptions['update_status'] as $value => $label)
+                                        <option value="{{ $value }}" @selected(old('update_status', $latestHpFact?->update_status ?? 'unknown') === $value)>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="contact_method_type">問い合わせ導線</label>
+                                <select id="contact_method_type" name="contact_method_type" required>
+                                    @foreach ($hpObservationOptions['contact_method_type'] as $value => $label)
+                                        <option value="{{ $value }}" @selected(old('contact_method_type', $latestHpFact?->contact_method_type ?? 'unknown') === $value)>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="cms_type">CMS / ビルダー推定</label>
+                                <select id="cms_type" name="cms_type" required>
+                                    @foreach ($hpObservationOptions['cms_type'] as $value => $label)
+                                        <option value="{{ $value }}" @selected(old('cms_type', $latestHpFact?->cms_type ?? 'unknown') === $value)>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="footer_year_status">フッター年</label>
+                                <select id="footer_year_status" name="footer_year_status" required>
+                                    @foreach ($hpObservationOptions['footer_year_status'] as $value => $label)
+                                        <option value="{{ $value }}" @selected(old('footer_year_status', $latestHpFact?->footer_year_status ?? 'unknown') === $value)>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="portal_dependency_level">SNS・ポータル依存</label>
+                                <select id="portal_dependency_level" name="portal_dependency_level" required>
+                                    @foreach ($hpObservationOptions['portal_dependency_level'] as $value => $label)
+                                        <option value="{{ $value }}" @selected(old('portal_dependency_level', $latestHpFact?->portal_dependency_level ?? 'unknown') === $value)>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        </div>
+
+                        <h3 class="subsection-title">補助シグナル</h3>
+                        <div class="grid kv-grid">
+                            @foreach ([
+                                'has_contact_form' => '問い合わせフォーム',
+                                'has_sns_link' => 'SNSリンク',
+                                'has_portal_link' => 'ポータルリンク',
+                                'has_reservation' => '予約機能',
+                                'has_ec' => 'EC/決済っぽさ',
+                                'has_recruiting' => '採用情報',
+                            ] as $field => $label)
+                                <div class="field">
+                                    <label for="{{ $field }}">{{ $label }}</label>
+                                    <select id="{{ $field }}" name="{{ $field }}" required>
+                                        @foreach ($hpObservationOptions['tri_state'] as $value => $optionLabel)
+                                            <option value="{{ $value }}" @selected(old($field, $triStateValue($latestHpFact?->{$field})) === $value)>{{ $optionLabel }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                            @endforeach
+                        </div>
+
+                        <h3 class="subsection-title">更新対象</h3>
+                        <p class="muted" style="margin-top:-4px;">全部埋めなくてOK。見たものだけ「存在する・止まっている」などを入れる。</p>
+                        <div class="grid target-grid">
+                            @foreach ($updateTargets as $target)
+                                @php
+                                    $snapshotTarget = $latestTargetsById->get($target->id);
+                                    $evidence = $snapshotTarget?->evidence_json ?? [];
+                                    $defaultStatus = 'unknown';
+                                    if ($snapshotTarget) {
+                                        if ($snapshotTarget->is_present === false) {
+                                            $defaultStatus = 'not_present';
+                                        } elseif ($snapshotTarget->is_present === true && $snapshotTarget->is_stopped === true) {
+                                            $defaultStatus = 'present_stopped';
+                                        } elseif ($snapshotTarget->is_present === true && $snapshotTarget->is_stopped === false) {
+                                            $defaultStatus = 'present_active';
+                                        }
+                                    }
+                                @endphp
+                                <div class="target-card">
+                                    <div class="target-name">{{ $target->name }}</div>
+                                    <div class="field">
+                                        <label for="target_{{ $target->id }}_status">状態</label>
+                                        <select id="target_{{ $target->id }}_status" name="targets[{{ $target->id }}][status]">
+                                            @foreach ($hpObservationOptions['target_status'] as $value => $label)
+                                                <option value="{{ $value }}" @selected(old("targets.{$target->id}.status", $defaultStatus) === $value)>{{ $label }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="field">
+                                        <label for="target_{{ $target->id }}_last_update_date">最終更新日</label>
+                                        <input id="target_{{ $target->id }}_last_update_date" name="targets[{{ $target->id }}][last_update_date]" type="date" value="{{ old("targets.{$target->id}.last_update_date", optional($snapshotTarget?->last_update_date)->format('Y-m-d')) }}">
+                                    </div>
+                                    <div class="field" style="margin-bottom:0;">
+                                        <label for="target_{{ $target->id }}_note">メモ</label>
+                                        <input id="target_{{ $target->id }}_note" name="targets[{{ $target->id }}][note]" type="text" value="{{ old("targets.{$target->id}.note", $evidence['note'] ?? '') }}" placeholder="例：施工事例が2021年で停止">
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+
+                        <div class="field" style="margin-top:18px;">
+                            <label for="observation_note">観測メモ</label>
+                            <textarea id="observation_note" name="observation_note" placeholder="全体所感。例：HPは古いが施工事例の型はある。SNSは動いている。">{{ old('observation_note', $latestHpSnapshot?->observation_note) }}</textarea>
+                        </div>
+
+                        <button class="button" type="submit">HP観測を保存</button>
+                    </form>
+                @endif
             </section>
 
             <section class="section-card">

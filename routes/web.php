@@ -50,6 +50,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/companies/{company}/merge', [CompanyController::class, 'merge'])->name('companies.merge');
     Route::post('/companies/{company}/undo-merge', [CompanyController::class, 'undoMerge'])->name('companies.undo-merge');
     Route::post('/companies/{company}/scores', [CompanyController::class, 'storeScores'])->name('companies.scores.store');
+    Route::post('/companies/{company}/hp-observation', [CompanyController::class, 'storeHpObservation'])->name('companies.hp-observation.store');
     Route::post('/companies/{company}/kill-flags', [CompanyController::class, 'storeKillFlag'])->name('companies.kill-flags.store');
     Route::delete('/companies/{company}/kill-flags/{killFlag}', [CompanyController::class, 'deleteKillFlag'])->name('companies.kill-flags.destroy');
     Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');

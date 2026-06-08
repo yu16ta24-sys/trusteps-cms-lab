@@ -27,4 +27,10 @@ class Domain extends Model
     {
         return $this->belongsTo(Company::class);
     }
+
+    public function hpSnapshots()
+    {
+        return $this->hasMany(HpSnapshot::class);
+    }
 }
+
