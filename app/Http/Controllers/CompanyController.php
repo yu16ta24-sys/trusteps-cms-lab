@@ -166,6 +166,71 @@ class CompanyController extends Controller
             ->with('status', 'source_recordからcompanyを作成した。');
     }
 
+    public function linkExistingFromSource(Request $request, SourceRecord $sourceRecord): View|RedirectResponse
+    {
+        $sourceRecord->load('sourceLink.company');
+
+        if ($sourceRecord->sourceLink) {
+            return redirect()
+                ->route('companies.show', $sourceRecord->sourceLink->company)
+                ->with('status', 'このsource_recordはすでにcompanyへリンク済み。');
+        }
+
+        $query = Company::query()
+            ->with(['industry', 'municipality.prefecture', 'primaryDomain'])
+            ->where('status', '!=', 'merged')
+            ->latest('id');
+
+        if ($request->filled('q')) {
+            $q = trim((string) $request->input('q'));
+            $query->where(function ($inner) use ($q) {
+                $inner
+                    ->where('display_name', 'like', "%{$q}%")
+                    ->orWhere('legal_name', 'like', "%{$q}%")
+                    ->orWhere('name_norm', 'like', "%{$q}%")
+                    ->orWhere('corporate_number', 'like', "%{$q}%")
+                    ->orWhere('pref', 'like', "%{$q}%")
+                    ->orWhere('city', 'like', "%{$q}%");
+            });
+        }
+
+        $companies = $query->paginate(20)->withQueryString();
+
+        return view('companies.link_existing_from_source', compact('sourceRecord', 'companies'));
+    }
+
+    public function storeLinkExistingFromSource(Request $request, SourceRecord $sourceRecord): RedirectResponse
+    {
+        $sourceRecord->load('sourceLink.company');
+
+        if ($sourceRecord->sourceLink) {
+            return redirect()
+                ->route('companies.show', $sourceRecord->sourceLink->company)
+                ->with('status', 'このsource_recordはすでにcompanyへリンク済み。');
+        }
+
+        $validated = $request->validate([
+            'company_id' => ['required', 'exists:companies,id'],
+            'match_type' => ['required', 'in:manual_same'],
+        ]);
+
+        $company = Company::query()
+            ->where('status', '!=', 'merged')
+            ->findOrFail($validated['company_id']);
+
+        CompanySourceLink::create([
+            'company_id' => $company->id,
+            'source_record_id' => $sourceRecord->id,
+            'match_type' => $validated['match_type'],
+            'match_confidence' => 1.00,
+            'created_by' => auth()->user()?->email ?? 'manual',
+        ]);
+
+        return redirect()
+            ->route('companies.show', $company)
+            ->with('status', 'source_recordを既存companyへリンクした。');
+    }
+
     private function defaultsFromSourceRecord(SourceRecord $sourceRecord): array
     {
         $raw = $sourceRecord->raw_json ?? [];

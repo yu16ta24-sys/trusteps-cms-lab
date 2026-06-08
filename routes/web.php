@@ -27,13 +27,19 @@ Route::middleware('auth')->group(function () {
     Route::post('/source-records', [SourceRecordController::class, 'store'])->name('source-records.store');
     Route::get('/source-records/import', [SourceRecordController::class, 'importForm'])->name('source-records.import');
     Route::post('/source-records/import', [SourceRecordController::class, 'import'])->name('source-records.import.store');
-    Route::get('/source-records/{sourceRecord}', [SourceRecordController::class, 'show'])->name('source-records.show');
-
-    Route::get('/companies', [CompanyController::class, 'index'])->name('companies.index');
-    Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
 
     Route::get('/source-records/{sourceRecord}/create-company', [CompanyController::class, 'createFromSource'])
         ->name('companies.create-from-source');
     Route::post('/source-records/{sourceRecord}/create-company', [CompanyController::class, 'storeFromSource'])
         ->name('companies.store-from-source');
+
+    Route::get('/source-records/{sourceRecord}/link-company', [CompanyController::class, 'linkExistingFromSource'])
+        ->name('companies.link-existing-from-source');
+    Route::post('/source-records/{sourceRecord}/link-company', [CompanyController::class, 'storeLinkExistingFromSource'])
+        ->name('companies.store-link-existing-from-source');
+
+    Route::get('/source-records/{sourceRecord}', [SourceRecordController::class, 'show'])->name('source-records.show');
+
+    Route::get('/companies', [CompanyController::class, 'index'])->name('companies.index');
+    Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
 });

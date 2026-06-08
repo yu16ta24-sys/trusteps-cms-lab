@@ -13,7 +13,8 @@
                     @if ($sourceRecord->sourceLink)
                         <a class="button" href="{{ route('companies.show', $sourceRecord->sourceLink->company) }}">リンク済みcompanyを見る</a>
                     @else
-                        <a class="button" href="{{ route('companies.create-from-source', $sourceRecord) }}">このデータからcompany作成</a>
+                        <a class="button" href="{{ route('companies.create-from-source', $sourceRecord) }}">新規company作成</a>
+                        <a class="button light" href="{{ route('companies.link-existing-from-source', $sourceRecord) }}">既存companyへリンク</a>
                     @endif
                 </div>
             </div>
