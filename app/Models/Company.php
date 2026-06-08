@@ -74,4 +74,9 @@ class Company extends Model
     {
         return $this->hasMany(CompanyKillFlag::class);
     }
+
+    public function scores()
+    {
+        return $this->hasMany(CompanyScore::class);
+    }
 }

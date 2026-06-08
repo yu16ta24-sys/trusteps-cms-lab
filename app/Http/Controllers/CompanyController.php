@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\CompanyKillFlag;
+use App\Models\CompanyScore;
 use App\Models\CompanySourceLink;
 use App\Models\Domain;
 use App\Models\Industry;
@@ -67,9 +68,15 @@ class CompanyController extends Controller
             'mergedInto',
             'mergedChildren',
             'killFlags',
+            'scores',
         ]);
 
-        return view('companies.show', compact('company'));
+        $scoreAxes = $this->scoreAxisOptions();
+        $scoresByAxis = $company->scores
+            ->where('algo_version', 'v1')
+            ->keyBy('axis');
+
+        return view('companies.show', compact('company', 'scoreAxes', 'scoresByAxis'));
     }
 
     public function createFromSource(SourceRecord $sourceRecord): View|RedirectResponse
@@ -334,6 +341,94 @@ class CompanyController extends Controller
             ->with('status', "company #{$company->id} の統合をUndoした。");
     }
 
+
+
+    public function storeScores(Request $request, Company $company): RedirectResponse
+    {
+        $axisKeys = array_keys($this->scoreAxisOptions());
+
+        $validated = $request->validate([
+            'scores' => ['required', 'array'],
+            'scores.*.value' => ['required', 'integer', 'min:0', 'max:5'],
+            'scores.*.confidence' => ['required', 'in:0.3,0.6,0.9'],
+            'scores.*.note' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        foreach ($validated['scores'] as $axis => $scoreInput) {
+            if (!in_array($axis, $axisKeys, true)) {
+                continue;
+            }
+
+            $note = trim((string) ($scoreInput['note'] ?? ''));
+
+            CompanyScore::updateOrCreate(
+                [
+                    'company_id' => $company->id,
+                    'axis' => $axis,
+                    'algo_version' => 'v1',
+                ],
+                [
+                    'value' => (int) $scoreInput['value'],
+                    'confidence' => (string) $scoreInput['confidence'],
+                    'auto_suggested_value' => null,
+                    'reason_json' => [
+                        'basis' => 'manual',
+                        'drivers' => [],
+                        'evidence' => [],
+                        'note' => $note !== '' ? $note : null,
+                    ],
+                    'scored_by' => auth()->user()?->email ?? 'manual',
+                    'scored_at' => now(),
+                ]
+            );
+        }
+
+        return redirect()
+            ->route('companies.show', $company)
+            ->with('status', '4軸スコアを保存した。');
+    }
+
+    private function scoreAxisOptions(): array
+    {
+        return [
+            'hp_weakness' => [
+                'label' => 'HP弱点度',
+                'group' => '機会',
+                'polarity' => '高いほどチャンス',
+                'description' => '現状HPがどれだけ機能不全・古さ・更新停止などの問題を抱えているか。',
+                'anchor_0' => '弱点なし。更新され、スマホ対応・SSL・導線も問題ない。',
+                'anchor_3' => '更新停止や古さなど、部分的な弱点がある。',
+                'anchor_5' => '長期更新停止、非スマホ対応、SSLなし、表示崩れなど重大欠陥が複数ある。',
+            ],
+            'self_update_fit' => [
+                'label' => '自走更新化適性',
+                'group' => '機会',
+                'polarity' => '高いほどチャンス',
+                'description' => 'お知らせ・施工事例・活動報告など、型化できる更新枠と継続ネタがあるか。',
+                'anchor_0' => '1枚もの・会社情報のみで、更新枠や継続ネタがほぼない。',
+                'anchor_3' => 'お知らせ等の枠はあるが、頻度や更新ネタは限定的。',
+                'anchor_5' => '事例・入荷・活動報告など、継続更新すべき明確な枠が複数ある。',
+            ],
+            'dev_difficulty' => [
+                'label' => '開発・運用難易度リスク',
+                'group' => 'リスク',
+                'polarity' => '高いほど危険',
+                'description' => '予約・決済・在庫・物件DB・規制対応など、MVPスコープを逸脱しやすいか。',
+                'anchor_0' => '静的情報提供と簡単な更新で完結する。',
+                'anchor_3' => '軽い予約・問い合わせ・会員要素などが一部ある。',
+                'anchor_5' => '予約エンジン、決済、在庫/物件DB、強い広告規制などが中核。',
+            ],
+            'portal_dependence' => [
+                'label' => 'ポータル・SNS依存リスク',
+                'group' => 'リスク',
+                'polarity' => '高いほど危険',
+                'description' => '自社HPではなく、ポータル・SNS・Googleマップ等が実質的な集客窓口になっているか。',
+                'anchor_0' => '自社HPが主な発信・集客窓口になっている。',
+                'anchor_3' => '自社HPもあるが、SNSやポータルとの併用色が強い。',
+                'anchor_5' => '自社HPが形骸化し、実質ポータルやSNSが窓口になっている。',
+            ],
+        ];
+    }
 
     public function storeKillFlag(Request $request, Company $company): RedirectResponse
     {

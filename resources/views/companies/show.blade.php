@@ -38,6 +38,88 @@
             @endif
 
 
+
+            <div class="card" style="box-shadow:none; margin-top:20px;">
+                <div class="row">
+                    <div>
+                        <h2 style="margin:0;">4軸スコア</h2>
+                        <p class="muted" style="margin:6px 0 0;">機会2軸・リスク2軸を手動評価する。機会とリスクは合算しない。</p>
+                    </div>
+                    <span class="badge gray">algo_version=v1</span>
+                </div>
+
+                <form method="POST" action="{{ route('companies.scores.store', $company) }}" style="margin-top:18px;">
+                    @csrf
+
+                    <div class="grid">
+                        @foreach ($scoreAxes as $axis => $meta)
+                            @php
+                                $currentScore = $scoresByAxis->get($axis);
+                                $currentReason = $currentScore?->reason_json ?? [];
+                                $currentNote = old("scores.$axis.note", $currentReason['note'] ?? '');
+                                $currentValue = old("scores.$axis.value", $currentScore?->value ?? 0);
+                                $currentConfidence = old("scores.$axis.confidence", $currentScore?->confidence ?? '0.6');
+                                $isRisk = $meta['group'] === 'リスク';
+                            @endphp
+
+                            <div class="mini-card" style="background:{{ $isRisk ? '#fff7ed' : '#f8fafc' }};">
+                                <div class="row" style="align-items:flex-start;">
+                                    <div>
+                                        <strong>{{ $axis }}</strong>
+                                        <div style="font-weight:700;">{{ $meta['label'] }}</div>
+                                    </div>
+                                    <span class="badge {{ $isRisk ? 'gray' : 'green' }}">{{ $meta['group'] }}</span>
+                                </div>
+
+                                <p class="muted" style="font-size:13px;">{{ $meta['description'] }}</p>
+                                <p class="muted" style="font-size:12px; margin-bottom:8px;">
+                                    0：{{ $meta['anchor_0'] }}<br>
+                                    3：{{ $meta['anchor_3'] }}<br>
+                                    5：{{ $meta['anchor_5'] }}
+                                </p>
+
+                                <div class="field">
+                                    <label for="score_{{ $axis }}_value">value 0〜5（{{ $meta['polarity'] }}）</label>
+                                    <select id="score_{{ $axis }}_value" name="scores[{{ $axis }}][value]" required>
+                                        @for ($i = 0; $i <= 5; $i++)
+                                            <option value="{{ $i }}" @selected((string) $currentValue === (string) $i)>{{ $i }}</option>
+                                        @endfor
+                                    </select>
+                                </div>
+
+                                <div class="field">
+                                    <label for="score_{{ $axis }}_confidence">confidence</label>
+                                    <select id="score_{{ $axis }}_confidence" name="scores[{{ $axis }}][confidence]" required>
+                                        <option value="0.3" @selected((string) $currentConfidence === '0.3')>0.3：推測中心</option>
+                                        <option value="0.6" @selected((string) $currentConfidence === '0.6')>0.6：一部確認</option>
+                                        <option value="0.9" @selected((string) $currentConfidence === '0.9')>0.9：直接確認</option>
+                                    </select>
+                                </div>
+
+                                <div class="field" style="margin-bottom:0;">
+                                    <label for="score_{{ $axis }}_note">判断メモ</label>
+                                    <textarea id="score_{{ $axis }}_note" name="scores[{{ $axis }}][note]" placeholder="何を見てその点数にしたか">{{ $currentNote }}</textarea>
+                                </div>
+
+                                @if ($currentScore)
+                                    <p class="muted" style="font-size:12px;">
+                                        現在：{{ $currentScore->value }}点 / confidence {{ $currentScore->confidence }}<br>
+                                        scored_by：{{ $currentScore->scored_by ?? '-' }}<br>
+                                        scored_at：{{ optional($currentScore->scored_at)->format('Y-m-d H:i:s') ?? '-' }}
+                                    </p>
+                                @else
+                                    <p class="muted" style="font-size:12px;">未採点</p>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+
+                    <div style="margin-top:18px;">
+                        <button class="button" type="submit">4軸スコアを保存</button>
+                    </div>
+                </form>
+            </div>
+
             <div class="card" style="box-shadow:none; margin-top:20px;">
                 <div class="row">
                     <div>
