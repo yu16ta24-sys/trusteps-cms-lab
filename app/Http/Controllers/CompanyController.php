@@ -322,7 +322,14 @@ class CompanyController extends Controller
             ->where('algo_version', 'v1')
             ->keyBy('axis');
 
-        return view('companies.show', compact('company', 'scoreAxes', 'scoresByAxis'));
+        try {
+            $scoreSuggestions = app(\App\Services\ScoreSuggester::class)->suggest($company);
+        } catch (\Throwable $e) {
+            report($e);
+            $scoreSuggestions = [];
+        }
+
+        return view('companies.show', compact('company', 'scoreAxes', 'scoresByAxis', 'scoreSuggestions'));
     }
 
     public function createFromSource(SourceRecord $sourceRecord): View|RedirectResponse

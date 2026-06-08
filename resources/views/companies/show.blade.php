@@ -291,6 +291,25 @@
                                     <strong>5</strong>：{{ $meta['anchor_5'] }}
                                 </div>
 
+                                @php $suggestion = $scoreSuggestions[$axis] ?? null; @endphp
+                                @if ($suggestion && $suggestion['value'] !== null)
+                                    <div class="guide" style="border-style:solid; background:#f0f7ff;">
+                                        自動提案：<strong>{{ $suggestion['value'] }}</strong>点
+                                        （confidence {{ $suggestion['confidence'] }} / {{ \App\Services\ScoreSuggester::ALGO }}）<br>
+                                        <span class="muted">{{ $suggestion['note'] }}</span>
+                                        @if (!empty($suggestion['drivers']))
+                                            <br><span class="muted">根拠：{{ implode(', ', $suggestion['drivers']) }}</span>
+                                        @endif
+                                        <br>
+                                        <button type="button" class="button small light" style="margin-top:8px;"
+                                            onclick="applyScoreSuggestion('{{ $axis }}', {{ $suggestion['value'] }}, '{{ $suggestion['confidence'] }}')">この提案を反映</button>
+                                    </div>
+                                @elseif ($suggestion)
+                                    <div class="guide muted" style="font-size:12px;">
+                                        自動提案：なし（{{ $suggestion['note'] }}）
+                                    </div>
+                                @endif
+
                                 <div class="field">
                                     <label for="score_{{ $axis }}_value">value 0〜5（{{ $meta['polarity'] }}）</label>
                                     <select id="score_{{ $axis }}_value" name="scores[{{ $axis }}][value]" required>
@@ -530,4 +549,19 @@
             </section>
         </div>
     </main>
+
+    <script>
+        function applyScoreSuggestion(axis, value, confidence) {
+            var valueInput = document.getElementById('score_' + axis + '_value');
+            var confidenceInput = document.getElementById('score_' + axis + '_confidence');
+
+            if (valueInput) {
+                valueInput.value = String(value);
+            }
+
+            if (confidenceInput) {
+                confidenceInput.value = String(confidence);
+            }
+        }
+    </script>
 @endsection
