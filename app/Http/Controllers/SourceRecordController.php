@@ -2,11 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Company;
+use App\Models\CompanySourceLink;
+use App\Models\Domain;
+use App\Models\Municipality;
 use App\Models\SourceRecord;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -14,7 +21,8 @@ class SourceRecordController extends Controller
 {
     public function index(Request $request): View
     {
-        $query = SourceRecord::query()->latest('id');
+        $query = SourceRecord::query()
+            ->with('sourceLink');
 
         if ($request->filled('q')) {
             $q = trim((string) $request->input('q'));
@@ -33,6 +41,47 @@ class SourceRecordController extends Controller
             $query->where('source_type', $request->input('source_type'));
         }
 
+        if ($request->filled('pref')) {
+            $query->where('pref', $request->input('pref'));
+        }
+
+        if ($request->filled('city')) {
+            $query->where('city', $request->input('city'));
+        }
+
+        if ($request->filled('raw_industry')) {
+            $query->whereRaw(
+                "JSON_UNQUOTE(JSON_EXTRACT(raw_json, '$.canonical.raw_industry')) = ?",
+                [$request->input('raw_industry')]
+            );
+        }
+
+        $sort = (string) $request->input('sort', 'id');
+        $direction = $request->input('direction') === 'asc' ? 'asc' : 'desc';
+        $allowedSorts = [
+            'id',
+            'source_type',
+            'name_norm',
+            'normalized_domain',
+            'pref_city',
+            'fetched_at',
+        ];
+
+        if (!in_array($sort, $allowedSorts, true)) {
+            $sort = 'id';
+        }
+
+        if ($sort === 'pref_city') {
+            $query
+                ->orderBy('pref', $direction)
+                ->orderBy('city', $direction)
+                ->orderBy('id', 'desc');
+        } else {
+            $query
+                ->orderBy($sort, $direction)
+                ->orderBy('id', 'desc');
+        }
+
         $sourceRecords = $query->paginate(30)->withQueryString();
 
         $sourceTypes = SourceRecord::query()
@@ -41,9 +90,116 @@ class SourceRecordController extends Controller
             ->orderBy('source_type')
             ->pluck('source_type');
 
+        $prefOptions = SourceRecord::query()
+            ->whereNotNull('pref')
+            ->where('pref', '!=', '')
+            ->select('pref')
+            ->distinct()
+            ->orderBy('pref')
+            ->pluck('pref');
+
+        $cityOptions = SourceRecord::query()
+            ->when($request->filled('pref'), fn ($cityQuery) => $cityQuery->where('pref', $request->input('pref')))
+            ->whereNotNull('city')
+            ->where('city', '!=', '')
+            ->select('city')
+            ->distinct()
+            ->orderBy('city')
+            ->pluck('city');
+
+        $rawIndustryOptions = SourceRecord::query()
+            ->selectRaw("JSON_UNQUOTE(JSON_EXTRACT(raw_json, '$.canonical.raw_industry')) AS raw_industry")
+            ->whereRaw("JSON_EXTRACT(raw_json, '$.canonical.raw_industry') IS NOT NULL")
+            ->groupBy('raw_industry')
+            ->orderBy('raw_industry')
+            ->pluck('raw_industry')
+            ->filter(fn ($value) => trim((string) $value) !== '')
+            ->values();
+
         $totalCount = SourceRecord::query()->count();
 
-        return view('source_records.index', compact('sourceRecords', 'sourceTypes', 'totalCount'));
+        return view('source_records.index', compact(
+            'sourceRecords',
+            'sourceTypes',
+            'prefOptions',
+            'cityOptions',
+            'rawIndustryOptions',
+            'totalCount',
+            'sort',
+            'direction'
+        ));
+    }
+
+    public function bulkCreateCompanies(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'source_record_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'source_record_ids.*' => ['integer', 'exists:source_records,id'],
+        ]);
+
+        $records = SourceRecord::query()
+            ->with('sourceLink')
+            ->whereIn('id', $validated['source_record_ids'])
+            ->orderBy('id')
+            ->get();
+
+        $created = 0;
+        $skipped = 0;
+
+        DB::transaction(function () use ($records, &$created, &$skipped) {
+            foreach ($records as $record) {
+                if ($record->sourceLink) {
+                    $skipped++;
+                    continue;
+                }
+
+                $defaults = $this->defaultsFromSourceRecord($record);
+
+                $company = Company::create([
+                    'status' => 'candidate',
+                    'municipality_id' => $defaults['municipality_id'],
+                    'industry_id' => null,
+                    'primary_domain_id' => null,
+                    'legal_name' => null,
+                    'display_name' => $defaults['display_name'],
+                    'name_norm' => $this->normalizeName($defaults['display_name']),
+                    'alias_names_json' => null,
+                    'corporate_number' => $this->normalizeCorporateNumber($record->corporate_number),
+                    'pref' => $defaults['municipality_id'] ? null : $record->pref,
+                    'city' => $defaults['municipality_id'] ? null : $record->city,
+                    'is_killed' => false,
+                ]);
+
+                if ($record->source_url) {
+                    $domain = Domain::create([
+                        'company_id' => $company->id,
+                        'url' => $record->source_url,
+                        'normalized_domain' => $this->normalizeDomain($record->source_url),
+                        'role' => 'official',
+                        'is_primary' => true,
+                        'is_portal' => false,
+                    ]);
+
+                    $company->update([
+                        'primary_domain_id' => $domain->id,
+                    ]);
+                }
+
+                CompanySourceLink::create([
+                    'company_id' => $company->id,
+                    'source_record_id' => $record->id,
+                    'match_type' => 'manual_bulk_new',
+                    'match_confidence' => 1.00,
+                    'created_by' => auth()->user()?->email ?? 'manual',
+                ]);
+
+                $created++;
+            }
+        });
+
+        return redirect()
+            ->route('source-records.index', $request->except(['source_record_ids', '_token']))
+            ->with('status', "一括company化完了。作成 {$created} 件 / スキップ {$skipped} 件。リンク済みsource_recordは安全のためスキップした。");
     }
 
     public function create(): View
@@ -103,6 +259,8 @@ class SourceRecordController extends Controller
 
     public function importForm(): View
     {
+        $this->cleanupOldCsvImportPreviews();
+
         return view('source_records.import', [
             'templateHeaders' => $this->csvTemplateHeaders(),
         ]);
@@ -134,7 +292,7 @@ class SourceRecordController extends Controller
             ]);
 
             fclose($handle);
-        }, 'source_records_import_template_v0.12.0.csv', [
+        }, 'source_records_import_template_v0.12.1.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
@@ -144,24 +302,70 @@ class SourceRecordController extends Controller
         $request->validate([
             'csv_file' => ['required', 'file', 'max:10240'],
             'default_source_type' => ['required', 'string', 'max:80'],
-            'dry_run' => ['nullable', 'boolean'],
         ]);
 
+        $this->cleanupOldCsvImportPreviews();
+
         $file = $request->file('csv_file');
-        $dryRun = $request->boolean('dry_run');
+        $defaultSourceType = (string) $request->input('default_source_type');
+        $token = (string) Str::uuid();
+        $previewDir = $this->csvImportPreviewDirectory();
+
+        File::ensureDirectoryExists($previewDir);
+
+        $storedPath = $previewDir . DIRECTORY_SEPARATOR . $token . '.csv';
+        $originalFileName = $file->getClientOriginalName();
+        $file->move($previewDir, $token . '.csv');
+
+        session()->put("source_record_imports.{$token}", [
+            'path' => $storedPath,
+            'original_file_name' => $originalFileName,
+            'default_source_type' => $defaultSourceType,
+            'created_at' => now()->timestamp,
+        ]);
 
         $result = $this->processCsvImport(
-            file: $file,
-            defaultSourceType: (string) $request->input('default_source_type'),
-            shouldPersist: !$dryRun,
+            filePath: $storedPath,
+            originalFileName: $originalFileName,
+            defaultSourceType: $defaultSourceType,
+            shouldPersist: false,
         );
 
-        if ($dryRun) {
-            return view('source_records.import', [
-                'templateHeaders' => $this->csvTemplateHeaders(),
-                'previewResult' => $result,
-            ]);
+        $result['confirm_token'] = $token;
+        $result['default_source_type'] = $defaultSourceType;
+
+        return view('source_records.import', [
+            'templateHeaders' => $this->csvTemplateHeaders(),
+            'previewResult' => $result,
+        ]);
+    }
+
+    public function confirmImport(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'import_token' => ['required', 'string'],
+        ]);
+
+        $token = $validated['import_token'];
+        $preview = session("source_record_imports.{$token}");
+
+        if (!$preview || empty($preview['path']) || !is_file($preview['path'])) {
+            session()->forget("source_record_imports.{$token}");
+
+            return redirect()
+                ->route('source-records.import')
+                ->withErrors(['csv_file' => 'プレビュー済みCSVが見つからなかった。もう一度CSVを選択してプレビューして。']);
         }
+
+        $result = $this->processCsvImport(
+            filePath: $preview['path'],
+            originalFileName: $preview['original_file_name'] ?? 'CSV',
+            defaultSourceType: $preview['default_source_type'] ?? 'csv_import',
+            shouldPersist: true,
+        );
+
+        @unlink($preview['path']);
+        session()->forget("source_record_imports.{$token}");
 
         return redirect()
             ->route('source-records.import')
@@ -169,9 +373,29 @@ class SourceRecordController extends Controller
             ->with('import_summary', $result);
     }
 
-    private function processCsvImport($file, string $defaultSourceType, bool $shouldPersist): array
+    public function cancelImport(Request $request): RedirectResponse
     {
-        $content = file_get_contents($file->getRealPath());
+        $validated = $request->validate([
+            'import_token' => ['required', 'string'],
+        ]);
+
+        $token = $validated['import_token'];
+        $preview = session("source_record_imports.{$token}");
+
+        if ($preview && !empty($preview['path']) && is_file($preview['path'])) {
+            @unlink($preview['path']);
+        }
+
+        session()->forget("source_record_imports.{$token}");
+
+        return redirect()
+            ->route('source-records.import')
+            ->with('status', 'CSV取り込みをキャンセルした。DBには登録していない。');
+    }
+
+    private function processCsvImport(string $filePath, string $originalFileName, string $defaultSourceType, bool $shouldPersist): array
+    {
+        $content = file_get_contents($filePath);
 
         $encoding = mb_detect_encoding($content, ['UTF-8', 'SJIS-win', 'CP932', 'EUC-JP'], true) ?: 'UTF-8';
         if ($encoding !== 'UTF-8') {
@@ -195,7 +419,7 @@ class SourceRecordController extends Controller
 
         $result = [
             'mode' => $shouldPersist ? 'import' : 'preview',
-            'file_name' => $file->getClientOriginalName(),
+            'file_name' => $originalFileName,
             'detected_encoding' => $encoding,
             'header' => $header,
             'total_rows' => 0,
@@ -287,12 +511,12 @@ class SourceRecordController extends Controller
                 'source_url' => $canonical['source_url'] ?? null,
                 'raw_json' => [
                     'input_type' => 'csv',
-                    'schema_version' => 'source_records_csv_v0.12.0',
+                    'schema_version' => 'source_records_csv_v0.12.1',
                     'row_number' => $rowNumber,
                     'original_row' => $assoc,
                     'canonical' => $canonical,
                     'duplicate_signals_at_import' => $duplicateSignals,
-                    'uploaded_file_name' => $file->getClientOriginalName(),
+                    'uploaded_file_name' => $originalFileName,
                 ],
                 'corporate_number' => $normalizedCorporateNumber,
                 'normalized_domain' => $normalizedDomain,
@@ -312,6 +536,35 @@ class SourceRecordController extends Controller
         $result['errors'] = array_slice($result['errors'], 0, 50);
 
         return $result;
+    }
+
+    private function csvImportPreviewDirectory(): string
+    {
+        return storage_path('app/source_record_import_previews');
+    }
+
+    private function cleanupOldCsvImportPreviews(): void
+    {
+        $expiresAt = time() - (60 * 60 * 2);
+        $dir = $this->csvImportPreviewDirectory();
+
+        if (is_dir($dir)) {
+            foreach (glob($dir . DIRECTORY_SEPARATOR . '*.csv') ?: [] as $path) {
+                if (is_file($path) && filemtime($path) < $expiresAt) {
+                    @unlink($path);
+                }
+            }
+        }
+
+        foreach ((array) session('source_record_imports', []) as $token => $meta) {
+            if (($meta['created_at'] ?? 0) < $expiresAt) {
+                if (!empty($meta['path']) && is_file($meta['path'])) {
+                    @unlink($meta['path']);
+                }
+
+                session()->forget("source_record_imports.{$token}");
+            }
+        }
     }
 
     private function emptyImportResult(array $errors): array
@@ -470,6 +723,40 @@ class SourceRecordController extends Controller
         $value = trim($value);
         $value = mb_convert_kana($value, 'asKV', 'UTF-8');
         return $value;
+    }
+
+    private function defaultsFromSourceRecord(SourceRecord $sourceRecord): array
+    {
+        $raw = $sourceRecord->raw_json ?? [];
+        $canonical = $raw['canonical'] ?? [];
+
+        $companyName =
+            $canonical['company_name']
+            ?? $raw['company_name']
+            ?? $sourceRecord->name_norm
+            ?? "source_record #{$sourceRecord->id}";
+
+        return [
+            'display_name' => $companyName,
+            'municipality_id' => $this->guessMunicipalityId($sourceRecord->pref, $sourceRecord->city),
+        ];
+    }
+
+    private function guessMunicipalityId(?string $pref, ?string $city): ?int
+    {
+        if (!$city) {
+            return null;
+        }
+
+        $query = Municipality::query()->where('name', $city);
+
+        if ($pref) {
+            $query->whereHas('prefecture', function ($inner) use ($pref) {
+                $inner->where('name', $pref);
+            });
+        }
+
+        return $query->value('id');
     }
 
     private function normalizeCorporateNumber(?string $value): ?string
