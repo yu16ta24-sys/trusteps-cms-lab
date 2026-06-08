@@ -12,6 +12,7 @@ use App\Models\Municipality;
 use App\Models\SourceRecord;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
@@ -84,6 +85,132 @@ class CompanyController extends Controller
             'killedCount',
             'scoredCount'
         ));
+    }
+
+
+    public function candidates(Request $request): View
+    {
+        $query = Company::query()
+            ->with([
+                'industry',
+                'municipality.prefecture',
+                'primaryDomain',
+                'scores' => fn ($scoreQuery) => $scoreQuery->where('algo_version', 'v1'),
+            ])
+            ->withCount(['sourceLinks', 'domains', 'killFlags'])
+            ->where('is_killed', false)
+            ->where('status', '!=', 'merged');
+
+        if ($request->filled('q')) {
+            $q = trim((string) $request->input('q'));
+            $query->where(function ($inner) use ($q) {
+                $inner
+                    ->where('display_name', 'like', "%{$q}%")
+                    ->orWhere('legal_name', 'like', "%{$q}%")
+                    ->orWhere('name_norm', 'like', "%{$q}%")
+                    ->orWhere('corporate_number', 'like', "%{$q}%")
+                    ->orWhere('pref', 'like', "%{$q}%")
+                    ->orWhere('city', 'like', "%{$q}%");
+            });
+        }
+
+        if ($request->filled('industry_id')) {
+            $query->where('industry_id', $request->input('industry_id'));
+        }
+
+        $companies = $query->get()
+            ->map(function (Company $company) {
+                $scores = $company->scores->keyBy('axis');
+
+                $hpWeakness = optional($scores->get('hp_weakness'))->value;
+                $selfUpdateFit = optional($scores->get('self_update_fit'))->value;
+                $devDifficulty = optional($scores->get('dev_difficulty'))->value;
+                $portalDependence = optional($scores->get('portal_dependence'))->value;
+
+                $scoredAxesCount = collect([$hpWeakness, $selfUpdateFit, $devDifficulty, $portalDependence])
+                    ->filter(fn ($value) => $value !== null)
+                    ->count();
+
+                $opportunityScore = ($hpWeakness ?? 0) + ($selfUpdateFit ?? 0);
+                $riskScore = ($devDifficulty ?? 0) + ($portalDependence ?? 0);
+
+                [$judgment, $judgmentClass] = $this->scoreJudgment($opportunityScore, $riskScore, $scoredAxesCount);
+
+                $priorityScore = $scoredAxesCount < 4
+                    ? -100 + $scoredAxesCount
+                    : ($opportunityScore * 10) - ($riskScore * 6) + min($company->source_links_count, 5);
+
+                $company->setAttribute('opportunity_score', $opportunityScore);
+                $company->setAttribute('risk_score', $riskScore);
+                $company->setAttribute('scored_axes_count', $scoredAxesCount);
+                $company->setAttribute('candidate_judgment', $judgment);
+                $company->setAttribute('candidate_judgment_class', $judgmentClass);
+                $company->setAttribute('candidate_priority_score', $priorityScore);
+
+                return $company;
+            });
+
+        $preset = $request->input('preset', 'recommended');
+
+        if ($preset === 'recommended') {
+            $companies = $companies->filter(fn ($company) =>
+                $company->scored_axes_count === 4
+                && $company->opportunity_score >= 7
+                && $company->risk_score <= 3
+            );
+        } elseif ($preset === 'high_opportunity') {
+            $companies = $companies->filter(fn ($company) =>
+                $company->scored_axes_count === 4
+                && $company->opportunity_score >= 7
+            );
+        } elseif ($preset === 'needs_scoring') {
+            $companies = $companies->filter(fn ($company) => $company->scored_axes_count < 4);
+        } elseif ($preset === 'all_active') {
+            // no additional filter
+        }
+
+        $companies = $companies
+            ->sort(function ($a, $b) {
+                if ($a->candidate_priority_score === $b->candidate_priority_score) {
+                    return $b->id <=> $a->id;
+                }
+
+                return $b->candidate_priority_score <=> $a->candidate_priority_score;
+            })
+            ->values();
+
+        $page = LengthAwarePaginator::resolveCurrentPage();
+        $perPage = 30;
+        $pagedCompanies = new LengthAwarePaginator(
+            $companies->forPage($page, $perPage)->values(),
+            $companies->count(),
+            $perPage,
+            $page,
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]
+        );
+
+        $industries = Industry::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        $summaryBase = Company::query()
+            ->where('is_killed', false)
+            ->where('status', '!=', 'merged');
+
+        $activeCandidateTotal = (clone $summaryBase)->count();
+
+        return view('companies.candidates', [
+            'companies' => $pagedCompanies,
+            'industries' => $industries,
+            'activeCandidateTotal' => $activeCandidateTotal,
+            'filteredCount' => $companies->count(),
+            'preset' => $preset,
+        ]);
     }
 
     public function show(Company $company): View
@@ -415,6 +542,32 @@ class CompanyController extends Controller
         return redirect()
             ->route('companies.show', $company)
             ->with('status', '4軸スコアを保存した。');
+    }
+
+
+    private function scoreJudgment(int $opportunityScore, int $riskScore, int $scoredAxesCount): array
+    {
+        if ($scoredAxesCount < 4) {
+            return ['未採点あり', 'gray'];
+        }
+
+        if ($opportunityScore >= 7 && $riskScore <= 3) {
+            return ['高機会・低リスク', 'green'];
+        }
+
+        if ($opportunityScore >= 7 && $riskScore >= 7) {
+            return ['高機会・高リスク', 'blue'];
+        }
+
+        if ($opportunityScore <= 3 && $riskScore >= 7) {
+            return ['低機会・高リスク', 'red'];
+        }
+
+        if ($opportunityScore <= 3 && $riskScore <= 3) {
+            return ['低機会・低リスク', 'gray'];
+        }
+
+        return ['要確認', 'blue'];
     }
 
     private function scoreAxisOptions(): array
