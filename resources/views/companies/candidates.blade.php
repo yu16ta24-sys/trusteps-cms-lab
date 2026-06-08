@@ -175,10 +175,12 @@
 
                 <form method="GET" action="{{ route('companies.candidates') }}" style="margin-top:18px;">
                     <input type="hidden" name="preset" value="{{ $preset }}">
+                    <input type="hidden" name="sort" value="{{ $sort ?? request('sort', 'priority') }}">
+                    <input type="hidden" name="direction" value="{{ $direction ?? request('direction', 'desc') }}">
                     <div class="grid">
                         <div class="field" style="margin-bottom:0;">
                             <label for="q">検索</label>
-                            <input id="q" type="text" name="q" value="{{ request('q') }}" placeholder="会社名・法人番号・地域など">
+                            <input id="q" type="text" name="q" value="{{ request('q') }}" placeholder="会社名・法人番号・domain・地域など">
                         </div>
                         <div class="field" style="margin-bottom:0;">
                             <label for="industry_id">業種</label>
@@ -191,6 +193,32 @@
                                 @endforeach
                             </select>
                         </div>
+                        <div class="field" style="margin-bottom:0;">
+                            <label for="status">状態</label>
+                            <select id="status" name="status">
+                                <option value="">すべて</option>
+                                <option value="candidate" @selected(request('status') === 'candidate')>candidate</option>
+                                <option value="confirmed" @selected(request('status') === 'confirmed')>confirmed</option>
+                            </select>
+                        </div>
+                        <div class="field" style="margin-bottom:0;">
+                            <label for="pref">都道府県</label>
+                            <select id="pref" name="pref">
+                                <option value="">すべて</option>
+                                @foreach ($prefOptions as $pref)
+                                    <option value="{{ $pref }}" @selected(request('pref') === $pref)>{{ $pref }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="field" style="margin-bottom:0;">
+                            <label for="city">市区町村</label>
+                            <select id="city" name="city">
+                                <option value="">すべて</option>
+                                @foreach ($cityOptions as $city)
+                                    <option value="{{ $city }}" @selected(request('city') === $city)>{{ $city }}</option>
+                                @endforeach
+                            </select>
+                        </div>
                         <div class="field" style="margin-bottom:0; align-self:end;">
                             <button class="button" type="submit">絞り込み</button>
                             <a class="button light" href="{{ route('companies.candidates') }}">リセット</a>
@@ -198,6 +226,24 @@
                     </div>
                 </form>
             </section>
+
+            @php
+                $sortKey = $sort ?? request('sort', 'priority');
+                $sortDirection = $direction ?? request('direction', 'desc');
+                $sortUrl = function (string $key) use ($sortKey, $sortDirection) {
+                    $nextDirection = ($sortKey === $key && $sortDirection === 'asc') ? 'desc' : 'asc';
+                    return route('companies.candidates', array_merge(request()->except(['page']), [
+                        'sort' => $key,
+                        'direction' => $nextDirection,
+                    ]));
+                };
+                $sortMark = function (string $key) use ($sortKey, $sortDirection) {
+                    if ($sortKey !== $key) {
+                        return '';
+                    }
+                    return $sortDirection === 'asc' ? ' ↑' : ' ↓';
+                };
+            @endphp
 
             <section class="card">
                 <div class="row" style="margin-bottom:16px;">
@@ -215,13 +261,27 @@
                         <thead>
                         <tr>
                             <th>順位</th>
-                            <th>会社・屋号</th>
-                            <th>業種 / 地域</th>
-                            <th>score</th>
-                            <th>判定</th>
-                            <th>priority</th>
-                            <th>assets</th>
-                            <th>domain</th>
+                            <th><a href="{{ $sortUrl('display_name') }}">会社・屋号{{ $sortMark('display_name') }}</a></th>
+                            <th>
+                                <a href="{{ $sortUrl('industry') }}">業種{{ $sortMark('industry') }}</a>
+                                /
+                                <a href="{{ $sortUrl('region') }}">地域{{ $sortMark('region') }}</a>
+                            </th>
+                            <th>
+                                <a href="{{ $sortUrl('opportunity_score') }}">機会{{ $sortMark('opportunity_score') }}</a>
+                                /
+                                <a href="{{ $sortUrl('risk_score') }}">リスク{{ $sortMark('risk_score') }}</a>
+                            </th>
+                            <th><a href="{{ $sortUrl('scored_axes_count') }}">判定{{ $sortMark('scored_axes_count') }}</a></th>
+                            <th><a href="{{ $sortUrl('priority') }}">priority{{ $sortMark('priority') }}</a></th>
+                            <th>
+                                <a href="{{ $sortUrl('source_links_count') }}">source{{ $sortMark('source_links_count') }}</a>
+                                /
+                                <a href="{{ $sortUrl('domains_count') }}">domain数{{ $sortMark('domains_count') }}</a>
+                                /
+                                <a href="{{ $sortUrl('kill_flags_count') }}">kill{{ $sortMark('kill_flags_count') }}</a>
+                            </th>
+                            <th><a href="{{ $sortUrl('domain') }}">domain{{ $sortMark('domain') }}</a></th>
                             <th></th>
                         </tr>
                         </thead>
@@ -239,6 +299,7 @@
                                     @if ($company->corporate_number)
                                         <div class="subtext">法人番号：{{ $company->corporate_number }}</div>
                                     @endif
+                                    <div class="subtext">状態：{{ $company->status }}</div>
                                 </td>
                                 <td>
                                     <div><strong>{{ $company->industry?->name ?? '-' }}</strong></div>

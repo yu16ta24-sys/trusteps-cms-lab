@@ -56,6 +56,14 @@ class SourceRecordController extends Controller
             );
         }
 
+        if ($request->filled('link_status')) {
+            if ($request->input('link_status') === 'linked') {
+                $query->whereHas('sourceLink');
+            } elseif ($request->input('link_status') === 'unlinked') {
+                $query->whereDoesntHave('sourceLink');
+            }
+        }
+
         $sort = (string) $request->input('sort', 'id');
         $direction = $request->input('direction') === 'asc' ? 'asc' : 'desc';
         $allowedSorts = [

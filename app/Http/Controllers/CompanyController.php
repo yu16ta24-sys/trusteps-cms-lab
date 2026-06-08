@@ -9,6 +9,7 @@ use App\Models\CompanySourceLink;
 use App\Models\Domain;
 use App\Models\Industry;
 use App\Models\Municipality;
+use App\Models\Prefecture;
 use App\Models\SourceRecord;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -110,12 +111,38 @@ class CompanyController extends Controller
                     ->orWhere('name_norm', 'like', "%{$q}%")
                     ->orWhere('corporate_number', 'like', "%{$q}%")
                     ->orWhere('pref', 'like', "%{$q}%")
-                    ->orWhere('city', 'like', "%{$q}%");
+                    ->orWhere('city', 'like', "%{$q}%")
+                    ->orWhereHas('industry', fn ($industryQuery) => $industryQuery->where('name', 'like', "%{$q}%"))
+                    ->orWhereHas('municipality', fn ($municipalityQuery) => $municipalityQuery->where('name', 'like', "%{$q}%"))
+                    ->orWhereHas('municipality.prefecture', fn ($prefectureQuery) => $prefectureQuery->where('name', 'like', "%{$q}%"))
+                    ->orWhereHas('primaryDomain', fn ($domainQuery) => $domainQuery->where('normalized_domain', 'like', "%{$q}%"));
             });
         }
 
         if ($request->filled('industry_id')) {
             $query->where('industry_id', $request->input('industry_id'));
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->input('status'));
+        }
+
+        if ($request->filled('pref')) {
+            $pref = $request->input('pref');
+            $query->where(function ($inner) use ($pref) {
+                $inner
+                    ->where('pref', $pref)
+                    ->orWhereHas('municipality.prefecture', fn ($prefectureQuery) => $prefectureQuery->where('name', $pref));
+            });
+        }
+
+        if ($request->filled('city')) {
+            $city = $request->input('city');
+            $query->where(function ($inner) use ($city) {
+                $inner
+                    ->where('city', $city)
+                    ->orWhereHas('municipality', fn ($municipalityQuery) => $municipalityQuery->where('name', $city));
+            });
         }
 
         $companies = $query->get()
@@ -169,13 +196,60 @@ class CompanyController extends Controller
             // no additional filter
         }
 
+        $sort = (string) $request->input('sort', 'priority');
+        $direction = $request->input('direction') === 'asc' ? 'asc' : 'desc';
+        $allowedSorts = [
+            'priority',
+            'id',
+            'display_name',
+            'industry',
+            'region',
+            'opportunity_score',
+            'risk_score',
+            'scored_axes_count',
+            'source_links_count',
+            'domains_count',
+            'kill_flags_count',
+            'domain',
+        ];
+
+        if (!in_array($sort, $allowedSorts, true)) {
+            $sort = 'priority';
+        }
+
         $companies = $companies
-            ->sort(function ($a, $b) {
-                if ($a->candidate_priority_score === $b->candidate_priority_score) {
-                    return $b->id <=> $a->id;
+            ->sort(function ($a, $b) use ($sort, $direction) {
+                $valueFor = function (Company $company) use ($sort) {
+                    return match ($sort) {
+                        'id' => $company->id,
+                        'display_name' => $company->display_name ?? '',
+                        'industry' => $company->industry?->name ?? '',
+                        'region' => (($company->municipality?->prefecture?->name ?? $company->pref ?? '') . '/' . ($company->municipality?->name ?? $company->city ?? '')),
+                        'opportunity_score' => $company->opportunity_score,
+                        'risk_score' => $company->risk_score,
+                        'scored_axes_count' => $company->scored_axes_count,
+                        'source_links_count' => $company->source_links_count,
+                        'domains_count' => $company->domains_count,
+                        'kill_flags_count' => $company->kill_flags_count,
+                        'domain' => $company->primaryDomain?->normalized_domain ?? '',
+                        default => $company->candidate_priority_score,
+                    };
+                };
+
+                $aValue = $valueFor($a);
+                $bValue = $valueFor($b);
+
+                if (is_numeric($aValue) && is_numeric($bValue)) {
+                    $comparison = $aValue <=> $bValue;
+                } else {
+                    $comparison = strnatcasecmp((string) $aValue, (string) $bValue);
                 }
 
-                return $b->candidate_priority_score <=> $a->candidate_priority_score;
+                if ($comparison === 0) {
+                    $comparison = $a->id <=> $b->id;
+                }
+
+                return $direction === 'asc' ? $comparison : -$comparison;
             })
             ->values();
 
@@ -198,6 +272,20 @@ class CompanyController extends Controller
             ->orderBy('id')
             ->get();
 
+        $prefOptions = Prefecture::query()
+            ->orderBy('code')
+            ->pluck('name');
+
+        $cityOptions = Municipality::query()
+            ->with('prefecture')
+            ->when($request->filled('pref'), function ($cityQuery) use ($request) {
+                $cityQuery->whereHas('prefecture', fn ($prefectureQuery) => $prefectureQuery->where('name', $request->input('pref')));
+            })
+            ->orderBy('code')
+            ->pluck('name')
+            ->unique()
+            ->values();
+
         $summaryBase = Company::query()
             ->where('is_killed', false)
             ->where('status', '!=', 'merged');
@@ -207,9 +295,13 @@ class CompanyController extends Controller
         return view('companies.candidates', [
             'companies' => $pagedCompanies,
             'industries' => $industries,
+            'prefOptions' => $prefOptions,
+            'cityOptions' => $cityOptions,
             'activeCandidateTotal' => $activeCandidateTotal,
             'filteredCount' => $companies->count(),
             'preset' => $preset,
+            'sort' => $sort,
+            'direction' => $direction,
         ]);
     }
 

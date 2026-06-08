@@ -71,6 +71,15 @@
                         </select>
                         <p class="muted">CSVのraw_industryを使う。</p>
                     </div>
+                    <div class="field" style="margin-bottom:0;">
+                        <label for="link_status">状態</label>
+                        <select id="link_status" name="link_status">
+                            <option value="">すべて</option>
+                            <option value="unlinked" @selected(request('link_status') === 'unlinked')>未リンク</option>
+                            <option value="linked" @selected(request('link_status') === 'linked')>company化済み</option>
+                        </select>
+                        <p class="muted">company_source_linksの有無で判定。</p>
+                    </div>
                     <div class="field" style="margin-bottom:0; align-self:end;">
                         <button class="button" type="submit">絞り込み</button>
                         <a class="button light" href="{{ route('source-records.index') }}">リセット</a>
@@ -124,6 +133,7 @@
                             <th><a href="{{ $sortUrl('id') }}">ID{{ $sortMark('id') }}</a></th>
                             <th><a href="{{ $sortUrl('source_type') }}">source_type{{ $sortMark('source_type') }}</a></th>
                             <th><a href="{{ $sortUrl('name_norm') }}">name_norm{{ $sortMark('name_norm') }}</a></th>
+                            <th>業種</th>
                             <th><a href="{{ $sortUrl('normalized_domain') }}">domain{{ $sortMark('normalized_domain') }}</a></th>
                             <th><a href="{{ $sortUrl('pref_city') }}">pref/city{{ $sortMark('pref_city') }}</a></th>
                             <th><a href="{{ $sortUrl('fetched_at') }}">fetched_at{{ $sortMark('fetched_at') }}</a></th>
@@ -150,6 +160,7 @@
                                 <td>{{ $record->id }}</td>
                                 <td>{{ $record->source_type }}</td>
                                 <td>{{ $record->name_norm ?? '-' }}</td>
+                                <td>{{ data_get($record->raw_json, 'canonical.raw_industry') ?: data_get($record->raw_json, 'raw_industry', '-') }}</td>
                                 <td>
                                     <div>{{ $record->normalized_domain ?? '-' }}</div>
                                     @if ($record->source_url)
@@ -171,7 +182,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="9" class="muted">条件に一致するsource_recordsがない。</td>
+                                <td colspan="10" class="muted">条件に一致するsource_recordsがない。</td>
                             </tr>
                         @endforelse
                         </tbody>
