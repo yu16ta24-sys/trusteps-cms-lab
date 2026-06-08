@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
+use App\Models\CompanyKillFlag;
 use App\Models\CompanySourceLink;
 use App\Models\Domain;
 use App\Models\Industry;
@@ -65,6 +66,7 @@ class CompanyController extends Controller
             'sourceLinks.sourceRecord',
             'mergedInto',
             'mergedChildren',
+            'killFlags',
         ]);
 
         return view('companies.show', compact('company'));
@@ -330,6 +332,64 @@ class CompanyController extends Controller
         return redirect()
             ->route('companies.show', $company)
             ->with('status', "company #{$company->id} の統合をUndoした。");
+    }
+
+
+    public function storeKillFlag(Request $request, Company $company): RedirectResponse
+    {
+        $validated = $request->validate([
+            'flag' => ['required', 'string', 'in:' . implode(',', array_keys($this->killFlagOptions()))],
+            'note' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        CompanyKillFlag::updateOrCreate(
+            [
+                'company_id' => $company->id,
+                'flag' => $validated['flag'],
+            ],
+            [
+                'note' => $validated['note'] ?? null,
+                'source' => 'manual',
+                'flagged_by' => auth()->user()?->email ?? 'manual',
+                'flagged_at' => now(),
+            ]
+        );
+
+        $company->update([
+            'is_killed' => true,
+        ]);
+
+        return redirect()
+            ->route('companies.show', $company)
+            ->with('status', 'kill_flagを付与した。');
+    }
+
+    public function deleteKillFlag(Company $company, CompanyKillFlag $killFlag): RedirectResponse
+    {
+        if ((int) $killFlag->company_id !== (int) $company->id) {
+            abort(404);
+        }
+
+        $killFlag->delete();
+
+        $company->update([
+            'is_killed' => $company->killFlags()->exists(),
+        ]);
+
+        return redirect()
+            ->route('companies.show', $company)
+            ->with('status', 'kill_flagを解除した。');
+    }
+
+    private function killFlagOptions(): array
+    {
+        return [
+            'no_official_site' => '公式HPなし',
+            'defunct' => '活動停止・閉業',
+            'chain_no_edit_rights' => 'ローカル編集権限なし',
+            'out_of_scope_size' => '対象外規模',
+            'compliance_risk' => 'コンプライアンス・対象外属性',
+        ];
     }
 
     private function defaultsFromSourceRecord(SourceRecord $sourceRecord): array

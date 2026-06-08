@@ -69,4 +69,9 @@ class Company extends Model
     {
         return $this->hasMany(CompanySourceLink::class);
     }
+
+    public function killFlags()
+    {
+        return $this->hasMany(CompanyKillFlag::class);
+    }
 }
