@@ -1,0 +1,61 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Company extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'status',
+        'merged_into_id',
+        'municipality_id',
+        'industry_id',
+        'primary_domain_id',
+        'legal_name',
+        'display_name',
+        'name_norm',
+        'alias_names_json',
+        'corporate_number',
+        'pref',
+        'city',
+        'is_killed',
+        'merged_at',
+        'merged_by',
+        'merge_reason',
+    ];
+
+    protected $casts = [
+        'alias_names_json' => 'array',
+        'is_killed' => 'boolean',
+        'merged_at' => 'datetime',
+    ];
+
+    public function industry()
+    {
+        return $this->belongsTo(Industry::class);
+    }
+
+    public function municipality()
+    {
+        return $this->belongsTo(Municipality::class);
+    }
+
+    public function primaryDomain()
+    {
+        return $this->belongsTo(Domain::class, 'primary_domain_id');
+    }
+
+    public function domains()
+    {
+        return $this->hasMany(Domain::class);
+    }
+
+    public function sourceLinks()
+    {
+        return $this->hasMany(CompanySourceLink::class);
+    }
+}

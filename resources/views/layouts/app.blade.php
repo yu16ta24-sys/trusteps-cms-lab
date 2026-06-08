@@ -106,6 +106,18 @@
         .actions { display: flex; gap: 10px; flex-wrap: wrap; }
         .pagination { margin-top: 18px; }
         .pagination nav > div:first-child { display: none; }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 4px 9px;
+            font-size: 12px;
+            font-weight: 700;
+            background: #eef2ff;
+            color: #3730a3;
+        }
+        .badge.gray { background:#f3f4f6; color:#374151; }
+        .badge.green { background:#ecfdf5; color:#047857; }
     </style>
 </head>
 <body>
@@ -117,6 +129,7 @@
                 <nav class="nav">
                     <a href="{{ route('dashboard') }}">Dashboard</a>
                     <a href="{{ route('source-records.index') }}">Source Records</a>
+                    <a href="{{ route('companies.index') }}">Companies</a>
                 </nav>
             </div>
             <form method="POST" action="{{ route('logout') }}">

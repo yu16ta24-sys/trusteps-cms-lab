@@ -8,8 +8,26 @@
                     <p class="muted" style="margin:0;">Source Record #{{ $sourceRecord->id }}</p>
                     <h1 style="margin:6px 0 0;">source_record 詳細</h1>
                 </div>
-                <a class="button light" href="{{ route('source-records.index') }}">一覧へ戻る</a>
+                <div class="actions">
+                    <a class="button light" href="{{ route('source-records.index') }}">一覧へ戻る</a>
+                    @if ($sourceRecord->sourceLink)
+                        <a class="button" href="{{ route('companies.show', $sourceRecord->sourceLink->company) }}">リンク済みcompanyを見る</a>
+                    @else
+                        <a class="button" href="{{ route('companies.create-from-source', $sourceRecord) }}">このデータからcompany作成</a>
+                    @endif
+                </div>
             </div>
+
+            @if (session('status'))
+                <div class="status" style="margin-top:20px;">{{ session('status') }}</div>
+            @endif
+
+            @if ($sourceRecord->sourceLink)
+                <div class="status" style="margin-top:20px;">
+                    このsource_recordは company #{{ $sourceRecord->sourceLink->company_id }} にリンク済み。
+                    match_type：{{ $sourceRecord->sourceLink->match_type }}
+                </div>
+            @endif
 
             <div class="table-wrap" style="margin-top:24px;">
                 <table>

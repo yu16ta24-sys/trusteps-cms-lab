@@ -26,4 +26,9 @@ class SourceRecord extends Model
         'raw_json' => 'array',
         'fetched_at' => 'datetime',
     ];
+
+    public function sourceLink()
+    {
+        return $this->hasOne(CompanySourceLink::class);
+    }
 }

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\SourceRecordController;
 use Illuminate\Support\Facades\Route;
@@ -27,4 +28,12 @@ Route::middleware('auth')->group(function () {
     Route::get('/source-records/import', [SourceRecordController::class, 'importForm'])->name('source-records.import');
     Route::post('/source-records/import', [SourceRecordController::class, 'import'])->name('source-records.import.store');
     Route::get('/source-records/{sourceRecord}', [SourceRecordController::class, 'show'])->name('source-records.show');
+
+    Route::get('/companies', [CompanyController::class, 'index'])->name('companies.index');
+    Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
+
+    Route::get('/source-records/{sourceRecord}/create-company', [CompanyController::class, 'createFromSource'])
+        ->name('companies.create-from-source');
+    Route::post('/source-records/{sourceRecord}/create-company', [CompanyController::class, 'storeFromSource'])
+        ->name('companies.store-from-source');
 });

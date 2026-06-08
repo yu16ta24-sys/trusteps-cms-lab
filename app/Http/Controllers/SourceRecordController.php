@@ -95,6 +95,8 @@ class SourceRecordController extends Controller
 
     public function show(SourceRecord $sourceRecord): View
     {
+        $sourceRecord->load('sourceLink.company');
+
         return view('source_records.show', compact('sourceRecord'));
     }
 
