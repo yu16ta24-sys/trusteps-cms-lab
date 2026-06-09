@@ -223,6 +223,14 @@
                                     ->filter(fn ($value) => $value !== null)
                                     ->count();
 
+                                $autoSuggestionCount = $scores
+                                    ->filter(fn ($score) => $score->auto_suggested_value !== null)
+                                    ->count();
+
+                                $manualAdjustedCount = $scores
+                                    ->filter(fn ($score) => $score->auto_suggested_value !== null && (int) $score->value !== (int) $score->auto_suggested_value)
+                                    ->count();
+
                                 $opportunityScore = ($hpWeakness ?? 0) + ($selfUpdateFit ?? 0);
                                 $riskScore = ($devDifficulty ?? 0) + ($portalDependence ?? 0);
 
@@ -277,9 +285,16 @@
                                         <div style="display:grid; gap:6px;">
                                             <span class="score-pill opportunity">機会 {{ $opportunityScore }} / 10</span>
                                             <span class="score-pill risk">リスク {{ $riskScore }} / 10</span>
+                                            <div class="subtext">採点 {{ $scoredAxesCount }} / 4</div>
+                                            @if ($autoSuggestionCount > 0)
+                                                <div class="subtext">auto提案 {{ $autoSuggestionCount }} / 補正 {{ $manualAdjustedCount }}</div>
+                                            @endif
                                         </div>
                                     @else
-                                        <span class="score-pill empty">未採点</span>
+                                        <div style="display:grid; gap:6px;">
+                                            <span class="score-pill empty">未採点</span>
+                                            <div class="subtext">採点 0 / 4</div>
+                                        </div>
                                     @endif
                                 </td>
                                 <td><span class="judgment {{ $judgmentClass }}">{{ $judgment }}</span></td>
