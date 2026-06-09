@@ -178,6 +178,18 @@
                                 <option value="killed" @selected(request('kill_state') === 'killed')>kill済みのみ</option>
                             </select>
                         </div>
+                        <div class="field" style="margin-bottom:0;">
+                            <label for="score_state">採点状態</label>
+                            <select id="score_state" name="score_state">
+                                <option value="">すべて</option>
+                                <option value="unscored" @selected(request('score_state') === 'unscored')>未採点</option>
+                                <option value="partial" @selected(request('score_state') === 'partial')>一部採点</option>
+                                <option value="fully_scored" @selected(request('score_state') === 'fully_scored')>4軸採点済み</option>
+                                <option value="has_auto_suggestion" @selected(request('score_state') === 'has_auto_suggestion')>自動提案記録あり</option>
+                                <option value="manual_adjusted" @selected(request('score_state') === 'manual_adjusted')>手動補正あり</option>
+                                <option value="suggestion_as_is" @selected(request('score_state') === 'suggestion_as_is')>提案どおり</option>
+                            </select>
+                        </div>
                         <div class="field" style="margin-bottom:0; align-self:end;">
                             <button class="button" type="submit">絞り込み</button>
                             <a class="button light" href="{{ route('companies.index') }}">リセット</a>

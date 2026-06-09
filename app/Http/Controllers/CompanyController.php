@@ -63,6 +63,51 @@ class CompanyController extends Controller
             }
         }
 
+        $scoreState = (string) $request->input('score_state', '');
+        if ($scoreState === 'unscored') {
+            $query->whereDoesntHave('scores', fn ($scoreQuery) =>
+                $scoreQuery->where('algo_version', 'v1')
+            );
+        } elseif ($scoreState === 'partial') {
+            $query
+                ->whereHas('scores', fn ($scoreQuery) => $scoreQuery->where('algo_version', 'v1'))
+                ->where(function ($missingAxisQuery) {
+                    foreach (array_keys($this->scoreAxisOptions()) as $axis) {
+                        $missingAxisQuery->orWhereDoesntHave('scores', fn ($scoreQuery) =>
+                            $scoreQuery->where('algo_version', 'v1')->where('axis', $axis)
+                        );
+                    }
+                });
+        } elseif ($scoreState === 'fully_scored') {
+            foreach (array_keys($this->scoreAxisOptions()) as $axis) {
+                $query->whereHas('scores', fn ($scoreQuery) =>
+                    $scoreQuery->where('algo_version', 'v1')->where('axis', $axis)
+                );
+            }
+        } elseif ($scoreState === 'has_auto_suggestion') {
+            $query->whereHas('scores', fn ($scoreQuery) =>
+                $scoreQuery->where('algo_version', 'v1')->whereNotNull('auto_suggested_value')
+            );
+        } elseif ($scoreState === 'manual_adjusted') {
+            $query->whereHas('scores', fn ($scoreQuery) =>
+                $scoreQuery
+                    ->where('algo_version', 'v1')
+                    ->whereNotNull('auto_suggested_value')
+                    ->whereColumn('value', '!=', 'auto_suggested_value')
+            );
+        } elseif ($scoreState === 'suggestion_as_is') {
+            $query
+                ->whereHas('scores', fn ($scoreQuery) =>
+                    $scoreQuery->where('algo_version', 'v1')->whereNotNull('auto_suggested_value')
+                )
+                ->whereDoesntHave('scores', fn ($scoreQuery) =>
+                    $scoreQuery
+                        ->where('algo_version', 'v1')
+                        ->whereNotNull('auto_suggested_value')
+                        ->whereColumn('value', '!=', 'auto_suggested_value')
+                );
+        }
+
         $companies = $query->paginate(30)->withQueryString();
 
         $industries = Industry::query()
