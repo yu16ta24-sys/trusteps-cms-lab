@@ -276,7 +276,28 @@ class SourceRecordController extends Controller
     {
         $sourceRecord->load('sourceLink.company');
 
-        return view('source_records.show', compact('sourceRecord'));
+        $nextUnlinkedSourceRecord = SourceRecord::query()
+            ->where('id', '>', $sourceRecord->id)
+            ->whereDoesntHave('sourceLink')
+            ->orderBy('id')
+            ->first();
+
+        $previousUnlinkedSourceRecord = SourceRecord::query()
+            ->where('id', '<', $sourceRecord->id)
+            ->whereDoesntHave('sourceLink')
+            ->orderByDesc('id')
+            ->first();
+
+        $remainingUnlinkedCount = SourceRecord::query()
+            ->whereDoesntHave('sourceLink')
+            ->count();
+
+        return view('source_records.show', compact(
+            'sourceRecord',
+            'nextUnlinkedSourceRecord',
+            'previousUnlinkedSourceRecord',
+            'remainingUnlinkedCount'
+        ));
     }
 
     public function importForm(): View

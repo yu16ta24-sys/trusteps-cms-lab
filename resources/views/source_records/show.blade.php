@@ -28,7 +28,44 @@
                     このsource_recordは company #{{ $sourceRecord->sourceLink->company_id }} にリンク済み。
                     match_type：{{ $sourceRecord->sourceLink->match_type }}
                 </div>
+            @else
+                <div class="card" style="box-shadow:none; padding:14px 18px; margin-top:20px; background:#fff7ed; border:1px solid #fed7aa;">
+                    <div class="row">
+                        <div>
+                            <strong>処理待ちsource_record</strong>
+                            <p class="muted" style="margin:6px 0 0;">
+                                このsource_recordはまだcompanyへリンクされていない。残り未リンク：{{ number_format($remainingUnlinkedCount ?? 0) }}件。
+                            </p>
+                        </div>
+                        <div class="actions">
+                            <a class="button" href="{{ route('companies.create-from-source', $sourceRecord) }}">新規company作成</a>
+                            <a class="button light" href="{{ route('companies.link-existing-from-source', $sourceRecord) }}">既存companyへリンク</a>
+                        </div>
+                    </div>
+                </div>
             @endif
+
+            <div class="card" style="box-shadow:none; padding:14px 18px; margin-top:16px; background:#f8fafc;">
+                <div class="row">
+                    <div>
+                        <strong>処理ナビ</strong>
+                        <p class="muted" style="margin:6px 0 0;">専用ルートを増やさず、既存の詳細リンクだけで前後の未リンクsource_recordへ移動する。</p>
+                    </div>
+                    <div class="actions">
+                        @if ($previousUnlinkedSourceRecord)
+                            <a class="button light" href="{{ route('source-records.show', $previousUnlinkedSourceRecord) }}">前の未リンク #{{ $previousUnlinkedSourceRecord->id }}</a>
+                        @else
+                            <span class="button light" style="opacity:.55; cursor:not-allowed;">前の未リンクなし</span>
+                        @endif
+
+                        @if ($nextUnlinkedSourceRecord)
+                            <a class="button" href="{{ route('source-records.show', $nextUnlinkedSourceRecord) }}">次の未リンク #{{ $nextUnlinkedSourceRecord->id }}</a>
+                        @else
+                            <span class="button light" style="opacity:.55; cursor:not-allowed;">次の未リンクなし</span>
+                        @endif
+                    </div>
+                </div>
+            </div>
 
             <div class="table-wrap" style="margin-top:24px;">
                 <table>
