@@ -9,7 +9,6 @@
                     <h1 style="margin:6px 0 0;">source_records</h1>
                 </div>
                 <div class="actions">
-                    <a class="button" href="{{ route('source-records.next-unlinked', request()->except(['page', 'link_status'])) }}">次の未リンクを処理</a>
                     <a class="button light" href="{{ route('source-records.import') }}">CSV取り込み</a>
                     <a class="button" href="{{ route('source-records.create') }}">手動登録</a>
                 </div>
@@ -105,19 +104,6 @@
                     return $sortDirection === 'asc' ? ' ↑' : ' ↓';
                 };
             @endphp
-
-            <div class="card" style="box-shadow:none; padding:14px 18px; margin:0 0 16px; background:#eef6ff; border:1px solid #bfdbfe;">
-                <div class="row">
-                    <div>
-                        <strong>処理キュー</strong>
-                        <p class="muted" style="margin:6px 0 0;">現在の絞り込み条件を使って、未リンクsource_recordを1件ずつ確認する。誤統合防止のため、自動リンク・自動マージは行わない。</p>
-                    </div>
-                    <div class="actions">
-                        <a class="button" href="{{ route('source-records.next-unlinked', request()->except(['page', 'link_status'])) }}">次の未リンクを開く</a>
-                        <a class="button light" href="{{ route('source-records.index', array_merge(request()->except(['page']), ['link_status' => 'unlinked'])) }}">未リンクだけ表示</a>
-                    </div>
-                </div>
-            </div>
 
             <form method="POST" action="{{ route('source-records.bulk-create-companies') }}">
                 @csrf
