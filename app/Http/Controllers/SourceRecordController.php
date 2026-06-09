@@ -56,6 +56,18 @@ class SourceRecordController extends Controller
             );
         }
 
+        // Processing queue helpers are computed before applying link_status,
+        // so they respect search/source/pref/city/industry filters but can still point to
+        // the next unlinked record even when the current list is showing linked records.
+        $unlinkedQueueQuery = clone $query;
+        $unlinkedQueueCount = (clone $unlinkedQueueQuery)
+            ->whereDoesntHave('sourceLink')
+            ->count();
+        $nextUnlinkedSourceRecord = (clone $unlinkedQueueQuery)
+            ->whereDoesntHave('sourceLink')
+            ->orderBy('id')
+            ->first();
+
         if ($request->filled('link_status')) {
             if ($request->input('link_status') === 'linked') {
                 $query->whereHas('sourceLink');
@@ -134,7 +146,9 @@ class SourceRecordController extends Controller
             'rawIndustryOptions',
             'totalCount',
             'sort',
-            'direction'
+            'direction',
+            'unlinkedQueueCount',
+            'nextUnlinkedSourceRecord'
         ));
     }
 

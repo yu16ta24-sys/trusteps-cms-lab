@@ -105,6 +105,23 @@
                 };
             @endphp
 
+            <div class="card" style="box-shadow:none; padding:14px 18px; margin:0 0 16px; background:#f8fafc;">
+                <div class="row">
+                    <div>
+                        <strong>処理キュー</strong>
+                        <p class="muted" style="margin:6px 0 0;">現在の検索条件内で、未リンクsource_recordが {{ number_format($unlinkedQueueCount ?? 0) }} 件ある。専用ルートは追加せず、既存の一覧/詳細リンクだけで安全に処理する。</p>
+                    </div>
+                    <div class="actions">
+                        <a class="button light" href="{{ route('source-records.index', array_merge(request()->except(['page']), ['link_status' => 'unlinked'])) }}">未リンクだけ表示</a>
+                        @if ($nextUnlinkedSourceRecord)
+                            <a class="button" href="{{ route('source-records.show', $nextUnlinkedSourceRecord) }}">先頭の未リンクを開く</a>
+                        @else
+                            <span class="button light" style="opacity:.55; cursor:not-allowed;">未リンクなし</span>
+                        @endif
+                    </div>
+                </div>
+            </div>
+
             <form method="POST" action="{{ route('source-records.bulk-create-companies') }}">
                 @csrf
                 @foreach (request()->except(['source_record_ids', '_token']) as $key => $value)
