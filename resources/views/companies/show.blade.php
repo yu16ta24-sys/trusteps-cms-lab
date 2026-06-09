@@ -302,8 +302,32 @@
                     </div>
                 </div>
 
+                @php
+                    $suggestionPayload = [];
+                    foreach (($scoreSuggestions ?? []) as $suggestionAxis => $suggestionData) {
+                        if (is_array($suggestionData) && array_key_exists('value', $suggestionData) && $suggestionData['value'] !== null) {
+                            $suggestionPayload[] = [
+                                'axis' => $suggestionAxis,
+                                'value' => (int) $suggestionData['value'],
+                                'confidence' => (string) ($suggestionData['confidence'] ?? '0.3'),
+                            ];
+                        }
+                    }
+                @endphp
+
                 <form method="POST" action="{{ route('companies.scores.store', $company) }}" style="margin-top:18px;">
                     @csrf
+
+                    @if (count($suggestionPayload) > 0)
+                        <div class="guide" style="border-style:solid; background:#f8fafc; margin-bottom:18px;">
+                            <strong>一括反映</strong><br>
+                            <span class="muted">表示中の自動提案をまとめて入力欄へ反映できる。保存前なら手動で直せる。</span>
+                            <div class="actions" style="margin-top:10px;">
+                                <button type="button" class="button small light" onclick="applyAllScoreSuggestions(false)">自動提案を全部反映</button>
+                                <button type="button" class="button small light" onclick="applyAllScoreSuggestions(true)">未採点だけ反映</button>
+                            </div>
+                        </div>
+                    @endif
 
                     <div class="grid score-grid">
                         @foreach ($scoreAxes as $axis => $meta)
@@ -361,7 +385,7 @@
 
                                 <div class="field">
                                     <label for="score_{{ $axis }}_value">value 0〜5（{{ $meta['polarity'] }}）</label>
-                                    <select id="score_{{ $axis }}_value" name="scores[{{ $axis }}][value]" required>
+                                    <select id="score_{{ $axis }}_value" name="scores[{{ $axis }}][value]" data-scored="{{ $currentScore ? '1' : '0' }}" required>
                                         @for ($i = 0; $i <= 5; $i++)
                                             <option value="{{ $i }}" @selected((string) $currentValue === (string) $i)>{{ $i }}</option>
                                         @endfor
@@ -621,6 +645,8 @@
     </main>
 
     <script>
+        var scoreSuggestions = @json($suggestionPayload ?? []);
+
         function applyScoreSuggestion(axis, value, confidence) {
             var valueInput = document.getElementById('score_' + axis + '_value');
             var confidenceInput = document.getElementById('score_' + axis + '_confidence');
@@ -632,6 +658,16 @@
             if (confidenceInput) {
                 confidenceInput.value = String(confidence);
             }
+        }
+
+        function applyAllScoreSuggestions(onlyUnscored) {
+            scoreSuggestions.forEach(function (suggestion) {
+                var valueInput = document.getElementById('score_' + suggestion.axis + '_value');
+                if (onlyUnscored && valueInput && valueInput.dataset.scored === '1') {
+                    return;
+                }
+                applyScoreSuggestion(suggestion.axis, suggestion.value, suggestion.confidence);
+            });
         }
     </script>
 @endsection
