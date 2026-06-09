@@ -5,8 +5,9 @@
         <section class="card">
             <div class="row">
                 <div>
-                    <p class="muted" style="margin:0;">Phase1 / 生データ取り込み・選別</p>
-                    <h1 style="margin:6px 0 0;">source_records</h1>
+                    <p class="page-kicker">Phase1 / Intake</p>
+                    <h1 class="page-title">source_records</h1>
+                    <p class="page-subtitle">外部から取った生データを整理して、company化する入口。</p>
                 </div>
                 <div class="actions">
                     <a class="button light" href="{{ route('source-records.import') }}">CSV取り込み</a>
@@ -69,7 +70,7 @@
                                 <option value="{{ $industry }}" @selected(request('raw_industry') === $industry)>{{ $industry }}</option>
                             @endforeach
                         </select>
-                        <p class="muted">CSVのraw_industryを使う。</p>
+
                     </div>
                     <div class="field" style="margin-bottom:0;">
                         <label for="link_status">状態</label>
@@ -78,7 +79,7 @@
                             <option value="unlinked" @selected(request('link_status') === 'unlinked')>未リンク</option>
                             <option value="linked" @selected(request('link_status') === 'linked')>company化済み</option>
                         </select>
-                        <p class="muted">company_source_linksの有無で判定。</p>
+
                     </div>
                     <div class="field" style="margin-bottom:0; align-self:end;">
                         <button class="button" type="submit">絞り込み</button>
@@ -145,9 +146,9 @@
                                     </a>
                                 @endforeach
                             </div>
-                            <p class="muted" style="margin:8px 0 0;">各バッジを押すと、その条件だけ外せる。</p>
+                            <details class="help-panel"><summary>絞り込みバッジの使い方</summary><div class="help-body">各バッジを押すと、その条件だけ解除できる。作業範囲を崩さずに少しずつ絞り込みを調整するための機能。</div></details>
                         @else
-                            <p class="muted" style="margin:8px 0 0;">絞り込みなし。まずは都道府県・市区町村・業種で作業範囲を切るのがおすすめ。</p>
+                            <details class="help-panel"><summary>最初の絞り込み方</summary><div class="help-body">絞り込みなし。まずは都道府県・市区町村・業種で作業範囲を切るのがおすすめ。</div></details>
                         @endif
                     </div>
                     <div class="actions">
@@ -164,7 +165,7 @@
                 <div class="row">
                     <div>
                         <strong>フィルター操作</strong>
-                        <p class="muted" style="margin:6px 0 0;">今の絞り込みを保ったまま、作業しやすい状態へ切り替える。</p>
+                        <details class="help-panel"><summary>フィルター操作とは</summary><div class="help-body">今の絞り込みを保ったまま、未リンクだけ表示したり、状態・地域だけを解除できる。</div></details>
                     </div>
                     <div class="actions">
                         <a class="button light" href="{{ $unlinkedOnlyUrl }}">この条件で未リンクだけ</a>
@@ -183,7 +184,8 @@
                 <div class="row">
                     <div>
                         <strong>処理キュー</strong>
-                        <p class="muted" style="margin:6px 0 0;">現在の検索条件内で、未リンクsource_recordが {{ number_format($unlinkedQueueCount ?? 0) }} 件ある。専用ルートは追加せず、既存の一覧/詳細リンクだけで安全に処理する。</p>
+                        <p class="muted" style="margin:6px 0 0;">未リンク {{ number_format($unlinkedQueueCount ?? 0) }} 件</p>
+                            <details class="help-panel"><summary>処理キューの考え方</summary><div class="help-body">現在の検索条件内で未リンクsource_recordを順番に処理する。専用ルートは追加せず、既存の一覧/詳細リンクだけで安全に動かす。</div></details>
                     </div>
                     <div class="actions">
                         <a class="button light" href="{{ route('source-records.index', array_merge(request()->except(['page']), ['link_status' => 'unlinked'])) }}">未リンクだけ表示</a>
@@ -208,7 +210,7 @@
                     <div class="row">
                         <div>
                             <strong>一括操作</strong>
-                            <p class="muted" style="margin:6px 0 0;">チェックした未リンクsource_recordを、candidate companyとして一括作成する。既存companyへの自動リンクは誤統合防止のため行わない。</p>
+                            <details class="help-panel"><summary>一括company化の注意</summary><div class="help-body">チェックした未リンクsource_recordをcandidate companyとして一括作成する。既存companyへの自動リンクは誤統合防止のため行わない。</div></details>
                         </div>
                         <div class="actions">
                             <button class="button" type="submit" onclick="return confirm('チェックした未リンクsource_recordを一括company化する？リンク済みはスキップされる。');">選択分を一括company化</button>

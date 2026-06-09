@@ -268,9 +268,10 @@
                     </div>
                     <div class="summary-card">
                         <span class="badge green">作業手順</span>
-                        <p class="muted" style="margin-top:12px; line-height:1.8;">
-                            自動提案を反映 → 必要なら手動補正 → 「保存して次の未採点へ」で連続処理。
-                        </p>
+                        <details class="help-panel">
+                            <summary>採点の流れ</summary>
+                            <div class="help-body">自動提案を反映 → 必要なら手動補正 → 「保存して次の未採点へ」で連続処理。</div>
+                        </details>
                     </div>
                 </div>
             </section>
@@ -279,7 +280,7 @@
                 <div class="section-head row">
                     <div>
                         <h2 class="section-title">4軸スコア</h2>
-                        <p class="muted" style="margin:8px 0 0;">機会2軸・リスク2軸を手動評価する。機会とリスクは合算しない。</p>
+                        <details class="help-panel"><summary>4軸スコアの考え方</summary><div class="help-body">機会2軸・リスク2軸を分けて評価する。高機会・高リスクと普通に微妙な案件を混ぜないため、機会とリスクは合算しない。</div></details>
                     </div>
                     <span class="badge gray">algo_version=v1</span>
                 </div>
@@ -319,12 +320,19 @@
                     @csrf
 
                     @if (count($suggestionPayload) > 0)
-                        <div class="guide" style="border-style:solid; background:#f8fafc; margin-bottom:18px;">
-                            <strong>一括反映</strong><br>
-                            <span class="muted">表示中の自動提案をまとめて入力欄へ反映できる。保存前なら手動で直せる。</span>
-                            <div class="actions" style="margin-top:10px;">
-                                <button type="button" class="button small light" onclick="applyAllScoreSuggestions(false)">自動提案を全部反映</button>
-                                <button type="button" class="button small light" onclick="applyAllScoreSuggestions(true)">未採点だけ反映</button>
+                        <div class="info-strip" style="margin-bottom:18px;">
+                            <div class="row">
+                                <div>
+                                    <strong>自動提案の一括反映</strong>
+                                    <details class="help-panel">
+                                        <summary>この操作の意味</summary>
+                                        <div class="help-body">表示中の自動提案をまとめて入力欄へ反映できる。保存前なら手動で直せる。</div>
+                                    </details>
+                                </div>
+                                <div class="actions">
+                                    <button type="button" class="button small light" onclick="applyAllScoreSuggestions(false)">自動提案を全部反映</button>
+                                    <button type="button" class="button small light" onclick="applyAllScoreSuggestions(true)">未採点だけ反映</button>
+                                </div>
                             </div>
                         </div>
                     @endif
@@ -349,22 +357,36 @@
                                     <span class="badge {{ $isRisk ? 'red' : 'green' }}">{{ $meta['group'] }}</span>
                                 </div>
 
-                                <p class="muted" style="font-size:13px; line-height:1.75; margin-top:0;">{{ $meta['description'] }}</p>
-                                <div class="guide">
-                                    <strong>0</strong>：{{ $meta['anchor_0'] }}<br>
-                                    <strong>3</strong>：{{ $meta['anchor_3'] }}<br>
-                                    <strong>5</strong>：{{ $meta['anchor_5'] }}
-                                </div>
+                                <details class="help-panel">
+                                    <summary>評価基準を見る</summary>
+                                    <div class="help-body">
+                                        {{ $meta['description'] }}<br>
+                                        <strong>0</strong>：{{ $meta['anchor_0'] }}<br>
+                                        <strong>3</strong>：{{ $meta['anchor_3'] }}<br>
+                                        <strong>5</strong>：{{ $meta['anchor_5'] }}
+                                    </div>
+                                </details>
 
                                 @php $suggestion = $scoreSuggestions[$axis] ?? null; @endphp
                                 @if ($suggestion && $suggestion['value'] !== null)
-                                    <div class="guide" style="border-style:solid; background:#f0f7ff;">
-                                        自動提案：<strong>{{ $suggestion['value'] }}</strong>点
-                                        （confidence {{ $suggestion['confidence'] }} / {{ \App\Services\ScoreSuggester::ALGO }}）<br>
-                                        <span class="muted">{{ $suggestion['note'] }}</span>
-                                        @if (!empty($suggestion['drivers']))
-                                            <br><span class="muted">根拠：{{ implode(', ', $suggestion['drivers']) }}</span>
-                                        @endif
+                                    <div class="info-strip" style="margin:12px 0; background:#f0f7ff;">
+                                        <div class="row" style="align-items:flex-start;">
+                                            <div>
+                                                <span class="badge blue">自動提案 {{ $suggestion['value'] }}点</span>
+                                                <details class="help-panel">
+                                                    <summary>提案理由を見る</summary>
+                                                    <div class="help-body">
+                                                        confidence {{ $suggestion['confidence'] }} / {{ \App\Services\ScoreSuggester::ALGO }}<br>
+                                                        {{ $suggestion['note'] }}
+                                                        @if (!empty($suggestion['drivers']))
+                                                            <br>根拠：{{ implode(', ', $suggestion['drivers']) }}
+                                                        @endif
+                                                    </div>
+                                                </details>
+                                            </div>
+                                            <button type="button" class="button small light"
+                                                onclick="applyScoreSuggestion('{{ $axis }}', {{ $suggestion['value'] }}, '{{ $suggestion['confidence'] }}')">この提案を反映</button>
+                                        </div>
 
                                         <input type="hidden" name="score_suggestions[{{ $axis }}][value]" value="{{ $suggestion['value'] }}">
                                         <input type="hidden" name="score_suggestions[{{ $axis }}][confidence]" value="{{ $suggestion['confidence'] }}">
@@ -372,15 +394,12 @@
                                         <input type="hidden" name="score_suggestions[{{ $axis }}][algo_version]" value="{{ \App\Services\ScoreSuggester::ALGO }}">
                                         <input type="hidden" name="score_suggestions[{{ $axis }}][drivers_json]" value="{{ e(json_encode($suggestion['drivers'] ?? [], JSON_UNESCAPED_UNICODE)) }}">
                                         <input type="hidden" name="score_suggestions[{{ $axis }}][note]" value="{{ $suggestion['note'] }}">
-
-                                        <br>
-                                        <button type="button" class="button small light" style="margin-top:8px;"
-                                            onclick="applyScoreSuggestion('{{ $axis }}', {{ $suggestion['value'] }}, '{{ $suggestion['confidence'] }}')">この提案を反映</button>
                                     </div>
                                 @elseif ($suggestion)
-                                    <div class="guide muted" style="font-size:12px;">
-                                        自動提案：なし（{{ $suggestion['note'] }}）
-                                    </div>
+                                    <details class="help-panel">
+                                        <summary>自動提案なし</summary>
+                                        <div class="help-body">{{ $suggestion['note'] }}</div>
+                                    </details>
                                 @endif
 
                                 <div class="field">
@@ -455,7 +474,7 @@
                 <div class="section-head row">
                     <div>
                         <h2 class="section-title">kill_flags</h2>
-                        <p class="muted" style="margin:8px 0 0;">手動で即時除外理由を付ける。1つでもflagがあれば is_killed=true。</p>
+                        <details class="help-panel"><summary>kill_flagとは</summary><div class="help-body">即時除外理由。1つでもflagがあれば is_killed=true になり、営業候補から外れる。</div></details>
                     </div>
                     <span class="badge {{ $company->is_killed ? 'red' : 'green' }}">is_killed={{ $company->is_killed ? 'true' : 'false' }}</span>
                 </div>
@@ -525,7 +544,7 @@
             <section class="section-card">
                 <div class="section-head">
                     <h2 class="section-title">company基本情報</h2>
-                    <p class="muted" style="margin:8px 0 0;">分析や名寄せの土台になる基本データ。</p>
+                    <details class="help-panel"><summary>基本情報の役割</summary><div class="help-body">分析や名寄せの土台になる正規化済みデータ。外部取得の生データはsource_records側に残す。</div></details>
                 </div>
 
                 <div class="grid kv-grid">

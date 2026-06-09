@@ -5,9 +5,13 @@
         <section class="card">
             <div class="row" style="gap:18px; align-items:flex-start;">
                 <div>
-                    <p class="muted" style="margin-top:0; font-weight:800;">Phase1 / 研究MVP</p>
-                    <h1 style="margin:0;">ダッシュボード</h1>
-                    <p class="muted" style="margin-bottom:0;">実データ投入、company化、4軸採点、営業候補抽出の進捗をざっくり確認する画面。</p>
+                    <p class="page-kicker">Phase1 / Research MVP</p>
+                    <h1 class="page-title">ダッシュボード</h1>
+                    <p class="page-subtitle">今日やる作業と、データ投入・採点・候補抽出の進捗を見る。</p>
+                    <details class="help-panel">
+                        <summary>この画面の見方</summary>
+                        <div class="help-body">source_recordsのcompany化、4軸採点、営業候補確認を1画面で追う。迷ったら「次に処理するもの」→「今日さばくリスト」の順で見る。</div>
+                    </details>
                 </div>
                 <div class="actions">
                     <a class="button" href="{{ route('source-records.index') }}">source_records</a>
@@ -21,7 +25,7 @@
             <div class="row" style="align-items:flex-end;">
                 <div>
                     <h2 style="margin:0;">次に処理するもの</h2>
-                    <p class="muted" style="margin-bottom:0;">迷ったらここから処理する。未リンク → 採点待ち → 推奨候補の順で見る。</p>
+                    <details class="help-panel"><summary>処理順の考え方</summary><div class="help-body">未リンクsource_recordsをcompany化し、未採点companyを4軸採点し、最後に高機会・低リスク候補を確認する。</div></details>
                 </div>
             </div>
 
@@ -67,7 +71,7 @@
                 <div>
                     <p class="muted" style="margin:0; font-weight:800;">v0.16 / 作業ボード</p>
                     <h2 style="margin:6px 0 0;">今日さばくリスト</h2>
-                    <p class="muted" style="margin-bottom:0;">数字だけじゃなく、実際に開くべきレコードを上から出す。ここからそのまま処理に入れる。</p>
+                    <details class="help-panel"><summary>作業ボードの使い方</summary><div class="help-body">実際に開くべきsource_record、採点対象、推奨候補を最大5件ずつ表示する。数値サマリーより先に作業したい時はここを使う。</div></details>
                 </div>
             </div>
 
@@ -146,7 +150,7 @@
             <div class="row" style="align-items:flex-end;">
                 <div>
                     <h2 style="margin:0;">投入・整理状況</h2>
-                    <p class="muted" style="margin-bottom:0;">source_recordsからcompany化までの詰まりを見る。</p>
+                    <details class="help-panel"><summary>投入・整理状況とは</summary><div class="help-body">CSVや手動で投入したsource_recordsが、どれだけcompany化されたかを見る。未リンクが多い場合は先にcompany化を進める。</div></details>
                 </div>
             </div>
 
@@ -175,7 +179,7 @@
             <div class="row" style="align-items:flex-end;">
                 <div>
                     <h2 style="margin:0;">4軸採点の進捗</h2>
-                    <p class="muted" style="margin-bottom:0;">自動提案と手動補正の運用状況を見る。</p>
+                    <details class="help-panel"><summary>4軸採点の見方</summary><div class="help-body">未採点・一部採点・4軸採点済みの割合を見る。auto提案と手動補正の差分は、今後のスコアロジック改善に使う。</div></details>
                 </div>
                 <div class="actions">
                     <a class="button small light" href="{{ route('companies.index', ['score_state' => 'unscored']) }}">未採点</a>
@@ -209,7 +213,7 @@
             <div class="row" style="align-items:flex-end;">
                 <div>
                     <h2 style="margin:0;">営業候補の状態</h2>
-                    <p class="muted" style="margin-bottom:0;">未kill・未mergedの候補母集団から、推奨候補と採点待ちを見る。</p>
+                    <details class="help-panel"><summary>営業候補の見方</summary><div class="help-body">未kill・未mergedのcompanyを母集団にして、推奨候補・高機会・採点待ちを確認する。まだ営業送信管理ではなく、候補抽出用のビュー。</div></details>
                 </div>
                 <div class="actions">
                     <a class="button small" href="{{ route('companies.candidates', ['preset' => 'recommended']) }}">推奨候補</a>
