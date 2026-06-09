@@ -675,6 +675,125 @@
             font-size: 13px;
         }
 
+
+        /* v0.17.5 micro polish: buttons / badges / tables */
+        .button {
+            min-height: 40px;
+            letter-spacing: .01em;
+            border: 1px solid transparent;
+        }
+        .button:focus-visible,
+        .nav-link:focus-visible,
+        a.badge:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 4px rgba(31, 94, 255, .16), 0 12px 26px rgba(31, 94, 255, .16);
+        }
+        .button:disabled,
+        .button.disabled {
+            opacity: .55;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .button.light {
+            color: #344054;
+        }
+        .button.light:hover {
+            border-color: #b8c7da;
+            color: #101828;
+        }
+        .button.secondary {
+            border-color: rgba(15, 23, 42, .08);
+        }
+        .button.small {
+            min-height: 34px;
+            padding: 7px 11px;
+            font-size: 12px;
+        }
+        .actions .button,
+        .form-actions .button {
+            white-space: nowrap;
+        }
+        .badge {
+            gap: 5px;
+            min-height: 26px;
+            border: 1px solid transparent;
+            box-shadow: inset 0 -1px 0 rgba(16, 24, 40, .04);
+        }
+        .badge.green { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+        .badge.gray { background: #f2f4f7; color: #475467; border-color: #e4e7ec; }
+        .badge.red { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+        .badge.blue { background: #dbeafe; color: #1d4ed8; border-color: #bfdbfe; }
+        .badge.amber { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+        .badge.purple { background: #ede9fe; color: #5b21b6; border-color: #ddd6fe; }
+        .badge.teal { background: #ccfbf1; color: #0f766e; border-color: #99f6e4; }
+        a.badge {
+            text-decoration: none;
+            transition: transform .12s ease, border-color .12s ease, background .12s ease;
+        }
+        a.badge:hover {
+            transform: translateY(-1px);
+            border-color: #b8c7da;
+        }
+        .table-wrap {
+            overflow: auto;
+            background: rgba(255,255,255,.94);
+        }
+        .table-wrap table {
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        .table-wrap th,
+        .table-wrap td {
+            line-height: 1.55;
+        }
+        .table-wrap th {
+            position: relative;
+            text-transform: none;
+            white-space: nowrap;
+        }
+        .table-wrap td {
+            background-clip: padding-box;
+        }
+        .table-wrap tbody tr:nth-child(even) td {
+            background-color: rgba(248,250,252,.45);
+        }
+        .table-wrap tbody tr:hover td {
+            background-color: #f6faff;
+        }
+        .table-wrap td.tight,
+        .table-wrap th.tight {
+            width: 1%;
+            white-space: nowrap;
+        }
+        .table-wrap td .actions {
+            justify-content: flex-start;
+        }
+        .table-wrap .button.small {
+            box-shadow: none;
+        }
+        .domain-chip,
+        .score-pill,
+        .filter-chip {
+            box-shadow: inset 0 -1px 0 rgba(16, 24, 40, .04);
+        }
+        .domain-chip {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            overflow-wrap: anywhere;
+        }
+        .muted a {
+            color: #1d4ed8;
+            text-decoration-thickness: 1px;
+            text-underline-offset: 3px;
+        }
+        .card + .card,
+        .section-card + .section-card {
+            margin-top: 18px;
+        }
+        details.help-panel[open] {
+            box-shadow: var(--shadow-soft);
+        }
+
         @media (max-width: 900px) {
             .auth-shell { grid-template-columns: 1fr; margin: 24px auto; }
             .auth-hero { min-height: 360px; }
