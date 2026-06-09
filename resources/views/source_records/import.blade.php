@@ -173,34 +173,35 @@
                 </div>
             @endif
 
-            <form method="POST" action="{{ route('source-records.import.store') }}" enctype="multipart/form-data" style="margin-top:24px;">
+            <form method="POST" action="{{ route('source-records.import.store') }}" enctype="multipart/form-data" class="form-shell">
                 @csrf
 
-                <div class="card" style="box-shadow:none; border-color:#e5e7eb;">
+                <div class="form-section">
                     <div class="row">
                         <div>
                             <p class="section-label">upload</p>
                             <h2 style="margin:6px 0 0;">CSVをアップロード</h2>
-                            <p class="muted" style="margin:8px 0 0;">DB登録前に必ずプレビューを表示する。</p>
+                            <p class="form-section-copy">DB登録前に必ずプレビューを表示する。テンプレートから作るとカラムズレを防げる。</p>
                         </div>
                         <a class="button light" href="{{ route('source-records.import.template') }}">テンプレートをダウンロード</a>
                     </div>
 
                     <div class="grid" style="margin-top:18px;">
-                        <div class="field">
-                            <label for="default_source_type">default_source_type *</label>
+                        <div class="field required">
+                            <label for="default_source_type">default_source_type</label>
                             <input id="default_source_type" name="default_source_type" type="text" value="{{ old('default_source_type', $previewResult['default_source_type'] ?? 'csv_import') }}" required>
                         </div>
 
-                        <div class="field">
-                            <label for="csv_file">CSVファイル *</label>
+                        <div class="field required">
+                            <label for="csv_file">CSVファイル</label>
                             <input id="csv_file" name="csv_file" type="file" accept=".csv,text/csv" required>
-                            <p class="muted" style="font-size:12px; margin:6px 0 0;">UTF-8 / Shift_JIS(CP932) 対応。1行目はヘッダー行。</p>
+                            <p class="field-hint">UTF-8 / Shift_JIS(CP932) 対応。1行目はヘッダー行。</p>
                         </div>
                     </div>
 
-                    <div class="actions" style="justify-content:flex-start;">
+                    <div class="form-actions">
                         <button class="button" type="submit">CSVをアップロードしてプレビュー</button>
+                        <a class="button light" href="{{ route('source-records.index') }}">一覧へ戻る</a>
                     </div>
                 </div>
             </form>

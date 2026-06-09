@@ -44,22 +44,28 @@
                 </div>
             </div>
 
-            <form method="POST" action="{{ route('companies.store-from-source', $sourceRecord) }}" style="margin-top:24px;">
+            <form method="POST" action="{{ route('companies.store-from-source', $sourceRecord) }}" class="form-shell">
                 @csrf
 
-                <div class="card" style="box-shadow:none;">
-                    <p class="section-label">basic information</p>
+                <div class="form-section">
+                    <div class="form-section-head">
+                        <div>
+                            <p class="section-label">basic information</p>
+                            <h2 class="form-section-title">companyの基本情報</h2>
+                            <p class="form-section-copy">display_nameは画面で見る屋号・ブランド名。後の採点や候補一覧で中心になる。</p>
+                        </div>
+                    </div>
                     <div class="grid" style="margin-top:14px;">
-                        <div class="field">
-                            <label for="status">status *</label>
+                        <div class="field required">
+                            <label for="status">status</label>
                             <select id="status" name="status" required>
                                 <option value="candidate" @selected(old('status', $defaults['status']) === 'candidate')>candidate</option>
                                 <option value="confirmed" @selected(old('status', $defaults['status']) === 'confirmed')>confirmed</option>
                             </select>
                         </div>
 
-                        <div class="field">
-                            <label for="display_name">表示名・屋号 *</label>
+                        <div class="field required">
+                            <label for="display_name">表示名・屋号</label>
                             <input id="display_name" name="display_name" type="text" value="{{ old('display_name', $defaults['display_name']) }}" required>
                         </div>
 
@@ -82,8 +88,14 @@
                     </div>
                 </div>
 
-                <div class="card" style="box-shadow:none; margin-top:18px;">
-                    <p class="section-label">region / domain</p>
+                <div class="form-section">
+                    <div class="form-section-head">
+                        <div>
+                            <p class="section-label">region / domain</p>
+                            <h2 class="form-section-title">地域・法人番号・公式HP</h2>
+                            <p class="form-section-copy">地域は市区町村マスタを優先。公式HPはdomain作成と候補判定の起点になる。</p>
+                        </div>
+                    </div>
                     <div class="grid" style="margin-top:14px;">
                         @php
                             $selectedMunicipalityId = old('municipality_id', $defaults['municipality_id']);
@@ -158,7 +170,7 @@
                     </div>
                 </details>
 
-                <div class="actions" style="margin-top:22px; justify-content:flex-start;">
+                <div class="form-actions sticky-ish">
                     <button class="button" type="submit" name="after_action" value="company">companyを作成する</button>
                     <button class="button light" type="submit" name="after_action" value="next_source">作成して次の未リンクへ</button>
                 </div>

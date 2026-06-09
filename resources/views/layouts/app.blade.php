@@ -558,6 +558,123 @@
         .empty-copy { margin: 8px auto 0; max-width: 440px; line-height: 1.75; }
         .empty-actions { margin-top: 16px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
 
+
+
+        /* v0.17.4 form polish */
+        .form-shell {
+            display: grid;
+            gap: 18px;
+            margin-top: 22px;
+        }
+        .form-section {
+            border: 1px solid rgba(217, 226, 238, .95);
+            border-radius: 22px;
+            padding: 20px;
+            background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(248,250,252,.86));
+            box-shadow: var(--shadow-soft);
+        }
+        .form-section.compact { padding: 16px; }
+        .form-section-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .form-section-title {
+            margin: 4px 0 0;
+            font-size: 18px;
+            font-weight: 950;
+            letter-spacing: -.025em;
+        }
+        .form-section-copy {
+            margin: 6px 0 0;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.7;
+            max-width: 720px;
+        }
+        .field label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: #344054;
+            font-size: 13px;
+            font-weight: 900;
+        }
+        .field.required label::after {
+            content: "必須";
+            display: inline-flex;
+            align-items: center;
+            height: 20px;
+            padding: 0 7px;
+            border-radius: 999px;
+            background: #fee2e2;
+            color: #991b1b;
+            font-size: 10px;
+            font-weight: 950;
+        }
+        .field-hint {
+            margin: 6px 0 0;
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .form-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+            padding-top: 18px;
+            border-top: 1px solid #e4e7ec;
+        }
+        .form-actions.sticky-ish {
+            position: sticky;
+            bottom: 0;
+            z-index: 5;
+            margin: 22px -20px -20px;
+            padding: 16px 20px;
+            border-radius: 0 0 22px 22px;
+            background: rgba(255,255,255,.86);
+            backdrop-filter: blur(10px);
+        }
+        .form-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px;
+            margin-top: 14px;
+        }
+        .form-summary-item {
+            border: 1px solid #e4e7ec;
+            border-radius: 16px;
+            padding: 12px;
+            background: rgba(255,255,255,.72);
+        }
+        .form-summary-item .label {
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+        }
+        .form-summary-item .value {
+            margin-top: 5px;
+            font-weight: 900;
+            overflow-wrap: anywhere;
+        }
+        .form-note {
+            border: 1px solid #bfdbfe;
+            border-radius: 16px;
+            background: #eff6ff;
+            color: #1e3a8a;
+            padding: 12px 14px;
+            line-height: 1.7;
+            font-size: 13px;
+        }
+
         @media (max-width: 900px) {
             .auth-shell { grid-template-columns: 1fr; margin: 24px auto; }
             .auth-hero { min-height: 360px; }

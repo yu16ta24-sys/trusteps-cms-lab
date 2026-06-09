@@ -43,11 +43,12 @@
                 </div>
             </div>
 
-            <form method="GET" action="{{ route('companies.link-existing-from-source', $sourceRecord) }}" class="card" style="box-shadow:none; padding:18px; margin:20px 0;">
+            <form method="GET" action="{{ route('companies.link-existing-from-source', $sourceRecord) }}" class="form-section compact" style="margin:20px 0;">
                 <div class="row">
                     <div style="flex:1 1 320px;">
                         <label for="q">既存company検索</label>
                         <input id="q" type="text" name="q" value="{{ request('q') }}" placeholder="会社名・法人番号・地域など">
+                        <p class="field-hint">同一性が強い候補だけを選ぶ。弱い場合はリンクせず保留。</p>
                     </div>
                     <div class="actions" style="align-self:end;">
                         <button class="button" type="submit">検索</button>
@@ -101,7 +102,15 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="muted">companyが見つからない。先に新規company作成を使う。</td>
+                            <td colspan="7">
+                                <div class="empty-state">
+                                    <div class="empty-state-box">
+                                        <div class="empty-icon">0</div>
+                                        <h3 class="empty-title">候補が見つからない</h3>
+                                        <p class="empty-copy">検索語を変えるか、新規company作成へ進む。</p>
+                                    </div>
+                                </div>
+                            </td>
                         </tr>
                     @endforelse
                     </tbody>
