@@ -262,6 +262,9 @@
                 <a class="nav-link {{ request()->routeIs('companies.candidates') ? 'active' : '' }}" href="{{ route('companies.candidates') }}">
                     営業候補
                 </a>
+                <a class="nav-link {{ request()->routeIs('account.*') ? 'active' : '' }}" href="{{ route('account.edit') }}">
+                    アカウント
+                </a>
             </nav>
 
             <div class="topbar-right">
