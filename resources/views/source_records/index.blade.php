@@ -109,17 +109,24 @@
                 });
                 $currentPageLinkedCount = $sourceRecords->getCollection()->count() - $currentPageUnlinked->count();
                 $firstUnlinkedId = optional($currentPageUnlinked->first())->id;
-                $activeFilters = collect([
-                    '語句' => request('q'),
-                    'source_type' => request('source_type'),
-                    '都道府県' => request('pref'),
-                    '市区町村' => request('city'),
-                    '業種' => request('raw_industry'),
-                    '状態' => request('link_status') === 'unlinked' ? '未リンク' : (request('link_status') === 'linked' ? 'company化済み' : null),
-                ])->filter(function ($value) {
-                    return $value !== null && $value !== '';
-                });
-            @endphp
+                $activeFilterItems = collect([
+                    ['key' => 'q', 'label' => '語句', 'value' => request('q')],
+                    ['key' => 'source_type', 'label' => 'source_type', 'value' => request('source_type')],
+                    ['key' => 'pref', 'label' => '都道府県', 'value' => request('pref')],
+                    ['key' => 'city', 'label' => '市区町村', 'value' => request('city')],
+                    ['key' => 'raw_industry', 'label' => '業種', 'value' => request('raw_industry')],
+                    ['key' => 'link_status', 'label' => '状態', 'value' => request('link_status') === 'unlinked' ? '未リンク' : (request('link_status') === 'linked' ? 'company化済み' : null)],
+                ])->filter(function ($item) {
+                    return $item['value'] !== null && $item['value'] !== '';
+                })->values();
+
+                $filterRemoveUrl = function (string $key) {
+                    return route('source-records.index', request()->except(['page', $key]));
+                };
+                $unlinkedOnlyUrl = route('source-records.index', array_merge(request()->except(['page']), ['link_status' => 'unlinked']));
+                $clearStatusUrl = route('source-records.index', request()->except(['page', 'link_status']));
+                $clearLocationUrl = route('source-records.index', request()->except(['page', 'pref', 'city']));
+                        @endphp
 
             <div class="card" style="box-shadow:none; padding:14px 18px; margin:0 0 16px; background:#fff7ed; border:1px solid #fed7aa;">
                 <div class="row">
@@ -129,13 +136,16 @@
                             現在の一覧：{{ number_format($sourceRecords->total()) }}件 / このページ：{{ number_format($sourceRecords->count()) }}件。
                             このページの未リンク：{{ number_format($currentPageUnlinked->count()) }}件 / company化済み：{{ number_format($currentPageLinkedCount) }}件。
                         </p>
-                        @if ($activeFilters->isNotEmpty())
-                            <p class="muted" style="margin:8px 0 0;">
+                        @if ($activeFilterItems->isNotEmpty())
+                            <div class="muted" style="margin:8px 0 0;">
                                 絞り込み：
-                                @foreach ($activeFilters as $label => $value)
-                                    <span class="badge gray">{{ $label }}：{{ $value }}</span>
+                                @foreach ($activeFilterItems as $item)
+                                    <a class="badge gray" style="text-decoration:none;" href="{{ $filterRemoveUrl($item['key']) }}" title="この条件だけ解除">
+                                        {{ $item['label'] }}：{{ $item['value'] }} ×
+                                    </a>
                                 @endforeach
-                            </p>
+                            </div>
+                            <p class="muted" style="margin:8px 0 0;">各バッジを押すと、その条件だけ外せる。</p>
                         @else
                             <p class="muted" style="margin:8px 0 0;">絞り込みなし。まずは都道府県・市区町村・業種で作業範囲を切るのがおすすめ。</p>
                         @endif
@@ -146,6 +156,25 @@
                         @else
                             <span class="button light" style="opacity:.55; cursor:not-allowed;">このページは未リンクなし</span>
                         @endif
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="box-shadow:none; padding:14px 18px; margin:0 0 16px; background:#f8fafc; border:1px solid #e2e8f0;">
+                <div class="row">
+                    <div>
+                        <strong>フィルター操作</strong>
+                        <p class="muted" style="margin:6px 0 0;">今の絞り込みを保ったまま、作業しやすい状態へ切り替える。</p>
+                    </div>
+                    <div class="actions">
+                        <a class="button light" href="{{ $unlinkedOnlyUrl }}">この条件で未リンクだけ</a>
+                        @if (request('link_status'))
+                            <a class="button light" href="{{ $clearStatusUrl }}">状態だけ解除</a>
+                        @endif
+                        @if (request('pref') || request('city'))
+                            <a class="button light" href="{{ $clearLocationUrl }}">地域だけ解除</a>
+                        @endif
+                        <a class="button light" href="{{ route('source-records.index') }}">全条件クリア</a>
                     </div>
                 </div>
             </div>
@@ -256,7 +285,7 @@
             </form>
 
             <div class="pagination">
-                {{ $sourceRecords->links() }}
+                {{ $sourceRecords->appends(request()->query())->links() }}
             </div>
         </section>
     </main>
