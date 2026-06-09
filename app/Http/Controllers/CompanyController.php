@@ -405,7 +405,36 @@ class CompanyController extends Controller
             $scoreSuggestions = [];
         }
 
-        return view('companies.show', compact('company', 'scoreAxes', 'scoresByAxis', 'scoreSuggestions'));
+        $scoringQueueCount = $this->scoringQueueQuery()->count();
+        $isCurrentScoringQueueTarget = $this->scoringQueueQuery()
+            ->whereKey($company->id)
+            ->exists();
+        $previousScoringCompany = $this->scoringQueueQuery()
+            ->where('id', '<', $company->id)
+            ->orderByDesc('id')
+            ->first(['id', 'display_name']);
+        $nextScoringCompany = $this->scoringQueueQuery()
+            ->where('id', '>', $company->id)
+            ->orderBy('id')
+            ->first(['id', 'display_name']);
+
+        if (!$nextScoringCompany) {
+            $nextScoringCompany = $this->scoringQueueQuery()
+                ->where('id', '!=', $company->id)
+                ->orderBy('id')
+                ->first(['id', 'display_name']);
+        }
+
+        return view('companies.show', compact(
+            'company',
+            'scoreAxes',
+            'scoresByAxis',
+            'scoreSuggestions',
+            'scoringQueueCount',
+            'isCurrentScoringQueueTarget',
+            'previousScoringCompany',
+            'nextScoringCompany'
+        ));
     }
 
     public function createFromSource(SourceRecord $sourceRecord): View|RedirectResponse
@@ -725,6 +754,7 @@ class CompanyController extends Controller
             'scores.*.value' => ['required', 'integer', 'min:0', 'max:5'],
             'scores.*.confidence' => ['required', 'in:0.3,0.6,0.9'],
             'scores.*.note' => ['nullable', 'string', 'max:5000'],
+            'after_action' => ['nullable', 'in:company,next_scoring'],
         ]);
 
         $scoreSuggestions = $request->input('score_suggestions', []);
@@ -772,9 +802,61 @@ class CompanyController extends Controller
             );
         }
 
+        if (($validated['after_action'] ?? null) === 'next_scoring') {
+            return $this->redirectToNextScoringCompany(
+                $company,
+                '4軸スコアを保存した。次の未採点companyへ進む。',
+                '4軸スコアを保存した。未採点companyは残っていない。'
+            );
+        }
+
         return redirect()
             ->route('companies.show', $company)
             ->with('status', '4軸スコアを保存した。自動提案がある軸は提案値も記録した。');
+    }
+
+    private function scoringQueueQuery()
+    {
+        $query = Company::query()
+            ->where('is_killed', false)
+            ->where('status', '!=', 'merged');
+
+        $query->where(function ($missingAxisQuery) {
+            foreach (array_keys($this->scoreAxisOptions()) as $axis) {
+                $missingAxisQuery->orWhereDoesntHave('scores', fn ($scoreQuery) =>
+                    $scoreQuery
+                        ->where('algo_version', 'v1')
+                        ->where('axis', $axis)
+                );
+            }
+        });
+
+        return $query;
+    }
+
+    private function redirectToNextScoringCompany(Company $currentCompany, string $foundMessage, string $emptyMessage): RedirectResponse
+    {
+        $nextCompany = $this->scoringQueueQuery()
+            ->where('id', '>', $currentCompany->id)
+            ->orderBy('id')
+            ->first(['id', 'display_name']);
+
+        if (!$nextCompany) {
+            $nextCompany = $this->scoringQueueQuery()
+                ->where('id', '!=', $currentCompany->id)
+                ->orderBy('id')
+                ->first(['id', 'display_name']);
+        }
+
+        if ($nextCompany) {
+            return redirect()
+                ->route('companies.show', $nextCompany)
+                ->with('status', $foundMessage);
+        }
+
+        return redirect()
+            ->route('companies.index', ['score_state' => 'fully_scored'])
+            ->with('status', $emptyMessage);
     }
 
     /**

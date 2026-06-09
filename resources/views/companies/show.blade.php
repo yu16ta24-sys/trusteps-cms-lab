@@ -234,6 +234,47 @@
                 @endif
             </section>
 
+            <section class="section-card" style="border-left:4px solid #2563eb;">
+                <div class="section-head row">
+                    <div>
+                        <h2 class="section-title">採点ナビ</h2>
+                        <p class="muted" style="margin:8px 0 0;">4軸がまだ揃っていないcompanyを連続で処理するための導線。</p>
+                    </div>
+                    <span class="badge {{ $isCurrentScoringQueueTarget ? 'blue' : 'green' }}">
+                        {{ $isCurrentScoringQueueTarget ? '採点待ち' : '4軸採点済み' }}
+                    </span>
+                </div>
+
+                <div class="grid summary-grid">
+                    <div class="summary-card">
+                        <span class="badge gray">採点キュー</span>
+                        <h3>{{ $scoringQueueCount }}</h3>
+                        <p class="muted">未kill・未mergedで4軸が揃っていないcompany</p>
+                    </div>
+                    <div class="summary-card">
+                        <span class="badge blue">前後移動</span>
+                        <div class="actions" style="margin-top:14px;">
+                            @if ($previousScoringCompany)
+                                <a class="button light" href="{{ route('companies.show', $previousScoringCompany) }}">前の未採点 #{{ $previousScoringCompany->id }}</a>
+                            @else
+                                <span class="muted">前の未採点なし</span>
+                            @endif
+                            @if ($nextScoringCompany)
+                                <a class="button" href="{{ route('companies.show', $nextScoringCompany) }}">次の未採点 #{{ $nextScoringCompany->id }}</a>
+                            @else
+                                <span class="muted">次の未採点なし</span>
+                            @endif
+                        </div>
+                    </div>
+                    <div class="summary-card">
+                        <span class="badge green">作業手順</span>
+                        <p class="muted" style="margin-top:12px; line-height:1.8;">
+                            自動提案を反映 → 必要なら手動補正 → 「保存して次の未採点へ」で連続処理。
+                        </p>
+                    </div>
+                </div>
+            </section>
+
             <section class="section-card">
                 <div class="section-head row">
                     <div>
@@ -379,8 +420,9 @@
                         @endforeach
                     </div>
 
-                    <div style="margin-top:18px;">
+                    <div class="actions" style="margin-top:18px;">
                         <button class="button" type="submit">4軸スコアを保存</button>
+                        <button class="button light" type="submit" name="after_action" value="next_scoring">保存して次の未採点へ</button>
                     </div>
                 </form>
             </section>
