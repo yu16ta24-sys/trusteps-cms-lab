@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
-use App\Http\Controllers\AccountController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\SourceRecordController;
@@ -22,9 +21,6 @@ Route::post('/logout', [LoginController::class, 'logout'])
 
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
-
-    Route::get('/account', [AccountController::class, 'edit'])->name('account.edit');
-    Route::put('/account', [AccountController::class, 'update'])->name('account.update');
 
     Route::get('/source-records', [SourceRecordController::class, 'index'])->name('source-records.index');
     Route::get('/source-records/create', [SourceRecordController::class, 'create'])->name('source-records.create');
