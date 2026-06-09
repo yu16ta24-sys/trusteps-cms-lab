@@ -300,6 +300,14 @@
                                         @if (!empty($suggestion['drivers']))
                                             <br><span class="muted">根拠：{{ implode(', ', $suggestion['drivers']) }}</span>
                                         @endif
+
+                                        <input type="hidden" name="score_suggestions[{{ $axis }}][value]" value="{{ $suggestion['value'] }}">
+                                        <input type="hidden" name="score_suggestions[{{ $axis }}][confidence]" value="{{ $suggestion['confidence'] }}">
+                                        <input type="hidden" name="score_suggestions[{{ $axis }}][basis]" value="{{ $suggestion['basis'] ?? 'auto' }}">
+                                        <input type="hidden" name="score_suggestions[{{ $axis }}][algo_version]" value="{{ \App\Services\ScoreSuggester::ALGO }}">
+                                        <input type="hidden" name="score_suggestions[{{ $axis }}][drivers_json]" value="{{ e(json_encode($suggestion['drivers'] ?? [], JSON_UNESCAPED_UNICODE)) }}">
+                                        <input type="hidden" name="score_suggestions[{{ $axis }}][note]" value="{{ $suggestion['note'] }}">
+
                                         <br>
                                         <button type="button" class="button small light" style="margin-top:8px;"
                                             onclick="applyScoreSuggestion('{{ $axis }}', {{ $suggestion['value'] }}, '{{ $suggestion['confidence'] }}')">この提案を反映</button>
@@ -338,6 +346,7 @@
                                         <div class="point">現在：{{ $currentScore->value }}点</div>
                                         <div class="muted" style="font-size:12px; line-height:1.7;">
                                             confidence {{ $currentScore->confidence }}<br>
+                                            auto_suggested：{{ $currentScore->auto_suggested_value !== null ? $currentScore->auto_suggested_value . '点' : '-' }}<br>
                                             scored_by：{{ $currentScore->scored_by ?? '-' }}<br>
                                             scored_at：{{ optional($currentScore->scored_at)->format('Y-m-d H:i:s') ?? '-' }}
                                         </div>

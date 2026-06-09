@@ -10,6 +10,7 @@ use App\Models\Domain;
 use App\Models\Industry;
 use App\Models\Municipality;
 use App\Models\SourceRecord;
+use App\Services\ScoreSuggester;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -607,12 +608,33 @@ class CompanyController extends Controller
             'scores.*.note' => ['nullable', 'string', 'max:5000'],
         ]);
 
+        $scoreSuggestions = $request->input('score_suggestions', []);
+        if (!is_array($scoreSuggestions)) {
+            $scoreSuggestions = [];
+        }
+
         foreach ($validated['scores'] as $axis => $scoreInput) {
             if (!in_array($axis, $axisKeys, true)) {
                 continue;
             }
 
             $note = trim((string) ($scoreInput['note'] ?? ''));
+            $autoSuggestion = $this->normalizeScoreSuggestion($scoreSuggestions[$axis] ?? null);
+
+            $reasonJson = [
+                'basis' => $autoSuggestion['value'] !== null ? 'manual_with_auto_suggestion' : 'manual',
+                'drivers' => $autoSuggestion['drivers'],
+                'evidence' => [],
+                'note' => $note !== '' ? $note : null,
+                'auto_suggestion' => $autoSuggestion['value'] !== null ? [
+                    'algo_version' => $autoSuggestion['algo_version'],
+                    'value' => $autoSuggestion['value'],
+                    'confidence' => $autoSuggestion['confidence'],
+                    'basis' => $autoSuggestion['basis'],
+                    'drivers' => $autoSuggestion['drivers'],
+                    'note' => $autoSuggestion['note'],
+                ] : null,
+            ];
 
             CompanyScore::updateOrCreate(
                 [
@@ -623,13 +645,8 @@ class CompanyController extends Controller
                 [
                     'value' => (int) $scoreInput['value'],
                     'confidence' => (string) $scoreInput['confidence'],
-                    'auto_suggested_value' => null,
-                    'reason_json' => [
-                        'basis' => 'manual',
-                        'drivers' => [],
-                        'evidence' => [],
-                        'note' => $note !== '' ? $note : null,
-                    ],
+                    'auto_suggested_value' => $autoSuggestion['value'],
+                    'reason_json' => $reasonJson,
                     'scored_by' => auth()->user()?->email ?? 'manual',
                     'scored_at' => now(),
                 ]
@@ -638,7 +655,83 @@ class CompanyController extends Controller
 
         return redirect()
             ->route('companies.show', $company)
-            ->with('status', '4軸スコアを保存した。');
+            ->with('status', '4軸スコアを保存した。自動提案がある軸は提案値も記録した。');
+    }
+
+    /**
+     * @return array{value:int|null, confidence:string|null, basis:string, drivers:array<int, string>, note:string|null, algo_version:string}
+     */
+    private function normalizeScoreSuggestion($input): array
+    {
+        $default = [
+            'value' => null,
+            'confidence' => null,
+            'basis' => 'auto',
+            'drivers' => [],
+            'note' => null,
+            'algo_version' => ScoreSuggester::ALGO,
+        ];
+
+        if (!is_array($input)) {
+            return $default;
+        }
+
+        $value = $input['value'] ?? null;
+        if (!is_numeric($value)) {
+            return $default;
+        }
+
+        $value = (int) $value;
+        if ($value < 0 || $value > 5) {
+            return $default;
+        }
+
+        $confidence = (string) ($input['confidence'] ?? '');
+        if (!in_array($confidence, ['0.3', '0.6', '0.9'], true)) {
+            $confidence = null;
+        }
+
+        $basis = trim((string) ($input['basis'] ?? 'auto'));
+        if ($basis === '') {
+            $basis = 'auto';
+        }
+
+        $note = trim((string) ($input['note'] ?? ''));
+        $algoVersion = trim((string) ($input['algo_version'] ?? ScoreSuggester::ALGO));
+        if ($algoVersion === '') {
+            $algoVersion = ScoreSuggester::ALGO;
+        }
+
+        $drivers = [];
+        $driversRaw = $input['drivers_json'] ?? [];
+        if (is_string($driversRaw) && $driversRaw !== '') {
+            $decoded = json_decode($driversRaw, true);
+            if (is_array($decoded)) {
+                $driversRaw = $decoded;
+            }
+        }
+
+        if (is_array($driversRaw)) {
+            foreach ($driversRaw as $driver) {
+                if (!is_scalar($driver)) {
+                    continue;
+                }
+
+                $driver = trim((string) $driver);
+                if ($driver !== '') {
+                    $drivers[] = mb_substr($driver, 0, 120);
+                }
+            }
+        }
+
+        return [
+            'value' => $value,
+            'confidence' => $confidence,
+            'basis' => mb_substr($basis, 0, 80),
+            'drivers' => array_values(array_unique($drivers)),
+            'note' => $note !== '' ? mb_substr($note, 0, 500) : null,
+            'algo_version' => mb_substr($algoVersion, 0, 80),
+        ];
     }
 
 
