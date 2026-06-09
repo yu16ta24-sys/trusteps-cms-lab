@@ -461,6 +461,7 @@ class CompanyController extends Controller
             'primary_url' => ['nullable', 'string', 'max:2000'],
             'match_type' => ['required', 'string', 'max:50'],
             'note' => ['nullable', 'string', 'max:5000'],
+            'after_action' => ['nullable', 'in:company,next_source'],
         ]);
 
         $company = DB::transaction(function () use ($validated, $sourceRecord) {
@@ -504,6 +505,14 @@ class CompanyController extends Controller
 
             return $company;
         });
+
+        if (($validated['after_action'] ?? null) === 'next_source') {
+            return $this->redirectToNextUnlinkedSourceRecord(
+                $sourceRecord,
+                "source_recordからcompany #{$company->id} を作成した。次の未リンクへ進む。",
+                "source_recordからcompany #{$company->id} を作成した。未リンクsource_recordは残っていない。"
+            );
+        }
 
         return redirect()
             ->route('companies.show', $company)
@@ -556,6 +565,7 @@ class CompanyController extends Controller
         $validated = $request->validate([
             'company_id' => ['required', 'exists:companies,id'],
             'match_type' => ['required', 'in:manual_same'],
+            'after_action' => ['nullable', 'in:company,next_source'],
         ]);
 
         $company = Company::query()
@@ -570,9 +580,43 @@ class CompanyController extends Controller
             'created_by' => auth()->user()?->email ?? 'manual',
         ]);
 
+        if (($validated['after_action'] ?? null) === 'next_source') {
+            return $this->redirectToNextUnlinkedSourceRecord(
+                $sourceRecord,
+                "source_recordを既存company #{$company->id} へリンクした。次の未リンクへ進む。",
+                "source_recordを既存company #{$company->id} へリンクした。未リンクsource_recordは残っていない。"
+            );
+        }
+
         return redirect()
             ->route('companies.show', $company)
             ->with('status', 'source_recordを既存companyへリンクした。');
+    }
+
+    private function redirectToNextUnlinkedSourceRecord(SourceRecord $currentSourceRecord, string $foundMessage, string $emptyMessage): RedirectResponse
+    {
+        $nextSourceRecord = SourceRecord::query()
+            ->whereDoesntHave('sourceLink')
+            ->where('id', '>', $currentSourceRecord->id)
+            ->orderBy('id')
+            ->first();
+
+        if (!$nextSourceRecord) {
+            $nextSourceRecord = SourceRecord::query()
+                ->whereDoesntHave('sourceLink')
+                ->orderBy('id')
+                ->first();
+        }
+
+        if ($nextSourceRecord) {
+            return redirect()
+                ->route('source-records.show', $nextSourceRecord)
+                ->with('status', $foundMessage);
+        }
+
+        return redirect()
+            ->route('source-records.index', ['link_status' => 'unlinked'])
+            ->with('status', $emptyMessage);
     }
 
     public function mergeForm(Request $request, Company $company): View|RedirectResponse

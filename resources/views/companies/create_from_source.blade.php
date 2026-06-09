@@ -141,7 +141,13 @@
                     <p class="muted">現時点ではnoteは保存しない。画面上の判断補助だけ。</p>
                 </div>
 
-                <button class="button" type="submit">companyを作成する</button>
+                <div class="actions" style="margin-top:18px;">
+                    <button class="button" type="submit" name="after_action" value="company">companyを作成する</button>
+                    <button class="button light" type="submit" name="after_action" value="next_source">作成して次の未リンクへ</button>
+                </div>
+                <p class="muted" style="font-size:12px; margin-top:8px;">
+                    連続処理するときは「作成して次の未リンクへ」を使う。新規ルートは使わず、既存のsource_record詳細へ移動するだけ。
+                </p>
             </form>
         </section>
     </main>

@@ -84,7 +84,10 @@
                                     @csrf
                                     <input type="hidden" name="company_id" value="{{ $company->id }}">
                                     <input type="hidden" name="match_type" value="manual_same">
-                                    <button class="button small" type="submit">このcompanyにリンク</button>
+                                    <div class="actions" style="gap:6px;">
+                                        <button class="button small" type="submit" name="after_action" value="company">リンク</button>
+                                        <button class="button small light" type="submit" name="after_action" value="next_source">リンクして次へ</button>
+                                    </div>
                                 </form>
                             </td>
                         </tr>
