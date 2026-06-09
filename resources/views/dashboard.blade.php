@@ -17,6 +17,50 @@
             </div>
         </section>
 
+        <section class="card" style="margin-top:18px; border-left:4px solid #2563eb;">
+            <div class="row" style="align-items:flex-end;">
+                <div>
+                    <h2 style="margin:0;">次に処理するもの</h2>
+                    <p class="muted" style="margin-bottom:0;">迷ったらここから処理する。未リンク → 採点待ち → 推奨候補の順で見る。</p>
+                </div>
+            </div>
+
+            <div class="grid" style="margin-top:18px;">
+                <div class="mini-card">
+                    <span class="badge blue">1. company化待ち</span>
+                    <div style="font-size:32px; font-weight:900; margin-top:10px;">{{ number_format($summary['source_records']['unlinked']) }}</div>
+                    <p class="muted">未リンクsource_records</p>
+                    <div class="actions" style="justify-content:flex-start;">
+                        <a class="button small" href="{{ route('source-records.index', ['link_status' => 'unlinked']) }}">処理する</a>
+                    </div>
+                </div>
+                <div class="mini-card">
+                    <span class="badge gray">2. 未採点</span>
+                    <div style="font-size:32px; font-weight:900; margin-top:10px;">{{ number_format($summary['scores']['unscored']) }}</div>
+                    <p class="muted">まだ4軸未入力</p>
+                    <div class="actions" style="justify-content:flex-start;">
+                        <a class="button small light" href="{{ route('companies.index', ['score_state' => 'unscored']) }}">見る</a>
+                    </div>
+                </div>
+                <div class="mini-card">
+                    <span class="badge blue">3. 採点待ち候補</span>
+                    <div style="font-size:32px; font-weight:900; margin-top:10px;">{{ number_format($summary['candidates']['needs_scoring']) }}</div>
+                    <p class="muted">候補一覧で4軸不足</p>
+                    <div class="actions" style="justify-content:flex-start;">
+                        <a class="button small light" href="{{ route('companies.candidates', ['preset' => 'needs_scoring']) }}">見る</a>
+                    </div>
+                </div>
+                <div class="mini-card">
+                    <span class="badge green">4. 推奨候補</span>
+                    <div style="font-size:32px; font-weight:900; margin-top:10px;">{{ number_format($summary['candidates']['recommended']) }}</div>
+                    <p class="muted">高機会・低リスク</p>
+                    <div class="actions" style="justify-content:flex-start;">
+                        <a class="button small" href="{{ route('companies.candidates', ['preset' => 'recommended']) }}">確認する</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <section class="card" style="margin-top:18px;">
             <div class="row" style="align-items:flex-end;">
                 <div>
