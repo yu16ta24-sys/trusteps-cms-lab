@@ -5,11 +5,22 @@
         <section class="card">
             <div class="row">
                 <div>
-                    <p class="muted" style="margin:0;">Phase0-6 / 既存companyへの手動リンク</p>
-                    <h1 style="margin:6px 0 0;">既存companyへリンク</h1>
+                    <p class="page-kicker">manual link / source to company</p>
+                    <h1 class="page-title">既存companyへリンク</h1>
+                    <p class="page-subtitle">
+                        source_recordを既存companyへ手動リンクする画面。自動統合ではなく、目視確認した確定リンクだけを保存する。
+                    </p>
                 </div>
                 <a class="button light" href="{{ route('source-records.show', $sourceRecord) }}">source_recordへ戻る</a>
             </div>
+
+            <details class="help-panel">
+                <summary>リンク判断の注意</summary>
+                <div class="help-body">
+                    <div>同名・同電話・同住所だけで同一会社と決めない。ドメイン、法人番号、地域、屋号の文脈を合わせて見る。</div>
+                    <div>確信が弱い場合はリンクせず、新規company作成または保留にする。誤リンクは分析データを汚染する。</div>
+                </div>
+            </details>
 
             @if ($errors->any())
                 <div class="error" style="margin-top:20px;">
@@ -19,29 +30,26 @@
                 </div>
             @endif
 
-            <div class="card" style="box-shadow:none; margin-top:20px;">
-                <h2 style="margin-top:0;">リンク元source_record</h2>
-                <div class="table-wrap">
-                    <table>
-                        <tbody>
-                        <tr><th>source_record_id</th><td>{{ $sourceRecord->id }}</td></tr>
-                        <tr><th>source_type</th><td>{{ $sourceRecord->source_type }}</td></tr>
-                        <tr><th>name_norm</th><td>{{ $sourceRecord->name_norm ?? '-' }}</td></tr>
-                        <tr><th>source_url</th><td style="overflow-wrap:anywhere;">{{ $sourceRecord->source_url ?? '-' }}</td></tr>
-                        <tr><th>domain</th><td>{{ $sourceRecord->normalized_domain ?? '-' }}</td></tr>
-                        <tr><th>pref/city</th><td>{{ $sourceRecord->pref ?? '-' }} / {{ $sourceRecord->city ?? '-' }}</td></tr>
-                        </tbody>
-                    </table>
+            <div class="info-strip" style="margin-top:20px;">
+                <div class="row">
+                    <div>
+                        <p class="section-label">source</p>
+                        <strong>{{ $sourceRecord->name_norm ?? 'source_record #' . $sourceRecord->id }}</strong>
+                        <div class="muted" style="margin-top:6px; overflow-wrap:anywhere;">
+                            {{ $sourceRecord->source_url ?? '-' }} / {{ $sourceRecord->pref ?? '-' }} / {{ $sourceRecord->city ?? '-' }}
+                        </div>
+                    </div>
+                    <span class="badge gray">source_type：{{ $sourceRecord->source_type }}</span>
                 </div>
             </div>
 
             <form method="GET" action="{{ route('companies.link-existing-from-source', $sourceRecord) }}" class="card" style="box-shadow:none; padding:18px; margin:20px 0;">
-                <div class="grid">
-                    <div class="field" style="margin-bottom:0;">
+                <div class="row">
+                    <div style="flex:1 1 320px;">
                         <label for="q">既存company検索</label>
                         <input id="q" type="text" name="q" value="{{ request('q') }}" placeholder="会社名・法人番号・地域など">
                     </div>
-                    <div class="field" style="margin-bottom:0; align-self:end;">
+                    <div class="actions" style="align-self:end;">
                         <button class="button" type="submit">検索</button>
                         <a class="button light" href="{{ route('companies.link-existing-from-source', $sourceRecord) }}">リセット</a>
                     </div>
@@ -84,7 +92,7 @@
                                     @csrf
                                     <input type="hidden" name="company_id" value="{{ $company->id }}">
                                     <input type="hidden" name="match_type" value="manual_same">
-                                    <div class="actions" style="gap:6px;">
+                                    <div class="actions" style="gap:6px; justify-content:flex-start;">
                                         <button class="button small" type="submit" name="after_action" value="company">リンク</button>
                                         <button class="button small light" type="submit" name="after_action" value="next_source">リンクして次へ</button>
                                     </div>

@@ -5,14 +5,28 @@
         <section class="card">
             <div class="row">
                 <div>
-                    <p class="muted" style="margin:0;">Phase1-1 / 実データ投入フロー</p>
-                    <h1 style="margin:6px 0 0;">source_records CSV取り込み</h1>
+                    <p class="page-kicker">Phase1-1 / data intake</p>
+                    <h1 class="page-title">source_records CSV取り込み</h1>
+                    <p class="page-subtitle">
+                        実データをまとめて取り込む入口。アップロード後は必ずプレビューし、確認後にだけDB登録する。
+                    </p>
                 </div>
                 <div class="actions">
-                    <a class="button light" href="{{ route('source-records.import.template') }}">テンプレートCSV</a>
+                    <a class="button" href="{{ route('source-records.import.template') }}">テンプレートCSV</a>
                     <a class="button light" href="{{ route('source-records.index') }}">一覧へ戻る</a>
                 </div>
             </div>
+
+            <details class="help-panel">
+                <summary>CSV取り込みの流れ</summary>
+                <div class="help-body">
+                    <div>1. テンプレートCSVをダウンロードする。</div>
+                    <div>2. source_type、会社名、URL、地域、業種などを入力する。</div>
+                    <div>3. アップロードしてプレビューを確認する。</div>
+                    <div>4. 問題なければ「この内容で取り込む」を押す。</div>
+                    <div>source_recordsは原典データなので、整形しすぎず raw_json に元行を残す。</div>
+                </div>
+            </details>
 
             @if (session('status'))
                 <div class="status" style="margin-top:20px;">{{ session('status') }}</div>
@@ -38,39 +52,41 @@
                     @endphp
                     <div class="row">
                         <div>
-                            <p class="muted" style="margin:0;">{{ $isPreview ? 'プレビュー結果' : '取込結果' }}</p>
+                            <p class="page-kicker">{{ $isPreview ? 'preview result' : 'import result' }}</p>
                             <h2 style="margin:6px 0 0;">{{ $summary['file_name'] ?? 'CSV' }}</h2>
                         </div>
                         <span class="badge blue">encoding: {{ $summary['detected_encoding'] ?? '-' }}</span>
                     </div>
 
                     @if ($isPreview)
-                        <div class="card" style="box-shadow:none; margin-top:18px; background:#ffffff; border-color:#bfdbfe;">
-                            <strong>このCSVはまだDBに登録していない。</strong>
-                            <p class="muted" style="margin:8px 0 0;">内容を確認して、問題なければ「この内容で取り込む」。やめる場合は「キャンセル」。もう一度ファイル選択し直す必要はない。</p>
+                        <div class="info-strip" style="margin-top:18px; background:#ffffff; border-color:#bfdbfe;">
+                            <div class="row">
+                                <div>
+                                    <strong>このCSVはまだDBに登録していない</strong>
+                                    <div class="muted" style="margin-top:6px;">内容を確認して、問題なければ取り込む。キャンセルすればDB登録なしで破棄する。</div>
+                                </div>
+                                <div class="actions">
+                                    @if ($canConfirm)
+                                        <form method="POST" action="{{ route('source-records.import.confirm') }}">
+                                            @csrf
+                                            <input type="hidden" name="import_token" value="{{ $summary['confirm_token'] }}">
+                                            <button class="button" type="submit">この内容で取り込む</button>
+                                        </form>
+                                    @else
+                                        <button class="button" type="button" disabled style="opacity:.55; cursor:not-allowed;">この内容で取り込む</button>
+                                    @endif
 
-                            <div class="actions" style="justify-content:flex-start; margin-top:16px;">
-                                @if ($canConfirm)
-                                    <form method="POST" action="{{ route('source-records.import.confirm') }}">
-                                        @csrf
-                                        <input type="hidden" name="import_token" value="{{ $summary['confirm_token'] }}">
-                                        <button class="button" type="submit">この内容で取り込む</button>
-                                    </form>
-                                @else
-                                    <button class="button" type="button" disabled style="opacity:.55; cursor:not-allowed;">この内容で取り込む</button>
-                                @endif
-
-                                @if (!empty($summary['confirm_token']))
-                                    <form method="POST" action="{{ route('source-records.import.cancel') }}">
-                                        @csrf
-                                        <input type="hidden" name="import_token" value="{{ $summary['confirm_token'] }}">
-                                        <button class="button light" type="submit">キャンセル</button>
-                                    </form>
-                                @else
-                                    <a class="button light" href="{{ route('source-records.import') }}">キャンセル</a>
-                                @endif
+                                    @if (!empty($summary['confirm_token']))
+                                        <form method="POST" action="{{ route('source-records.import.cancel') }}">
+                                            @csrf
+                                            <input type="hidden" name="import_token" value="{{ $summary['confirm_token'] }}">
+                                            <button class="button light" type="submit">キャンセル</button>
+                                        </form>
+                                    @else
+                                        <a class="button light" href="{{ route('source-records.import') }}">キャンセル</a>
+                                    @endif
+                                </div>
                             </div>
-
                             @unless ($canConfirm)
                                 <p class="muted" style="margin:12px 0 0;">有効行が0件なので、このCSVは取り込めない。</p>
                             @endunless
@@ -98,55 +114,61 @@
                     @endif
 
                     @if (!empty($summary['warnings']))
-                        <div class="card" style="box-shadow:none; margin-top:18px; background:#fffbeb; border-color:#fde68a;">
-                            <strong>注意</strong>
-                            @foreach ($summary['warnings'] as $warning)
-                                <div>{{ $warning }}</div>
-                            @endforeach
-                        </div>
+                        <details class="help-panel" open style="background:#fffbeb; border-color:#fde68a;">
+                            <summary>注意を確認する</summary>
+                            <div class="help-body">
+                                @foreach ($summary['warnings'] as $warning)
+                                    <div>{{ $warning }}</div>
+                                @endforeach
+                            </div>
+                        </details>
                     @endif
 
                     @if (!empty($summary['samples']))
-                        <h3>先頭サンプル</h3>
-                        <div class="table-wrap">
-                            <table>
-                                <thead>
-                                <tr>
-                                    <th>行</th>
-                                    <th>会社名</th>
-                                    <th>source_type</th>
-                                    <th>HP URL</th>
-                                    <th>取得元</th>
-                                    <th>地域</th>
-                                    <th>domain</th>
-                                    <th>重複候補</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                @foreach ($summary['samples'] as $sample)
-                                    <tr>
-                                        <td>{{ $sample['row_number'] }}</td>
-                                        <td>{{ $sample['company_name'] ?? '-' }}</td>
-                                        <td>{{ $sample['source_type'] ?? '-' }}</td>
-                                        <td style="overflow-wrap:anywhere;">{{ $sample['source_url'] ?? '-' }}</td>
-                                        <td>
-                                            <div>{{ $sample['source_name'] ?? '-' }}</div>
-                                            <div class="muted" style="overflow-wrap:anywhere;">{{ $sample['source_page_url'] ?? '-' }}</div>
-                                        </td>
-                                        <td>{{ $sample['pref'] ?? '-' }} / {{ $sample['city'] ?? '-' }}</td>
-                                        <td>{{ $sample['normalized_domain'] ?? '-' }}</td>
-                                        <td>
-                                            @forelse (($sample['duplicate_signals'] ?? []) as $signal)
-                                                <div class="badge gray">{{ $signal }}</div>
-                                            @empty
-                                                <span class="muted">-</span>
-                                            @endforelse
-                                        </td>
-                                    </tr>
-                                @endforeach
-                                </tbody>
-                            </table>
-                        </div>
+                        <details class="help-panel" open>
+                            <summary>先頭サンプルを確認する</summary>
+                            <div class="help-body">
+                                <div class="table-wrap">
+                                    <table>
+                                        <thead>
+                                        <tr>
+                                            <th>行</th>
+                                            <th>会社名</th>
+                                            <th>source_type</th>
+                                            <th>HP URL</th>
+                                            <th>取得元</th>
+                                            <th>地域</th>
+                                            <th>domain</th>
+                                            <th>重複候補</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        @foreach ($summary['samples'] as $sample)
+                                            <tr>
+                                                <td>{{ $sample['row_number'] }}</td>
+                                                <td>{{ $sample['company_name'] ?? '-' }}</td>
+                                                <td>{{ $sample['source_type'] ?? '-' }}</td>
+                                                <td style="overflow-wrap:anywhere;">{{ $sample['source_url'] ?? '-' }}</td>
+                                                <td>
+                                                    <div>{{ $sample['source_name'] ?? '-' }}</div>
+                                                    <div class="muted" style="overflow-wrap:anywhere;">{{ $sample['source_page_url'] ?? '-' }}</div>
+                                                </td>
+                                                <td>{{ $sample['pref'] ?? '-' }} / {{ $sample['city'] ?? '-' }}</td>
+                                                <td>{{ $sample['normalized_domain'] ?? '-' }}</td>
+                                                <td>
+                                                    @forelse (($sample['duplicate_signals'] ?? []) as $signal)
+                                                        <span class="badge gray">{{ $signal }}</span>
+                                                    @empty
+                                                        <span class="muted">-</span>
+                                                    @endforelse
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </details>
                     @endif
                 </div>
             @endif
@@ -155,44 +177,46 @@
                 @csrf
 
                 <div class="card" style="box-shadow:none; border-color:#e5e7eb;">
-                    <h2 style="margin-top:0;">CSVをアップロード</h2>
-                    <p class="muted">アップロード後は必ずプレビューを表示する。DB登録は、プレビュー確認後に「この内容で取り込む」を押したときだけ実行する。</p>
+                    <div class="row">
+                        <div>
+                            <p class="section-label">upload</p>
+                            <h2 style="margin:6px 0 0;">CSVをアップロード</h2>
+                            <p class="muted" style="margin:8px 0 0;">DB登録前に必ずプレビューを表示する。</p>
+                        </div>
+                        <a class="button light" href="{{ route('source-records.import.template') }}">テンプレートをダウンロード</a>
+                    </div>
 
-                    <div class="grid">
+                    <div class="grid" style="margin-top:18px;">
                         <div class="field">
                             <label for="default_source_type">default_source_type *</label>
                             <input id="default_source_type" name="default_source_type" type="text" value="{{ old('default_source_type', $previewResult['default_source_type'] ?? 'csv_import') }}" required>
-                            <p class="muted">CSV側にsource_type列がない場合、この値を使う。</p>
                         </div>
 
                         <div class="field">
                             <label for="csv_file">CSVファイル *</label>
                             <input id="csv_file" name="csv_file" type="file" accept=".csv,text/csv" required>
-                            <p class="muted">UTF-8 / Shift_JIS(CP932) に対応。1行目はヘッダー行。</p>
+                            <p class="muted" style="font-size:12px; margin:6px 0 0;">UTF-8 / Shift_JIS(CP932) 対応。1行目はヘッダー行。</p>
                         </div>
                     </div>
 
                     <div class="actions" style="justify-content:flex-start;">
                         <button class="button" type="submit">CSVをアップロードしてプレビュー</button>
-                        <a class="button light" href="{{ route('source-records.import.template') }}">テンプレートをダウンロード</a>
                     </div>
                 </div>
             </form>
 
-            <div class="card" style="box-shadow:none; margin-top:24px;">
-                <h2 style="margin-top:0;">推奨ヘッダー</h2>
-                <p class="muted">Phase1では、取得元情報と会社HPを分けて残す。raw_jsonにCSVの元行を丸ごと保存する。</p>
-                <pre>{{ implode(',', $templateHeaders ?? []) }}</pre>
-            </div>
-
-            <div class="card" style="box-shadow:none; margin-top:16px;">
-                <h2 style="margin-top:0;">最低限必要な列</h2>
-                <p class="muted">最低限、会社名だけあれば登録可能。ただし、HP URLがない行は後工程のcompany化・domain登録で使いにくい。</p>
-                <pre>raw_name, raw_url, pref, city
+            <details class="help-panel" style="margin-top:24px;">
+                <summary>推奨ヘッダーと最低限必要な列</summary>
+                <div class="help-body">
+                    <p style="margin-top:0;">Phase1では、取得元情報と会社HPを分けて残す。raw_jsonにCSVの元行を丸ごと保存する。</p>
+                    <pre>{{ implode(',', $templateHeaders ?? []) }}</pre>
+                    <p>最低限、会社名だけあれば登録可能。ただしHP URLがない行は後工程で使いにくい。</p>
+                    <pre>raw_name, raw_url, pref, city
 
 旧形式も一部対応：
 company_name, source_url, phone, pref, city, corporate_number</pre>
-            </div>
+                </div>
+            </details>
         </section>
     </main>
 @endsection
