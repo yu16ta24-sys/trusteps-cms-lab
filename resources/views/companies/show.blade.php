@@ -342,11 +342,30 @@
                                 </div>
 
                                 @if ($currentScore)
+                                    @php
+                                        $autoSuggestedValue = $currentScore->auto_suggested_value;
+                                        $suggestionDelta = $autoSuggestedValue !== null ? ((int) $currentScore->value - (int) $autoSuggestedValue) : null;
+                                        $autoSuggestionDetail = is_array($currentReason) ? ($currentReason['auto_suggestion'] ?? null) : null;
+                                    @endphp
                                     <div class="score-now">
                                         <div class="point">現在：{{ $currentScore->value }}点</div>
                                         <div class="muted" style="font-size:12px; line-height:1.7;">
                                             confidence {{ $currentScore->confidence }}<br>
-                                            auto_suggested：{{ $currentScore->auto_suggested_value !== null ? $currentScore->auto_suggested_value . '点' : '-' }}<br>
+                                            auto_suggested：{{ $autoSuggestedValue !== null ? $autoSuggestedValue . '点' : '-' }}
+                                            @if ($suggestionDelta !== null)
+                                                @if ($suggestionDelta === 0)
+                                                    <span class="badge green" style="margin-left:6px;">提案どおり</span>
+                                                @elseif ($suggestionDelta > 0)
+                                                    <span class="badge blue" style="margin-left:6px;">手動 +{{ $suggestionDelta }}</span>
+                                                @else
+                                                    <span class="badge blue" style="margin-left:6px;">手動 {{ $suggestionDelta }}</span>
+                                                @endif
+                                            @endif
+                                            <br>
+                                            @if (is_array($autoSuggestionDetail))
+                                                suggestion_algo：{{ $autoSuggestionDetail['algo_version'] ?? '-' }}<br>
+                                                suggestion_note：{{ $autoSuggestionDetail['note'] ?? '-' }}<br>
+                                            @endif
                                             scored_by：{{ $currentScore->scored_by ?? '-' }}<br>
                                             scored_at：{{ optional($currentScore->scored_at)->format('Y-m-d H:i:s') ?? '-' }}
                                         </div>
