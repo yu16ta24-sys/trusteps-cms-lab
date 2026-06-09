@@ -108,6 +108,65 @@ class DashboardController extends Controller
             'candidates' => $candidateSummary,
         ];
 
-        return view('dashboard', compact('summary'));
+        $nextSourceRecords = SourceRecord::query()
+            ->doesntHave('sourceLink')
+            ->orderBy('id')
+            ->limit(5)
+            ->get();
+
+        $scoringQueue = $activeCompanies
+            ->map(function (Company $company) use ($scoreAxes) {
+                $scores = $company->scores->whereIn('axis', $scoreAxes)->keyBy('axis');
+                $scoredAxesCount = collect($scoreAxes)
+                    ->filter(fn (string $axis) => $scores->get($axis)?->value !== null)
+                    ->count();
+
+                $company->setAttribute('dashboard_scored_axes_count', $scoredAxesCount);
+
+                return $company;
+            })
+            ->filter(fn (Company $company) => $company->dashboard_scored_axes_count < count($scoreAxes))
+            ->sortBy('dashboard_scored_axes_count')
+            ->take(5)
+            ->values();
+
+        $recommendedQueue = $activeCompanies
+            ->map(function (Company $company) use ($scoreAxes) {
+                $scores = $company->scores->whereIn('axis', $scoreAxes)->keyBy('axis');
+                $scoredAxesCount = collect($scoreAxes)
+                    ->filter(fn (string $axis) => $scores->get($axis)?->value !== null)
+                    ->count();
+
+                $hpWeakness = $scores->get('hp_weakness')?->value ?? 0;
+                $selfUpdateFit = $scores->get('self_update_fit')?->value ?? 0;
+                $devDifficulty = $scores->get('dev_difficulty')?->value ?? 0;
+                $portalDependence = $scores->get('portal_dependence')?->value ?? 0;
+
+                $opportunityScore = $hpWeakness + $selfUpdateFit;
+                $riskScore = $devDifficulty + $portalDependence;
+
+                $company->setAttribute('dashboard_scored_axes_count', $scoredAxesCount);
+                $company->setAttribute('dashboard_opportunity_score', $opportunityScore);
+                $company->setAttribute('dashboard_risk_score', $riskScore);
+                $company->setAttribute('dashboard_priority_score', ($opportunityScore * 10) - ($riskScore * 6));
+
+                return $company;
+            })
+            ->filter(fn (Company $company) =>
+                $company->dashboard_scored_axes_count === count($scoreAxes)
+                && $company->dashboard_opportunity_score >= 7
+                && $company->dashboard_risk_score <= 3
+            )
+            ->sortByDesc('dashboard_priority_score')
+            ->take(5)
+            ->values();
+
+        $workBoard = [
+            'next_source_records' => $nextSourceRecords,
+            'scoring_queue' => $scoringQueue,
+            'recommended_queue' => $recommendedQueue,
+        ];
+
+        return view('dashboard', compact('summary', 'workBoard'));
     }
 }

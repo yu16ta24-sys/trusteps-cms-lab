@@ -61,6 +61,87 @@
             </div>
         </section>
 
+
+        <section class="card" style="margin-top:18px; border-left:4px solid #16a34a;">
+            <div class="row" style="align-items:flex-end;">
+                <div>
+                    <p class="muted" style="margin:0; font-weight:800;">v0.16 / 作業ボード</p>
+                    <h2 style="margin:6px 0 0;">今日さばくリスト</h2>
+                    <p class="muted" style="margin-bottom:0;">数字だけじゃなく、実際に開くべきレコードを上から出す。ここからそのまま処理に入れる。</p>
+                </div>
+            </div>
+
+            <div class="grid" style="margin-top:18px; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));">
+                <div class="mini-card" style="background:#f0f9ff; border-color:#bae6fd;">
+                    <div class="row" style="align-items:center;">
+                        <strong>次のsource_records</strong>
+                        <span class="badge blue">未リンク</span>
+                    </div>
+                    <p class="muted" style="margin:8px 0 12px;">まずcompany化する候補。IDが古い順に5件。</p>
+                    @forelse ($workBoard['next_source_records'] as $record)
+                        @php
+                            $rawName = data_get($record->raw_json, 'canonical.raw_name')
+                                ?? data_get($record->raw_json, 'company_name')
+                                ?? $record->name_norm
+                                ?? ('source_record #' . $record->id);
+                            $region = trim(($record->pref ?? '') . ' ' . ($record->city ?? ''));
+                        @endphp
+                        <div style="padding:10px 0; border-top:1px solid rgba(2,132,199,.18);">
+                            <div style="font-weight:900;">#{{ $record->id }} {{ $rawName }}</div>
+                            <div class="muted" style="font-size:13px; margin-top:2px;">
+                                {{ $region !== '' ? $region : '地域未設定' }} / {{ $record->normalized_domain ?: 'domainなし' }}
+                            </div>
+                            <div class="actions" style="justify-content:flex-start; margin-top:8px;">
+                                <a class="button small" href="{{ route('source-records.show', $record) }}">開く</a>
+                            </div>
+                        </div>
+                    @empty
+                        <p class="muted" style="margin-bottom:0;">未リンクsource_recordは今のところなし。</p>
+                    @endforelse
+                </div>
+
+                <div class="mini-card" style="background:#fff7ed; border-color:#fed7aa;">
+                    <div class="row" style="align-items:center;">
+                        <strong>次の採点対象</strong>
+                        <span class="badge gray">4軸不足</span>
+                    </div>
+                    <p class="muted" style="margin:8px 0 12px;">スコアが足りないcompany。未採点に近い順に5件。</p>
+                    @forelse ($workBoard['scoring_queue'] as $company)
+                        <div style="padding:10px 0; border-top:1px solid rgba(249,115,22,.18);">
+                            <div style="font-weight:900;">#{{ $company->id }} {{ $company->display_name ?? $company->legal_name ?? '名称未設定' }}</div>
+                            <div class="muted" style="font-size:13px; margin-top:2px;">採点 {{ $company->dashboard_scored_axes_count }} / 4</div>
+                            <div class="actions" style="justify-content:flex-start; margin-top:8px;">
+                                <a class="button small light" href="{{ route('companies.show', $company) }}">採点する</a>
+                            </div>
+                        </div>
+                    @empty
+                        <p class="muted" style="margin-bottom:0;">採点待ちcompanyは今のところなし。</p>
+                    @endforelse
+                </div>
+
+                <div class="mini-card" style="background:#f0fdf4; border-color:#bbf7d0;">
+                    <div class="row" style="align-items:center;">
+                        <strong>推奨候補TOP</strong>
+                        <span class="badge green">高機会・低リスク</span>
+                    </div>
+                    <p class="muted" style="margin:8px 0 12px;">4軸採点済みの中で、優先確認したい候補。</p>
+                    @forelse ($workBoard['recommended_queue'] as $company)
+                        <div style="padding:10px 0; border-top:1px solid rgba(22,163,74,.18);">
+                            <div style="font-weight:900;">#{{ $company->id }} {{ $company->display_name ?? $company->legal_name ?? '名称未設定' }}</div>
+                            <div class="muted" style="font-size:13px; margin-top:2px;">
+                                機会 {{ $company->dashboard_opportunity_score }} / リスク {{ $company->dashboard_risk_score }}
+                            </div>
+                            <div class="actions" style="justify-content:flex-start; margin-top:8px;">
+                                <a class="button small" href="{{ route('companies.show', $company) }}">詳細</a>
+                            </div>
+                        </div>
+                    @empty
+                        <p class="muted" style="margin-bottom:0;">推奨候補はまだなし。4軸採点が増えると出てくる。</p>
+                    @endforelse
+                </div>
+            </div>
+        </section>
+
         <section class="card" style="margin-top:18px;">
             <div class="row" style="align-items:flex-end;">
                 <div>
