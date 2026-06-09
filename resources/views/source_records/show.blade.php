@@ -10,6 +10,7 @@
                 </div>
                 <div class="actions">
                     <a class="button light" href="{{ route('source-records.index') }}">一覧へ戻る</a>
+                    <a class="button light" href="{{ route('source-records.next-unlinked') }}">次の未リンクへ</a>
                     @if ($sourceRecord->sourceLink)
                         <a class="button" href="{{ route('companies.show', $sourceRecord->sourceLink->company) }}">リンク済みcompanyを見る</a>
                     @else

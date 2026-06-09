@@ -30,6 +30,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/source-records/import', [SourceRecordController::class, 'import'])->name('source-records.import.store');
     Route::post('/source-records/import/confirm', [SourceRecordController::class, 'confirmImport'])->name('source-records.import.confirm');
     Route::post('/source-records/import/cancel', [SourceRecordController::class, 'cancelImport'])->name('source-records.import.cancel');
+    Route::get('/source-records/next-unlinked', [SourceRecordController::class, 'nextUnlinked'])->name('source-records.next-unlinked');
     Route::post('/source-records/bulk-create-companies', [SourceRecordController::class, 'bulkCreateCompanies'])->name('source-records.bulk-create-companies');
 
     Route::get('/source-records/{sourceRecord}/create-company', [CompanyController::class, 'createFromSource'])

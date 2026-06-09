@@ -138,6 +138,83 @@ class SourceRecordController extends Controller
         ));
     }
 
+
+    public function nextUnlinked(Request $request): RedirectResponse
+    {
+        $query = SourceRecord::query()
+            ->whereDoesntHave('sourceLink');
+
+        if ($request->filled('q')) {
+            $q = trim((string) $request->input('q'));
+            $query->where(function ($inner) use ($q) {
+                $inner
+                    ->where('source_url', 'like', "%{$q}%")
+                    ->orWhere('name_norm', 'like', "%{$q}%")
+                    ->orWhere('pref', 'like', "%{$q}%")
+                    ->orWhere('city', 'like', "%{$q}%")
+                    ->orWhere('corporate_number', 'like', "%{$q}%")
+                    ->orWhere('normalized_domain', 'like', "%{$q}%");
+            });
+        }
+
+        if ($request->filled('source_type')) {
+            $query->where('source_type', $request->input('source_type'));
+        }
+
+        if ($request->filled('pref')) {
+            $query->where('pref', $request->input('pref'));
+        }
+
+        if ($request->filled('city')) {
+            $query->where('city', $request->input('city'));
+        }
+
+        if ($request->filled('raw_industry')) {
+            $query->whereRaw(
+                "JSON_UNQUOTE(JSON_EXTRACT(raw_json, '$.canonical.raw_industry')) = ?",
+                [$request->input('raw_industry')]
+            );
+        }
+
+        $sort = (string) $request->input('sort', 'id');
+        $direction = $request->input('direction') === 'asc' ? 'asc' : 'desc';
+        $allowedSorts = [
+            'id',
+            'source_type',
+            'name_norm',
+            'normalized_domain',
+            'pref_city',
+            'fetched_at',
+        ];
+
+        if (!in_array($sort, $allowedSorts, true)) {
+            $sort = 'id';
+        }
+
+        if ($sort === 'pref_city') {
+            $query
+                ->orderBy('pref', $direction)
+                ->orderBy('city', $direction)
+                ->orderBy('id', 'desc');
+        } else {
+            $query
+                ->orderBy($sort, $direction)
+                ->orderBy('id', 'desc');
+        }
+
+        $record = $query->first();
+
+        if (!$record) {
+            return redirect()
+                ->route('source-records.index', array_merge($request->except(['page']), ['link_status' => 'unlinked']))
+                ->with('status', '現在の条件で処理待ちの未リンクsource_recordはない。');
+        }
+
+        return redirect()
+            ->route('source-records.show', $record)
+            ->with('status', '処理キュー：次の未リンクsource_recordを開いた。');
+    }
+
     public function bulkCreateCompanies(Request $request): RedirectResponse
     {
         $validated = $request->validate([
