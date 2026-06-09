@@ -278,7 +278,17 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="10" class="muted">条件に一致するsource_recordsがない。</td>
+                                <td colspan="10" class="empty-state">
+                                    <div class="empty-state-box">
+                                        <div class="empty-icon">SR</div>
+                                        <p class="empty-title">条件に合うsource_recordがない</p>
+                                        <p class="empty-copy">絞り込み条件をゆるめるか、CSV取り込み・手動登録からデータを追加して確認。</p>
+                                        <div class="empty-actions">
+                                            <a class="button small light" href="{{ route('source-records.index') }}">条件クリア</a>
+                                            <a class="button small" href="{{ route('source-records.import') }}">CSV取り込み</a>
+                                        </div>
+                                    </div>
+                                </td>
                             </tr>
                         @endforelse
                         </tbody>

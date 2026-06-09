@@ -415,7 +415,17 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="9" class="muted">まだcompaniesがない。</td>
+                                <td colspan="9" class="empty-state">
+                                    <div class="empty-state-box">
+                                        <div class="empty-icon">CO</div>
+                                        <p class="empty-title">条件に合うcompanyがない</p>
+                                        <p class="empty-copy">source_recordをcompany化するか、絞り込み条件をクリアして全体を確認。</p>
+                                        <div class="empty-actions">
+                                            <a class="button small light" href="{{ route('companies.index') }}">条件クリア</a>
+                                            <a class="button small" href="{{ route('source-records.index', ['link_status' => 'unlinked']) }}">未リンクsourceを見る</a>
+                                        </div>
+                                    </div>
+                                </td>
                             </tr>
                         @endforelse
                         </tbody>

@@ -100,7 +100,11 @@
                             </div>
                         </div>
                     @empty
-                        <p class="muted" style="margin-bottom:0;">未リンクsource_recordは今のところなし。</p>
+                        <div class="empty-state-box" style="padding:18px; margin-top:12px;">
+                            <div class="empty-icon">✓</div>
+                            <p class="empty-title">未リンクsourceはなし</p>
+                            <p class="empty-copy">CSV投入後に未リンクが出たら、ここに次の処理対象が表示される。</p>
+                        </div>
                     @endforelse
                 </div>
 
@@ -119,7 +123,11 @@
                             </div>
                         </div>
                     @empty
-                        <p class="muted" style="margin-bottom:0;">採点待ちcompanyは今のところなし。</p>
+                        <div class="empty-state-box" style="padding:18px; margin-top:12px;">
+                            <div class="empty-icon">✓</div>
+                            <p class="empty-title">採点待ちはなし</p>
+                            <p class="empty-copy">4軸スコアが不足しているcompanyが出ると、ここに表示される。</p>
+                        </div>
                     @endforelse
                 </div>
 
@@ -140,7 +148,11 @@
                             </div>
                         </div>
                     @empty
-                        <p class="muted" style="margin-bottom:0;">推奨候補はまだなし。4軸採点が増えると出てくる。</p>
+                        <div class="empty-state-box" style="padding:18px; margin-top:12px;">
+                            <div class="empty-icon">候</div>
+                            <p class="empty-title">推奨候補はまだなし</p>
+                            <p class="empty-copy">採点済みcompanyが増えると、高機会・低リスク候補がここに出る。</p>
+                        </div>
                     @endforelse
                 </div>
             </div>

@@ -443,8 +443,16 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="8" class="muted">
-                                    条件に合う営業候補がまだない。companyに4軸スコアを入れるか、プリセットを「全active」に変えて確認。
+                                <td colspan="8" class="empty-state">
+                                    <div class="empty-state-box">
+                                        <div class="empty-icon">候</div>
+                                        <p class="empty-title">条件に合う営業候補がない</p>
+                                        <p class="empty-copy">4軸スコアを増やすか、プリセットを「全active」に変えると候補の母集団を確認できる。</p>
+                                        <div class="empty-actions">
+                                            <a class="button small light" href="{{ route('companies.candidates', ['preset' => 'active']) }}">全activeを見る</a>
+                                            <a class="button small" href="{{ route('companies.index', ['score_review' => 'unscored']) }}">未採点companyを見る</a>
+                                        </div>
+                                    </div>
                                 </td>
                             </tr>
                         @endforelse
