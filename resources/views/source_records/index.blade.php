@@ -103,7 +103,52 @@
                     }
                     return $sortDirection === 'asc' ? ' ↑' : ' ↓';
                 };
+
+                $currentPageUnlinked = $sourceRecords->getCollection()->filter(function ($record) {
+                    return ! $record->sourceLink;
+                });
+                $currentPageLinkedCount = $sourceRecords->getCollection()->count() - $currentPageUnlinked->count();
+                $firstUnlinkedId = optional($currentPageUnlinked->first())->id;
+                $activeFilters = collect([
+                    '語句' => request('q'),
+                    'source_type' => request('source_type'),
+                    '都道府県' => request('pref'),
+                    '市区町村' => request('city'),
+                    '業種' => request('raw_industry'),
+                    '状態' => request('link_status') === 'unlinked' ? '未リンク' : (request('link_status') === 'linked' ? 'company化済み' : null),
+                ])->filter(function ($value) {
+                    return $value !== null && $value !== '';
+                });
             @endphp
+
+            <div class="card" style="box-shadow:none; padding:14px 18px; margin:0 0 16px; background:#fff7ed; border:1px solid #fed7aa;">
+                <div class="row">
+                    <div>
+                        <strong>作業セッション</strong>
+                        <p class="muted" style="margin:6px 0 0;">
+                            現在の一覧：{{ number_format($sourceRecords->total()) }}件 / このページ：{{ number_format($sourceRecords->count()) }}件。
+                            このページの未リンク：{{ number_format($currentPageUnlinked->count()) }}件 / company化済み：{{ number_format($currentPageLinkedCount) }}件。
+                        </p>
+                        @if ($activeFilters->isNotEmpty())
+                            <p class="muted" style="margin:8px 0 0;">
+                                絞り込み：
+                                @foreach ($activeFilters as $label => $value)
+                                    <span class="badge gray">{{ $label }}：{{ $value }}</span>
+                                @endforeach
+                            </p>
+                        @else
+                            <p class="muted" style="margin:8px 0 0;">絞り込みなし。まずは都道府県・市区町村・業種で作業範囲を切るのがおすすめ。</p>
+                        @endif
+                    </div>
+                    <div class="actions">
+                        @if ($firstUnlinkedId)
+                            <a class="button" href="{{ route('source-records.show', $firstUnlinkedId) }}">このページの先頭未リンク #{{ $firstUnlinkedId }}</a>
+                        @else
+                            <span class="button light" style="opacity:.55; cursor:not-allowed;">このページは未リンクなし</span>
+                        @endif
+                    </div>
+                </div>
+            </div>
 
             <div class="card" style="box-shadow:none; padding:14px 18px; margin:0 0 16px; background:#f8fafc;">
                 <div class="row">
@@ -163,7 +208,7 @@
                             @php
                                 $isLinked = (bool) $record->sourceLink;
                             @endphp
-                            <tr>
+                            <tr @if (! $isLinked && $record->id === ($firstUnlinkedId ?? null)) style="background:#fffbeb;" @endif>
                                 <td>
                                     <input
                                         type="checkbox"
@@ -191,6 +236,9 @@
                                         <span class="badge green">company化済み</span>
                                     @else
                                         <span class="badge gray">未リンク</span>
+                                        @if ($record->id === ($firstUnlinkedId ?? null))
+                                            <span class="badge" style="background:#f97316; color:#fff;">次に処理</span>
+                                        @endif
                                     @endif
                                 </td>
                                 <td>
