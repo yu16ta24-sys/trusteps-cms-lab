@@ -191,6 +191,18 @@
                             </select>
                         </div>
                         <div class="field" style="margin-bottom:0;">
+                            <label for="score_state">採点状態</label>
+                            <select id="score_state" name="score_state">
+                                <option value="">すべて</option>
+                                <option value="unscored" @selected(request('score_state') === 'unscored')>未採点</option>
+                                <option value="partial" @selected(request('score_state') === 'partial')>一部採点</option>
+                                <option value="fully_scored" @selected(request('score_state') === 'fully_scored')>4軸採点済み</option>
+                                <option value="has_auto_suggestion" @selected(request('score_state') === 'has_auto_suggestion')>自動提案記録あり</option>
+                                <option value="manual_adjusted" @selected(request('score_state') === 'manual_adjusted')>手動補正あり</option>
+                                <option value="suggestion_as_is" @selected(request('score_state') === 'suggestion_as_is')>提案どおり</option>
+                            </select>
+                        </div>
+                        <div class="field" style="margin-bottom:0;">
                             <label for="pref">都道府県</label>
                             <select id="pref" name="pref">
                                 <option value="">すべて</option>
@@ -260,7 +272,14 @@
                                 /
                                 <a href="{{ $sortUrl('risk_score') }}">リスク{{ $sortMark('risk_score') }}</a>
                             </th>
-                            <th><a href="{{ $sortUrl('scored_axes_count') }}">判定{{ $sortMark('scored_axes_count') }}</a></th>
+                            <th>
+                                <a href="{{ $sortUrl('scored_axes_count') }}">判定{{ $sortMark('scored_axes_count') }}</a>
+                                <div class="subtext">
+                                    <a href="{{ $sortUrl('auto_suggestion_count') }}">auto{{ $sortMark('auto_suggestion_count') }}</a>
+                                    /
+                                    <a href="{{ $sortUrl('manual_adjusted_count') }}">補正{{ $sortMark('manual_adjusted_count') }}</a>
+                                </div>
+                            </th>
                             <th><a href="{{ $sortUrl('priority') }}">priority{{ $sortMark('priority') }}</a></th>
                             <th>
                                 <a href="{{ $sortUrl('source_links_count') }}">source{{ $sortMark('source_links_count') }}</a>
@@ -307,6 +326,7 @@
                                 <td>
                                     <span class="judgment {{ $company->candidate_judgment_class }}">{{ $company->candidate_judgment }}</span>
                                     <div class="subtext" style="margin-top:6px;">採点 {{ $company->scored_axes_count }} / 4</div>
+                                    <div class="subtext">auto提案 {{ $company->auto_suggestion_count }} / 補正 {{ $company->manual_adjusted_count }}</div>
                                 </td>
                                 <td>
                                     <span class="score-pill priority">{{ number_format($company->candidate_priority_score, 1) }}</span>

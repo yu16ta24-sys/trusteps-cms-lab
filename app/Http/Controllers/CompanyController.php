@@ -140,6 +140,14 @@ class CompanyController extends Controller
                     ->filter(fn ($value) => $value !== null)
                     ->count();
 
+                $autoSuggestionCount = $scores
+                    ->filter(fn ($score) => $score->auto_suggested_value !== null)
+                    ->count();
+
+                $manualAdjustedCount = $scores
+                    ->filter(fn ($score) => $score->auto_suggested_value !== null && (int) $score->value !== (int) $score->auto_suggested_value)
+                    ->count();
+
                 $opportunityScore = ($hpWeakness ?? 0) + ($selfUpdateFit ?? 0);
                 $riskScore = ($devDifficulty ?? 0) + ($portalDependence ?? 0);
 
@@ -152,6 +160,8 @@ class CompanyController extends Controller
                 $company->setAttribute('opportunity_score', $opportunityScore);
                 $company->setAttribute('risk_score', $riskScore);
                 $company->setAttribute('scored_axes_count', $scoredAxesCount);
+                $company->setAttribute('auto_suggestion_count', $autoSuggestionCount);
+                $company->setAttribute('manual_adjusted_count', $manualAdjustedCount);
                 $company->setAttribute('candidate_judgment', $judgment);
                 $company->setAttribute('candidate_judgment_class', $judgmentClass);
                 $company->setAttribute('candidate_priority_score', $priorityScore);
@@ -176,6 +186,21 @@ class CompanyController extends Controller
             $companies = $companies->filter(fn ($company) => $company->scored_axes_count < 4);
         } elseif ($preset === 'all_active') {
             // no additional filter
+        }
+
+        $scoreState = (string) $request->input('score_state', '');
+        if ($scoreState === 'unscored') {
+            $companies = $companies->filter(fn ($company) => $company->scored_axes_count === 0);
+        } elseif ($scoreState === 'partial') {
+            $companies = $companies->filter(fn ($company) => $company->scored_axes_count > 0 && $company->scored_axes_count < 4);
+        } elseif ($scoreState === 'fully_scored') {
+            $companies = $companies->filter(fn ($company) => $company->scored_axes_count === 4);
+        } elseif ($scoreState === 'has_auto_suggestion') {
+            $companies = $companies->filter(fn ($company) => $company->auto_suggestion_count > 0);
+        } elseif ($scoreState === 'manual_adjusted') {
+            $companies = $companies->filter(fn ($company) => $company->manual_adjusted_count > 0);
+        } elseif ($scoreState === 'suggestion_as_is') {
+            $companies = $companies->filter(fn ($company) => $company->auto_suggestion_count > 0 && $company->manual_adjusted_count === 0);
         }
 
         $selectedPref = trim((string) $request->input('pref', ''));
@@ -224,6 +249,8 @@ class CompanyController extends Controller
             'domains_count',
             'kill_flags_count',
             'domain',
+            'auto_suggestion_count',
+            'manual_adjusted_count',
         ];
 
         if (!in_array($sort, $allowedSorts, true)) {
@@ -245,6 +272,8 @@ class CompanyController extends Controller
                         'domains_count' => $company->domains_count,
                         'kill_flags_count' => $company->kill_flags_count,
                         'domain' => $company->primaryDomain?->normalized_domain ?? '',
+                        'auto_suggestion_count' => $company->auto_suggestion_count,
+                        'manual_adjusted_count' => $company->manual_adjusted_count,
                         default => $company->candidate_priority_score,
                     };
                 };
@@ -301,6 +330,7 @@ class CompanyController extends Controller
             'preset' => $preset,
             'sort' => $sort,
             'direction' => $direction,
+            'scoreState' => $scoreState,
         ]);
     }
 
