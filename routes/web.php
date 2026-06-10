@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DiscoveryLabController;
+use App\Http\Controllers\IndustryScoreController;
 use App\Http\Controllers\SourceRecordController;
 use Illuminate\Support\Facades\Route;
 
@@ -27,6 +28,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/discovery/lab/preview', [DiscoveryLabController::class, 'preview'])->name('discovery.lab.preview');
     Route::post('/discovery/lab/store', [DiscoveryLabController::class, 'store'])->name('discovery.lab.store');
     Route::post('/discovery/lab/export-csv', [DiscoveryLabController::class, 'exportCsv'])->name('discovery.lab.export-csv');
+
+
+    Route::get('/industries/scores', [IndustryScoreController::class, 'index'])->name('industries.scores.index');
+    Route::get('/industries/scores/{industry}/edit', [IndustryScoreController::class, 'edit'])->name('industries.scores.edit');
+    Route::put('/industries/scores/{industry}', [IndustryScoreController::class, 'update'])->name('industries.scores.update');
 
     Route::get('/source-records', [SourceRecordController::class, 'index'])->name('source-records.index');
     Route::get('/source-records/create', [SourceRecordController::class, 'create'])->name('source-records.create');

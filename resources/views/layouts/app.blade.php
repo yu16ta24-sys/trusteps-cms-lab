@@ -837,6 +837,9 @@
                 <a class="nav-link {{ request()->routeIs('discovery.*') ? 'active' : '' }}" href="{{ route('discovery.lab') }}">
                     候補収集ラボ
                 </a>
+                <a class="nav-link {{ request()->routeIs('industries.scores.*') ? 'active' : '' }}" href="{{ route('industries.scores.index') }}">
+                    業界スコア
+                </a>
                 <a class="nav-link {{ request()->routeIs('companies.index') || request()->routeIs('companies.show') || request()->routeIs('companies.merge-form') ? 'active' : '' }}" href="{{ route('companies.index') }}">
                     companies
                 </a>
