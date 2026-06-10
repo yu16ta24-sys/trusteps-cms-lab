@@ -109,7 +109,7 @@ class DiscoveryLabController extends Controller
             'raw_industry' => ['nullable', 'string', 'max:100'],
             'memo' => ['nullable', 'string', 'max:2000'],
             'follow_detail_pages' => ['nullable', 'boolean'],
-            'detail_page_limit' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'detail_page_limit' => ['nullable', 'integer', 'min:1', 'max:30'],
         ]);
 
         $directoryUrl = trim($validated['directory_url']);
@@ -299,7 +299,7 @@ class DiscoveryLabController extends Controller
             }
 
             fclose($handle);
-        }, 'discovery_lab_candidates_v0.18.3.2.csv', [
+        }, 'discovery_lab_candidates_v0.18.3.1.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
@@ -513,7 +513,7 @@ class DiscoveryLabController extends Controller
             'detail_page_title' => $row['detail_page_title'] ?? null,
             'detail_parent_text' => $row['detail_parent_text'] ?? null,
             'detail_parent_context' => $row['detail_parent_context'] ?? null,
-            'created_from' => 'discovery_lab v0.18.3.2 ' . $inputType,
+            'created_from' => 'discovery_lab v0.18.3.1 ' . $inputType,
             'canonical' => [
                 'company_name' => $displayName,
                 'source_url' => $row['normalized_url'] ?? null,
@@ -540,7 +540,7 @@ class DiscoveryLabController extends Controller
     private function csvMemo(array $row, array $meta): string
     {
         $parts = [
-            'discovery_lab_v0.18.3.2',
+            'discovery_lab_v0.18.3.1',
             'classification=' . ($row['classification'] ?? 'unknown'),
             'confidence=' . ($row['confidence'] ?? 0),
         ];
