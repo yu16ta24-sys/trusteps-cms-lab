@@ -5,6 +5,7 @@ use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DiscoveryLabController;
 use App\Http\Controllers\IndustryScoreController;
+use App\Http\Controllers\MvpResetController;
 use App\Http\Controllers\SourceRecordController;
 use Illuminate\Support\Facades\Route;
 
@@ -34,6 +35,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/industries/scores', [IndustryScoreController::class, 'index'])->name('industries.scores.index');
     Route::get('/industries/scores/{industry}/edit', [IndustryScoreController::class, 'edit'])->name('industries.scores.edit');
     Route::put('/industries/scores/{industry}', [IndustryScoreController::class, 'update'])->name('industries.scores.update');
+
+    Route::get('/system/reset-mvp-data', [MvpResetController::class, 'show'])->name('system.reset-mvp-data.index');
+    Route::post('/system/reset-mvp-data/preview', [MvpResetController::class, 'preview'])->name('system.reset-mvp-data.preview');
+    Route::post('/system/reset-mvp-data/confirm', [MvpResetController::class, 'confirm'])->name('system.reset-mvp-data.confirm');
+    Route::post('/system/reset-mvp-data/destroy', [MvpResetController::class, 'destroy'])->name('system.reset-mvp-data.destroy');
 
     Route::get('/source-records', [SourceRecordController::class, 'index'])->name('source-records.index');
     Route::get('/source-records/create', [SourceRecordController::class, 'create'])->name('source-records.create');

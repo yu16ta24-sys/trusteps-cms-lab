@@ -840,6 +840,9 @@
                 <a class="nav-link {{ request()->routeIs('industries.scores.*') ? 'active' : '' }}" href="{{ route('industries.scores.index') }}">
                     業界スコア
                 </a>
+                <a class="nav-link {{ request()->routeIs('system.reset-mvp-data.*') ? 'active' : '' }}" href="{{ route('system.reset-mvp-data.index') }}">
+                    MVPリセット
+                </a>
                 <a class="nav-link {{ request()->routeIs('companies.index') || request()->routeIs('companies.show') || request()->routeIs('companies.merge-form') ? 'active' : '' }}" href="{{ route('companies.index') }}">
                     companies
                 </a>
