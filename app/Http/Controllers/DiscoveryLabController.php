@@ -138,14 +138,22 @@ class DiscoveryLabController extends Controller
             'created_at' => now()->timestamp,
             'fetch_warnings' => $extraction['warnings'] ?? [],
             'detail_stats' => $extraction['detail_stats'] ?? null,
+            'filter_stats' => $extraction['filter_stats'] ?? [],
             'follow_detail_pages' => $request->boolean('follow_detail_pages'),
         ];
 
         $classified = [];
+        $sourceDomain = $this->hostFromUrl($meta['source_page_url'] ?? null);
+        $directoryFilterStats = [
+            'source_domain_hidden' => 0,
+            'existing_domain_hidden' => 0,
+            'preview_duplicate_domain_hidden' => 0,
+        ];
+        $seenPrimaryDomains = [];
+
         foreach (($extraction['links'] ?? []) as $index => $link) {
             $row = $this->classifier->classify($link['url'] ?? '');
             $row = $this->applyDirectoryCandidateMeta($row, $link);
-            $row['row_id'] = count($classified);
             $row['line_number'] = $index + 1;
             $row['link_text'] = $link['text'] ?? '';
             $row['link_context'] = $link['context'] ?? '';
@@ -158,6 +166,12 @@ class DiscoveryLabController extends Controller
             $row['discovery_method'] = !empty($link['detail_page_url']) ? 'directory_detail_extract' : 'directory_link_extract';
             $row['duplicate_signals'] = $this->duplicateSignals($row['normalized_url'], $row['normalized_domain']);
             $row['fanout_count'] = $row['normalized_domain'] ? SourceRecord::query()->where('normalized_domain', $row['normalized_domain'])->count() : 0;
+
+            if ($this->shouldHideDirectoryCandidate($row, $sourceDomain, $seenPrimaryDomains, $directoryFilterStats)) {
+                continue;
+            }
+
+            $row['row_id'] = count($classified);
             $row['high_fanout_warning'] = $this->hasHighFanoutWarning($row['normalized_domain'], $classified, $row['fanout_count']);
 
             if ($row['high_fanout_warning']) {
@@ -168,6 +182,8 @@ class DiscoveryLabController extends Controller
             $row['default_checked'] = $this->shouldDefaultCheck($row);
             $classified[] = $row;
         }
+
+        $meta['filter_stats'] = array_merge($meta['filter_stats'] ?? [], $directoryFilterStats);
 
         $token = (string) Str::uuid();
         $preview = [
@@ -283,7 +299,7 @@ class DiscoveryLabController extends Controller
             }
 
             fclose($handle);
-        }, 'discovery_lab_candidates_v0.18.3.csv', [
+        }, 'discovery_lab_candidates_v0.18.3.1.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
@@ -332,6 +348,69 @@ class DiscoveryLabController extends Controller
             ->count() + 1;
 
         return ($existingCount + $sameInPreview) >= (int) config('discovery.high_fanout_threshold', 5);
+    }
+
+    private function shouldHideDirectoryCandidate(array $row, ?string $sourceDomain, array &$seenPrimaryDomains, array &$filterStats): bool
+    {
+        $domain = $row['normalized_domain'] ?? null;
+
+        if ($domain && $sourceDomain && $domain === $sourceDomain) {
+            $filterStats['source_domain_hidden']++;
+            return true;
+        }
+
+        if (!$this->isPrimaryDirectoryCandidate($row)) {
+            return false;
+        }
+
+        if ($domain && (int) ($row['fanout_count'] ?? 0) > 0) {
+            $filterStats['existing_domain_hidden']++;
+            return true;
+        }
+
+        if ($domain) {
+            $dedupeKey = $this->directoryCandidateDomainKey($domain, $row['normalized_url'] ?? null, $row['classification'] ?? null);
+            if (isset($seenPrimaryDomains[$dedupeKey])) {
+                $filterStats['preview_duplicate_domain_hidden']++;
+                return true;
+            }
+            $seenPrimaryDomains[$dedupeKey] = true;
+        }
+
+        return false;
+    }
+
+    private function isPrimaryDirectoryCandidate(array $row): bool
+    {
+        return in_array($row['classification'] ?? null, [
+            'official_site_candidate',
+            'builder_site_candidate',
+        ], true);
+    }
+
+    private function directoryCandidateDomainKey(string $domain, ?string $url, ?string $classification): string
+    {
+        if (in_array($classification, ['sns_candidate', 'portal_candidate', 'map_candidate', 'ec_candidate'], true) && $url) {
+            $path = trim((string) parse_url($url, PHP_URL_PATH), '/');
+            $firstSegment = explode('/', $path)[0] ?? '';
+            return $firstSegment !== '' ? $domain . '/' . mb_strtolower($firstSegment) : $domain;
+        }
+
+        return $domain;
+    }
+
+    private function hostFromUrl(?string $url): ?string
+    {
+        if (!$url) {
+            return null;
+        }
+
+        $host = parse_url($url, PHP_URL_HOST);
+        if (!$host) {
+            return null;
+        }
+
+        return preg_replace('/^www\./', '', strtolower($host));
     }
 
     private function shouldDefaultCheck(array $row): bool
@@ -428,12 +507,13 @@ class DiscoveryLabController extends Controller
             'memo' => $meta['memo'] ?? null,
             'fetch_warnings' => $meta['fetch_warnings'] ?? [],
             'detail_stats' => $meta['detail_stats'] ?? null,
+            'filter_stats' => $meta['filter_stats'] ?? [],
             'candidate_type' => $row['candidate_type'] ?? null,
             'detail_page_url' => $row['detail_page_url'] ?? null,
             'detail_page_title' => $row['detail_page_title'] ?? null,
             'detail_parent_text' => $row['detail_parent_text'] ?? null,
             'detail_parent_context' => $row['detail_parent_context'] ?? null,
-            'created_from' => 'discovery_lab v0.18.3 ' . $inputType,
+            'created_from' => 'discovery_lab v0.18.3.1 ' . $inputType,
             'canonical' => [
                 'company_name' => $displayName,
                 'source_url' => $row['normalized_url'] ?? null,
@@ -460,7 +540,7 @@ class DiscoveryLabController extends Controller
     private function csvMemo(array $row, array $meta): string
     {
         $parts = [
-            'discovery_lab_v0.18.3',
+            'discovery_lab_v0.18.3.1',
             'classification=' . ($row['classification'] ?? 'unknown'),
             'confidence=' . ($row['confidence'] ?? 0),
         ];

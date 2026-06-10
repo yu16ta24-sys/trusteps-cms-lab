@@ -8,7 +8,7 @@
                     <p class="page-kicker">Phase1 / Seed Collector</p>
                     <h1 class="page-title">候補収集ラボ</h1>
                     <p class="page-subtitle">
-                        v0.18.3は名簿URL抽出に「事業者詳細ページ1階層掘り」を追加。Googleマップスクレイピング・company自動作成は行わず、source_recordsへ安全に流す入口。
+                        v0.18.3.1は名簿URL抽出のノイズを削減。同一ドメイン・名簿元ドメイン・既存DB重複を候補から外し、保存対象に出すURLを絞る。
                     </p>
                 </div>
                 <div class="actions">
@@ -30,9 +30,9 @@
             @endif
 
             <details class="help-panel" style="margin-top:20px;" open>
-                <summary>v0.18.3でやること / やらないこと</summary>
+                <summary>v0.18.3.1でやること / やらないこと</summary>
                 <div class="help-body">
-                    <div>やる：URL貼り付け、名簿URLからのaタグ抽出、事業者詳細ページ1階層掘り、ドメイン正規化、URL分類、重複警告、high-fanout警告、保存前プレビュー、CSV出力、source_records保存。</div>
+                    <div>やる：URL貼り付け、名簿URLからのaタグ抽出、事業者詳細ページ1階層掘り、名簿元と同じドメインの非表示、同一候補ドメインの集約、既存DB登録済みドメインの非表示、URL分類、保存前プレビュー、CSV出力、source_records保存。</div>
                     <div>やらない：Googleマップ自動探索、Places API、Web検索API、HP解析、company自動作成。名簿URL抽出では対象ページと詳細候補ページのみ低頻度でHTTP取得する。</div>
                 </div>
             </details>
@@ -44,7 +44,7 @@
                     <div>
                         <p class="section-label">directory link extract</p>
                         <h2 style="margin:0 0 8px; font-size:20px;">名簿URLからリンク抽出</h2>
-                        <p class="muted" style="margin:0; font-size:13px;">商工会・自治体・業界団体などの名簿ページURLを1件だけ取得し、外部リンクと事業者詳細ページ候補を抽出する。必要に応じて詳細ページを1階層だけ掘り、詳細ページ内の公式HP候補を拾う。Googleマップは使わない。</p>
+                        <p class="muted" style="margin:0; font-size:13px;">商工会・自治体・業界団体などの名簿ページURLを1件だけ取得し、外部リンクを抽出する。事業者詳細ページ候補は候補表には出さず、詳細掘り下げ用の中間ページとして裏側で使う。Googleマップは使わない。</p>
                     </div>
                     <span class="badge blue">HTTP取得あり</span>
                 </div>
@@ -193,6 +193,20 @@
                             <span class="badge gray">取得：{{ number_format($detailStats['fetched'] ?? 0) }}</span>
                             <span class="badge gray">詳細内外部リンク：{{ number_format($detailStats['external_links_found'] ?? 0) }}</span>
                             <span class="badge gray">上限：{{ number_format($detailStats['limit'] ?? 0) }}</span>
+                        </div>
+                    @endif
+
+
+                    @if (!empty($meta['filter_stats']))
+                        @php($filterStats = $meta['filter_stats'])
+                        @php($detailStats = $meta['detail_stats'] ?? [])
+                        <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px;">
+                            <span class="badge blue">候補ノイズ削減ON</span>
+                            <span class="badge gray">名簿元ドメイン非表示：{{ number_format($filterStats['source_domain_hidden'] ?? 0) }}</span>
+                            <span class="badge gray">同一候補ドメイン非表示：{{ number_format(($filterStats['duplicate_domain_hidden'] ?? 0) + ($filterStats['preview_duplicate_domain_hidden'] ?? 0)) }}</span>
+                            <span class="badge gray">同一URL非表示：{{ number_format($filterStats['duplicate_url_hidden'] ?? 0) }}</span>
+                            <span class="badge gray">既存DBドメイン非表示：{{ number_format($filterStats['existing_domain_hidden'] ?? 0) }}</span>
+                            <span class="badge gray">詳細候補は裏側のみ：{{ number_format($detailStats['hidden_from_final_candidates'] ?? 0) }}</span>
                         </div>
                     @endif
                 </div>

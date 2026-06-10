@@ -6,7 +6,7 @@ return [
     'directory_link_limit' => 200,
     'directory_timeout' => 10,
     'directory_connect_timeout' => 5,
-    'directory_user_agent' => 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.3',
+    'directory_user_agent' => 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.3.1',
     'directory_detail_page_limit' => 20,
     'directory_detail_page_hard_limit' => 30,
 

@@ -50,9 +50,11 @@ class DirectoryLinkExtractor
         ));
 
         $links = $this->primaryLinks($parsed['links']);
+        $detailCandidateCount = collect($parsed['links'])->where('candidate_type', 'directory_detail_candidate')->count();
         $detailStats = [
             'enabled' => $followDetailPages,
-            'candidates' => collect($parsed['links'])->where('candidate_type', 'directory_detail_candidate')->count(),
+            'candidates' => $detailCandidateCount,
+            'hidden_from_final_candidates' => $detailCandidateCount,
             'fetched' => 0,
             'external_links_found' => 0,
             'limit' => $detailLimit,
@@ -66,7 +68,12 @@ class DirectoryLinkExtractor
             $detailStats['external_links_found'] = count($detailResult['links']);
         }
 
-        $links = $this->dedupeAndLimit($links, $warnings);
+        $filterStats = [
+            'duplicate_url_hidden' => 0,
+            'duplicate_domain_hidden' => 0,
+            'internal_hidden' => 0,
+        ];
+        $links = $this->dedupeAndLimit($links, $warnings, $filterStats);
 
         if (empty($links)) {
             $warnings[] = '候補リンクを抽出できなかった。JS描画ページ、PDF、または事業者詳細ページの構造が未対応の可能性。';
@@ -79,6 +86,7 @@ class DirectoryLinkExtractor
             'links' => $links,
             'warnings' => array_values(array_unique($warnings)),
             'detail_stats' => $detailStats,
+            'filter_stats' => $filterStats,
         ];
     }
 
@@ -86,7 +94,7 @@ class DirectoryLinkExtractor
     {
         try {
             $response = Http::withHeaders([
-                'User-Agent' => (string) config('discovery.directory_user_agent', 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.3'),
+                'User-Agent' => (string) config('discovery.directory_user_agent', 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.3.1'),
                 'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             ])
                 ->timeout((int) config('discovery.directory_timeout', 10))
@@ -155,7 +163,7 @@ class DirectoryLinkExtractor
 
         try {
             $response = Http::withHeaders([
-                'User-Agent' => (string) config('discovery.directory_user_agent', 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.3'),
+                'User-Agent' => (string) config('discovery.directory_user_agent', 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.3.1'),
             ])
                 ->timeout(5)
                 ->connectTimeout(3)
@@ -296,7 +304,7 @@ class DirectoryLinkExtractor
     private function primaryLinks(array $links): array
     {
         return collect($links)
-            ->filter(fn (array $link) => in_array($link['candidate_type'] ?? '', ['external_link', 'directory_detail_candidate'], true))
+            ->filter(fn (array $link) => ($link['candidate_type'] ?? '') === 'external_link')
             ->values()
             ->all();
     }
@@ -352,9 +360,19 @@ class DirectoryLinkExtractor
         ];
     }
 
-    private function dedupeAndLimit(array $links, array &$warnings): array
+    private function dedupeAndLimit(array $links, array &$warnings, array &$filterStats): array
     {
-        $seen = [];
+        usort($links, function (array $a, array $b) {
+            $rank = [
+                'detail_external_link' => 0,
+                'external_link' => 1,
+                'directory_detail_candidate' => 2,
+            ];
+            return ($rank[$a['candidate_type'] ?? ''] ?? 9) <=> ($rank[$b['candidate_type'] ?? ''] ?? 9);
+        });
+
+        $seenUrls = [];
+        $seenDomains = [];
         $deduped = [];
 
         foreach ($links as $link) {
@@ -362,11 +380,29 @@ class DirectoryLinkExtractor
             if ($url === '') {
                 continue;
             }
-            $key = strtolower(rtrim($url, '/'));
-            if (isset($seen[$key])) {
+
+            if (!empty($link['is_internal'])) {
+                $filterStats['internal_hidden']++;
                 continue;
             }
-            $seen[$key] = true;
+
+            $urlKey = strtolower(rtrim($url, '/'));
+            if (isset($seenUrls[$urlKey])) {
+                $filterStats['duplicate_url_hidden']++;
+                continue;
+            }
+
+            $domainKey = $this->candidateDomainDedupeKey($url);
+            if ($domainKey !== null && isset($seenDomains[$domainKey])) {
+                $filterStats['duplicate_domain_hidden']++;
+                continue;
+            }
+
+            $seenUrls[$urlKey] = true;
+            if ($domainKey !== null) {
+                $seenDomains[$domainKey] = true;
+            }
+
             $deduped[] = $link;
         }
 
@@ -376,16 +412,45 @@ class DirectoryLinkExtractor
             $deduped = array_slice($deduped, 0, $limit);
         }
 
-        usort($deduped, function (array $a, array $b) {
-            $rank = [
-                'detail_external_link' => 0,
-                'external_link' => 1,
-                'directory_detail_candidate' => 2,
-            ];
-            return ($rank[$a['candidate_type'] ?? ''] ?? 9) <=> ($rank[$b['candidate_type'] ?? ''] ?? 9);
-        });
+        if (($filterStats['duplicate_domain_hidden'] ?? 0) > 0) {
+            $warnings[] = '同一候補ドメインの重複を非表示にした: ' . $filterStats['duplicate_domain_hidden'] . '件';
+        }
 
         return $deduped;
+    }
+
+    private function candidateDomainDedupeKey(string $url): ?string
+    {
+        $host = $this->host($url);
+        if (!$host) {
+            return null;
+        }
+
+        if ($this->isSharedProfileHost($host)) {
+            $path = trim((string) parse_url($url, PHP_URL_PATH), '/');
+            $firstSegment = explode('/', $path)[0] ?? '';
+
+            return $firstSegment !== '' ? $host . '/' . mb_strtolower($firstSegment) : $host;
+        }
+
+        return $host;
+    }
+
+    private function isSharedProfileHost(string $host): bool
+    {
+        foreach (array_merge(
+            (array) config('discovery.sns_domains', []),
+            (array) config('discovery.portal_domains', []),
+            (array) config('discovery.map_domains', []),
+            (array) config('discovery.ec_domains', [])
+        ) as $sharedHost) {
+            $sharedHost = preg_replace('/^www\./', '', strtolower((string) $sharedHost));
+            if ($sharedHost !== '' && ($host === $sharedHost || str_ends_with($host, '.' . $sharedHost))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function candidateType(string $url, string $text, string $context, bool $isInternal, bool $fromDetailPage): string
