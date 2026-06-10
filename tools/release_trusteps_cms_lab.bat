@@ -189,9 +189,9 @@ if "%MODE%"=="" set MODE=3
 echo.
 echo Selected mode: %MODE%
 echo.
-set /p CONFIRM=Run? [Y/N]: 
+set /p CONFIRM=Run? [Y/N, Enter=Y]: 
 
-if /I not "%CONFIRM%"=="Y" (
+if /I "%CONFIRM%"=="N" (
   echo.
   echo Cancelled.
   pause

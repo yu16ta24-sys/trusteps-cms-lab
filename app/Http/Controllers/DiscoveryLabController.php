@@ -77,6 +77,7 @@ class DiscoveryLabController extends Controller
                 $row['warnings'] = array_values(array_unique($row['warnings']));
             }
 
+            $row = $this->enrichCandidateQuality($row);
             $row['default_checked'] = $this->shouldDefaultCheck($row);
             $classified[] = $row;
         }
@@ -140,6 +141,8 @@ class DiscoveryLabController extends Controller
             'detail_stats' => $extraction['detail_stats'] ?? null,
             'filter_stats' => $extraction['filter_stats'] ?? [],
             'follow_detail_pages' => $request->boolean('follow_detail_pages'),
+            'excluded_links' => [],
+            'excluded_links_total' => 0,
         ];
 
         $classified = [];
@@ -150,6 +153,7 @@ class DiscoveryLabController extends Controller
             'preview_duplicate_domain_hidden' => 0,
         ];
         $seenPrimaryDomains = [];
+        $excludedLinks = $extraction['excluded_links'] ?? [];
 
         foreach (($extraction['links'] ?? []) as $index => $link) {
             $row = $this->classifier->classify($link['url'] ?? '');
@@ -167,7 +171,7 @@ class DiscoveryLabController extends Controller
             $row['duplicate_signals'] = $this->duplicateSignals($row['normalized_url'], $row['normalized_domain']);
             $row['fanout_count'] = $row['normalized_domain'] ? SourceRecord::query()->where('normalized_domain', $row['normalized_domain'])->count() : 0;
 
-            if ($this->shouldHideDirectoryCandidate($row, $sourceDomain, $seenPrimaryDomains, $directoryFilterStats)) {
+            if ($this->shouldHideDirectoryCandidate($row, $sourceDomain, $seenPrimaryDomains, $directoryFilterStats, $excludedLinks)) {
                 continue;
             }
 
@@ -179,11 +183,14 @@ class DiscoveryLabController extends Controller
                 $row['warnings'] = array_values(array_unique($row['warnings']));
             }
 
+            $row = $this->enrichCandidateQuality($row);
             $row['default_checked'] = $this->shouldDefaultCheck($row);
             $classified[] = $row;
         }
 
         $meta['filter_stats'] = array_merge($meta['filter_stats'] ?? [], $directoryFilterStats);
+        $meta['excluded_links_total'] = count($excludedLinks);
+        $meta['excluded_links'] = array_slice($excludedLinks, 0, 80);
 
         $token = (string) Str::uuid();
         $preview = [
@@ -299,7 +306,7 @@ class DiscoveryLabController extends Controller
             }
 
             fclose($handle);
-        }, 'discovery_lab_candidates_v0.18.3.6.csv', [
+        }, 'discovery_lab_candidates_v0.18.5.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
@@ -350,12 +357,13 @@ class DiscoveryLabController extends Controller
         return ($existingCount + $sameInPreview) >= (int) config('discovery.high_fanout_threshold', 5);
     }
 
-    private function shouldHideDirectoryCandidate(array $row, ?string $sourceDomain, array &$seenPrimaryDomains, array &$filterStats): bool
+    private function shouldHideDirectoryCandidate(array $row, ?string $sourceDomain, array &$seenPrimaryDomains, array &$filterStats, array &$excludedLinks): bool
     {
         $domain = $row['normalized_domain'] ?? null;
 
         if ($domain && $sourceDomain && $domain === $sourceDomain) {
             $filterStats['source_domain_hidden']++;
+            $this->addExcludedLink($excludedLinks, $row, '名簿元ドメインと同じ内部リンクのため候補から除外');
             return true;
         }
 
@@ -365,6 +373,7 @@ class DiscoveryLabController extends Controller
 
         if ($domain && (int) ($row['fanout_count'] ?? 0) > 0) {
             $filterStats['existing_domain_hidden']++;
+            $this->addExcludedLink($excludedLinks, $row, '既存source_recordsに同一ドメインがあるため候補から除外');
             return true;
         }
 
@@ -372,6 +381,7 @@ class DiscoveryLabController extends Controller
             $dedupeKey = $this->directoryCandidateDomainKey($domain, $row['normalized_url'] ?? null, $row['classification'] ?? null);
             if (isset($seenPrimaryDomains[$dedupeKey])) {
                 $filterStats['preview_duplicate_domain_hidden']++;
+                $this->addExcludedLink($excludedLinks, $row, '同一プレビュー内で同じ候補ドメインが先に出ているため除外');
                 return true;
             }
             $seenPrimaryDomains[$dedupeKey] = true;
@@ -419,10 +429,114 @@ class DiscoveryLabController extends Controller
             return false;
         }
 
+        if (!empty($row['duplicate_signals']) || !empty($row['high_fanout_warning'])) {
+            return false;
+        }
+
         return in_array($row['classification'], [
             'official_site_candidate',
             'builder_site_candidate',
         ], true);
+    }
+
+
+    private function addExcludedLink(array &$excludedLinks, array $row, string $reason): void
+    {
+        if (count($excludedLinks) >= 200) {
+            return;
+        }
+
+        $excludedLinks[] = [
+            'url' => $row['normalized_url'] ?? $row['raw_url'] ?? null,
+            'domain' => $row['normalized_domain'] ?? null,
+            'text' => $row['link_text'] ?? null,
+            'classification' => $row['classification'] ?? 'unknown',
+            'label' => $row['classification_label'] ?? '不明',
+            'reason' => $reason,
+            'detail_page_url' => $row['detail_page_url'] ?? null,
+        ];
+    }
+
+    private function enrichCandidateQuality(array $row): array
+    {
+        [$groupKey, $groupLabel] = $this->candidateGroup($row['classification'] ?? 'unknown');
+        $row['candidate_group'] = $groupKey;
+        $row['candidate_group_label'] = $groupLabel;
+
+        $classification = $row['classification'] ?? 'unknown';
+        $fromDetail = !empty($row['detail_page_url']);
+        $hasDuplicate = !empty($row['duplicate_signals']);
+        $hasFanout = !empty($row['high_fanout_warning']);
+
+        if (empty($row['is_valid_url'])) {
+            $row['confidence_rank'] = 'invalid';
+            $row['confidence_label'] = '無効';
+            $row['confidence_reason'] = 'URLとして正規化できないため保存不可';
+            $row['recommendation_label'] = '保存不可';
+            $row['recommendation_reason'] = '無効URL';
+            return $row;
+        }
+
+        if ($classification === 'official_site_candidate' && $fromDetail) {
+            $row['confidence_rank'] = 'high';
+            $row['confidence_label'] = '高';
+            $row['confidence_reason'] = '名簿の事業者詳細ページ内で発見した外部リンク';
+            $row['recommendation_label'] = '保存推奨';
+            $row['recommendation_reason'] = '公式HP候補かつ詳細ページ由来';
+        } elseif ($classification === 'official_site_candidate') {
+            $row['confidence_rank'] = 'medium';
+            $row['confidence_label'] = '中';
+            $row['confidence_reason'] = '名簿一覧または手動投入に含まれていた外部の独自ドメイン候補';
+            $row['recommendation_label'] = '保存推奨';
+            $row['recommendation_reason'] = '公式HP候補';
+        } elseif ($classification === 'builder_site_candidate') {
+            $row['confidence_rank'] = 'medium';
+            $row['confidence_label'] = '中';
+            $row['confidence_reason'] = $fromDetail ? '詳細ページ内で発見したビルダー系サイト' : 'Wix/Jimdo等のビルダー系サイト';
+            $row['recommendation_label'] = '保存推奨';
+            $row['recommendation_reason'] = '公式HP代替として使われている可能性がある';
+        } elseif (in_array($classification, ['sns_candidate', 'ec_candidate'], true)) {
+            $row['confidence_rank'] = 'low';
+            $row['confidence_label'] = '低';
+            $row['confidence_reason'] = 'SNS/ECは公式HPそのものではないため補助情報扱い';
+            $row['recommendation_label'] = '必要時のみ';
+            $row['recommendation_reason'] = '公式HPがない場合の補助候補';
+        } elseif (in_array($classification, ['portal_candidate', 'map_candidate', 'pdf_candidate'], true)) {
+            $row['confidence_rank'] = 'low';
+            $row['confidence_label'] = '低';
+            $row['confidence_reason'] = 'ポータル/Map/PDFは営業候補URLとしては低優先';
+            $row['recommendation_label'] = '原則保存しない';
+            $row['recommendation_reason'] = '公式HP候補ではない';
+        } else {
+            $row['confidence_rank'] = 'low';
+            $row['confidence_label'] = '低';
+            $row['confidence_reason'] = '分類不能のため手動確認が必要';
+            $row['recommendation_label'] = '手動確認';
+            $row['recommendation_reason'] = '自動分類の根拠が弱い';
+        }
+
+        if ($hasDuplicate || $hasFanout) {
+            $row['confidence_rank'] = 'review';
+            $row['confidence_label'] = '要確認';
+            $row['recommendation_label'] = '保存前確認';
+            $row['recommendation_reason'] = $hasDuplicate ? '既存データとの重複シグナルあり' : '同一ドメイン候補が多い';
+        }
+
+        return $row;
+    }
+
+    private function candidateGroup(string $classification): array
+    {
+        return match ($classification) {
+            'official_site_candidate' => ['official', '公式候補'],
+            'builder_site_candidate' => ['builder', 'ビルダー系'],
+            'sns_candidate' => ['sns', 'SNS'],
+            'ec_candidate' => ['ec', 'EC・モール'],
+            'portal_candidate' => ['portal', 'ポータル'],
+            'map_candidate' => ['map', 'Map'],
+            'pdf_candidate' => ['pdf', 'PDF'],
+            default => ['other', 'その他・不明'],
+        };
     }
 
     private function applyDirectoryCandidateMeta(array $row, array $link): array
@@ -496,7 +610,15 @@ class DiscoveryLabController extends Controller
             'normalized_domain' => $row['normalized_domain'] ?? null,
             'url_classification' => $row['classification'] ?? 'unknown',
             'classification_label' => $row['classification_label'] ?? '不明',
+            'candidate_group' => $row['candidate_group'] ?? 'other',
+            'candidate_group_label' => $row['candidate_group_label'] ?? 'その他・不明',
             'confidence' => $row['confidence'] ?? 0,
+            'confidence_rank' => $row['confidence_rank'] ?? 'low',
+            'confidence_label' => $row['confidence_label'] ?? '低',
+            'confidence_reason' => $row['confidence_reason'] ?? null,
+            'recommendation_label' => $row['recommendation_label'] ?? null,
+            'recommendation_reason' => $row['recommendation_reason'] ?? null,
+            'selected_by_default' => $row['default_checked'] ?? false,
             'warnings' => $row['warnings'] ?? [],
             'duplicate_signals' => $row['duplicate_signals'] ?? [],
             'high_fanout_warning' => $row['high_fanout_warning'] ?? false,
@@ -513,7 +635,7 @@ class DiscoveryLabController extends Controller
             'detail_page_title' => $row['detail_page_title'] ?? null,
             'detail_parent_text' => $row['detail_parent_text'] ?? null,
             'detail_parent_context' => $row['detail_parent_context'] ?? null,
-            'created_from' => 'discovery_lab v0.18.3.6 ' . $inputType,
+            'created_from' => 'discovery_lab v0.18.5 ' . $inputType,
             'canonical' => [
                 'company_name' => $displayName,
                 'source_url' => $row['normalized_url'] ?? null,
@@ -540,9 +662,11 @@ class DiscoveryLabController extends Controller
     private function csvMemo(array $row, array $meta): string
     {
         $parts = [
-            'discovery_lab_v0.18.3.6',
+            'discovery_lab_v0.18.5',
             'classification=' . ($row['classification'] ?? 'unknown'),
             'confidence=' . ($row['confidence'] ?? 0),
+            'confidence_label=' . ($row['confidence_label'] ?? '-'),
+            'reason=' . ($row['confidence_reason'] ?? '-'),
         ];
 
         if (!empty($row['warnings'])) {

@@ -8,7 +8,7 @@
                     <p class="page-kicker">Phase1 / Seed Collector</p>
                     <h1 class="page-title">候補収集ラボ</h1>
                     <p class="page-subtitle">
-                        v0.18.3.6は候補プレビューをカテゴリ別に整理。公式候補・ビルダー・SNS・EC等を枠で分け、枠単位で一括チェック/解除できる。
+                        v0.18.5は候補の採用判断を強化。信頼度ラベル・保存推奨理由・除外リンク確認・raw_json根拠保存を追加。
                     </p>
                 </div>
                 <div class="actions">
@@ -30,9 +30,9 @@
             @endif
 
             <details class="help-panel" style="margin-top:20px;" open>
-                <summary>v0.18.3.6でやること / やらないこと</summary>
+                <summary>v0.18.5でやること / やらないこと</summary>
                 <div class="help-body">
-                    <div>やる：名簿URLからのaタグ抽出、事業者詳細ページ1階層掘り、名簿元と同じドメインの非表示、同一候補ドメインの集約、既存DB登録済みドメインの非表示、カテゴリ別プレビュー、枠単位の一括チェック/解除、CSV出力、source_records保存。手動URL貼り付けは補助機能として初期閉じ。</div>
+                    <div>やる：候補カテゴリ別表示、枠単位チェック、信頼度ラベル、保存推奨理由、既存重複時の初期OFF、除外リンク一覧、source_records保存時のraw_json根拠強化。手動URL貼り付けは補助機能として初期閉じ。</div>
                     <div>やらない：Googleマップ自動探索、Places API、Web検索API、HP解析、company自動作成。名簿URL抽出では対象ページと詳細候補ページのみ低頻度でHTTP取得する。</div>
                 </div>
             </details>
@@ -214,6 +214,38 @@
                             <span class="badge gray">詳細候補は裏側のみ：{{ number_format($detailStats['hidden_from_final_candidates'] ?? 0) }}</span>
                         </div>
                     @endif
+
+                    @if (!empty($meta['excluded_links']))
+                        <details style="margin-top:12px;">
+                            <summary style="cursor:pointer; font-weight:800;">除外されたリンクを見る（表示 {{ number_format(count($meta['excluded_links'])) }}件 / 総数 {{ number_format($meta['excluded_links_total'] ?? count($meta['excluded_links'])) }}件）</summary>
+                            <div class="table-wrap" style="margin-top:10px;">
+                                <table>
+                                    <thead>
+                                    <tr>
+                                        <th>除外理由</th>
+                                        <th>URL / domain</th>
+                                        <th>テキスト</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    @foreach ($meta['excluded_links'] as $excludedLink)
+                                        <tr>
+                                            <td><span class="badge gray">除外</span> {{ $excludedLink['reason'] ?? '-' }}</td>
+                                            <td style="overflow-wrap:anywhere; min-width:260px;">
+                                                <strong>{{ $excludedLink['domain'] ?? '-' }}</strong>
+                                                <div class="muted" style="margin-top:4px;">{{ $excludedLink['url'] ?? '-' }}</div>
+                                                @if (!empty($excludedLink['detail_page_url']))
+                                                    <div class="muted" style="margin-top:4px; font-size:12px;">詳細元：{{ $excludedLink['detail_page_url'] }}</div>
+                                                @endif
+                                            </td>
+                                            <td style="max-width:360px;">{{ $excludedLink['text'] ?? '-' }}</td>
+                                        </tr>
+                                    @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        </details>
+                    @endif
                 </div>
 
                 <form method="POST" action="{{ route('discovery.lab.store') }}" style="margin-top:18px;">
@@ -338,7 +370,7 @@
                                             <th>保存</th>
                                             <th>分類</th>
                                             <th>URL / domain</th>
-                                            <th>confidence</th>
+                                            <th>採用判断</th>
                                             <th>警告</th>
                                             <th>重複</th>
                                         </tr>
@@ -379,7 +411,17 @@
                                                     <?php endif; ?>
                                                     <div class="muted" style="margin-top:4px; font-size:12px;">line <?php echo e($row['line_number']); ?></div>
                                                 </td>
-                                                <td><?php echo e(number_format((float) ($row['confidence'] ?? 0), 2)); ?></td>
+                                                <td style="min-width:220px;">
+                                                    <div>
+                                                        <span class="badge <?php echo e(($row['confidence_rank'] ?? '') === 'high' ? 'green' : (($row['confidence_rank'] ?? '') === 'medium' ? 'blue' : (($row['confidence_rank'] ?? '') === 'review' ? 'amber' : 'gray'))); ?>">信頼度：<?php echo e($row['confidence_label'] ?? '-'); ?></span>
+                                                    </div>
+                                                    <div style="margin-top:6px;"><strong><?php echo e($row['recommendation_label'] ?? '-'); ?></strong></div>
+                                                    <div class="muted" style="margin-top:4px; font-size:12px;"><?php echo e($row['confidence_reason'] ?? '-'); ?></div>
+                                                    <?php if (!empty($row['recommendation_reason'])): ?>
+                                                        <div class="muted" style="margin-top:4px; font-size:12px;">理由：<?php echo e($row['recommendation_reason']); ?></div>
+                                                    <?php endif; ?>
+                                                    <div class="muted" style="margin-top:4px; font-size:12px;">score <?php echo e(number_format((float) ($row['confidence'] ?? 0), 2)); ?></div>
+                                                </td>
                                                 <td style="min-width:260px;">
                                                     <?php if (!empty($row['warnings'])): ?>
                                                         <?php foreach ($row['warnings'] as $warning): ?>

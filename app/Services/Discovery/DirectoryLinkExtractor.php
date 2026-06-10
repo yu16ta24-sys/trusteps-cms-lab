@@ -73,7 +73,8 @@ class DirectoryLinkExtractor
             'duplicate_domain_hidden' => 0,
             'internal_hidden' => 0,
         ];
-        $links = $this->dedupeAndLimit($links, $warnings, $filterStats);
+        $excludedLinks = [];
+        $links = $this->dedupeAndLimit($links, $warnings, $filterStats, $excludedLinks);
 
         if (empty($links)) {
             $warnings[] = '候補リンクを抽出できなかった。JS描画ページ、PDF、または事業者詳細ページの構造が未対応の可能性。';
@@ -87,6 +88,7 @@ class DirectoryLinkExtractor
             'warnings' => array_values(array_unique($warnings)),
             'detail_stats' => $detailStats,
             'filter_stats' => $filterStats,
+            'excluded_links' => $excludedLinks,
         ];
     }
 
@@ -94,7 +96,7 @@ class DirectoryLinkExtractor
     {
         try {
             $response = Http::withHeaders([
-                'User-Agent' => (string) config('discovery.directory_user_agent', 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.3.1'),
+                'User-Agent' => (string) config('discovery.directory_user_agent', 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.5'),
                 'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             ])
                 ->timeout((int) config('discovery.directory_timeout', 10))
@@ -163,7 +165,7 @@ class DirectoryLinkExtractor
 
         try {
             $response = Http::withHeaders([
-                'User-Agent' => (string) config('discovery.directory_user_agent', 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.3.1'),
+                'User-Agent' => (string) config('discovery.directory_user_agent', 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.5'),
             ])
                 ->timeout(5)
                 ->connectTimeout(3)
@@ -360,7 +362,7 @@ class DirectoryLinkExtractor
         ];
     }
 
-    private function dedupeAndLimit(array $links, array &$warnings, array &$filterStats): array
+    private function dedupeAndLimit(array $links, array &$warnings, array &$filterStats, array &$excludedLinks): array
     {
         usort($links, function (array $a, array $b) {
             $rank = [
@@ -383,18 +385,21 @@ class DirectoryLinkExtractor
 
             if (!empty($link['is_internal'])) {
                 $filterStats['internal_hidden']++;
+                $this->addExcludedLink($excludedLinks, $link, '名簿元ドメインと同じ内部リンクのため候補から除外');
                 continue;
             }
 
             $urlKey = strtolower(rtrim($url, '/'));
             if (isset($seenUrls[$urlKey])) {
                 $filterStats['duplicate_url_hidden']++;
+                $this->addExcludedLink($excludedLinks, $link, '同一URLが先に出ているため除外');
                 continue;
             }
 
             $domainKey = $this->candidateDomainDedupeKey($url);
             if ($domainKey !== null && isset($seenDomains[$domainKey])) {
                 $filterStats['duplicate_domain_hidden']++;
+                $this->addExcludedLink($excludedLinks, $link, '同一候補ドメインが先に出ているため除外');
                 continue;
             }
 
@@ -417,6 +422,25 @@ class DirectoryLinkExtractor
         }
 
         return $deduped;
+    }
+
+
+    private function addExcludedLink(array &$excludedLinks, array $link, string $reason): void
+    {
+        if (count($excludedLinks) >= 200) {
+            return;
+        }
+
+        $url = (string) ($link['url'] ?? '');
+        $excludedLinks[] = [
+            'url' => $url !== '' ? $url : null,
+            'domain' => $url !== '' ? $this->host($url) : null,
+            'text' => $link['text'] ?? null,
+            'context' => $link['context'] ?? null,
+            'candidate_type' => $link['candidate_type'] ?? null,
+            'reason' => $reason,
+            'detail_page_url' => $link['detail_page_url'] ?? null,
+        ];
     }
 
     private function candidateDomainDedupeKey(string $url): ?string
