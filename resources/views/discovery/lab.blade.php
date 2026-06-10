@@ -52,6 +52,9 @@
                 <div class="field" style="margin-top:16px;">
                     <label for="directory_url">名簿ページURL</label>
                     <input id="directory_url" type="text" name="directory_url" value="{{ old('directory_url') }}" placeholder="https://example.jp/member-list">
+                    @error('directory_url')
+                        <p style="margin:8px 0 0; color:#dc2626; font-weight:800; font-size:13px;">{{ $message }}</p>
+                    @enderror
                     <p class="muted" style="margin:8px 0 0; font-size:13px;">1回の実行で名簿1ページのみ。詳細ページ掘り下げONの場合も最大{{ number_format(config('discovery.directory_detail_page_limit', 50)) }}件まで。robots.txtを確認し、抽出リンクは最大{{ number_format(config('discovery.directory_link_limit', 200)) }}件に制限する。</p>
                 </div>
 
@@ -139,6 +142,9 @@
                     <div class="field" style="margin-top:8px;">
                         <label for="urls">URLリスト</label>
                         <textarea id="urls" name="urls" style="min-height:220px;" placeholder="https://example.com&#10;example-koumuten.jp&#10;https://www.instagram.com/example&#10;https://example.wixsite.com/site">{{ old('urls') }}</textarea>
+                        @error('urls')
+                            <p style="margin:8px 0 0; color:#dc2626; font-weight:800; font-size:13px;">{{ $message }}</p>
+                        @enderror
                         <p class="muted" style="margin:8px 0 0; font-size:13px;">1行1URL。最大{{ number_format(config('discovery.manual_url_limit', 500)) }}件。URL文字列だけを見るため、外部サイトにはアクセスしない。</p>
                     </div>
 

@@ -33,7 +33,7 @@ class DiscoveryLabController extends Controller
 
     public function preview(Request $request): View|RedirectResponse
     {
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'urls' => ['required', 'string', 'max:200000'],
             'default_source_type' => ['nullable', 'string', 'max:80'],
             'source_name' => ['nullable', 'string', 'max:255'],
@@ -41,7 +41,19 @@ class DiscoveryLabController extends Controller
             'city' => ['nullable', 'string', 'max:100'],
             'raw_industry' => ['nullable', 'string', 'max:100'],
             'memo' => ['nullable', 'string', 'max:2000'],
+        ], [
+            'urls.required' => 'URLリストを1件以上入力してからプレビューして。',
+            'urls.max' => 'URLリストが長すぎる。件数を分けて投入して。',
         ]);
+
+        if ($validator->fails()) {
+            return redirect()
+                ->route('discovery.lab')
+                ->withInput()
+                ->withErrors($validator);
+        }
+
+        $validated = $validator->validated();
 
         $limit = (int) config('discovery.manual_url_limit', 500);
         $lines = $this->splitLines($validated['urls']);
@@ -101,7 +113,7 @@ class DiscoveryLabController extends Controller
 
     public function directoryPreview(Request $request): View|RedirectResponse
     {
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'directory_url' => ['required', 'string', 'max:2000'],
             'default_source_type' => ['nullable', 'string', 'max:80'],
             'source_name' => ['nullable', 'string', 'max:255'],
@@ -111,7 +123,22 @@ class DiscoveryLabController extends Controller
             'memo' => ['nullable', 'string', 'max:2000'],
             'follow_detail_pages' => ['nullable', 'boolean'],
             'detail_page_limit' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ], [
+            'directory_url.required' => '名簿ページURLを入力してからプレビューして。',
+            'directory_url.max' => '名簿ページURLが長すぎる。URLを確認して。',
+            'detail_page_limit.integer' => '詳細ページ取得上限は数字で入力して。',
+            'detail_page_limit.min' => '詳細ページ取得上限は1以上で入力して。',
+            'detail_page_limit.max' => '詳細ページ取得上限は最大50件まで。',
         ]);
+
+        if ($validator->fails()) {
+            return redirect()
+                ->route('discovery.lab')
+                ->withInput()
+                ->withErrors($validator);
+        }
+
+        $validated = $validator->validated();
 
         $directoryUrl = trim($validated['directory_url']);
         $extraction = $this->directoryExtractor->extract($directoryUrl, [

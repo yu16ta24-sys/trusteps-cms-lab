@@ -28,6 +28,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/discovery/lab', [DiscoveryLabController::class, 'show'])->name('discovery.lab');
     Route::post('/discovery/lab/preview', [DiscoveryLabController::class, 'preview'])->name('discovery.lab.preview');
     Route::post('/discovery/lab/directory-preview', [DiscoveryLabController::class, 'directoryPreview'])->name('discovery.lab.directory-preview');
+    Route::get('/discovery/lab/directory-preview', fn () => redirect()->route('discovery.lab'));
+    Route::get('/discovery/lab/preview', fn () => redirect()->route('discovery.lab'));
+    Route::get('/discovery/lab/store', fn () => redirect()->route('discovery.lab'));
+    Route::get('/discovery/lab/export-csv', fn () => redirect()->route('discovery.lab'));
     Route::post('/discovery/lab/store', [DiscoveryLabController::class, 'store'])->name('discovery.lab.store');
     Route::post('/discovery/lab/export-csv', [DiscoveryLabController::class, 'exportCsv'])->name('discovery.lab.export-csv');
 
