@@ -94,7 +94,7 @@ class DirectoryLinkExtractor
     {
         try {
             $response = Http::withHeaders([
-                'User-Agent' => (string) config('discovery.directory_user_agent', 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.3.1'),
+                'User-Agent' => (string) config('discovery.directory_user_agent', 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.3.2'),
                 'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             ])
                 ->timeout((int) config('discovery.directory_timeout', 10))
@@ -163,7 +163,7 @@ class DirectoryLinkExtractor
 
         try {
             $response = Http::withHeaders([
-                'User-Agent' => (string) config('discovery.directory_user_agent', 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.3.1'),
+                'User-Agent' => (string) config('discovery.directory_user_agent', 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.3.2'),
             ])
                 ->timeout(5)
                 ->connectTimeout(3)
