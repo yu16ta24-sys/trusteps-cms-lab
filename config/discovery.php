@@ -1,0 +1,75 @@
+<?php
+
+return [
+    'manual_url_limit' => 500,
+    'high_fanout_threshold' => 5,
+
+    'portal_domains' => [
+        'tabelog.com',
+        'hotpepper.jp',
+        'beauty.hotpepper.jp',
+        'suumo.jp',
+        'homes.co.jp',
+        'athome.co.jp',
+        'carsensor.net',
+        'goo-net.com',
+        'jalan.net',
+        'travel.rakuten.co.jp',
+        'ekiten.jp',
+        'navitime.co.jp',
+        'mapion.co.jp',
+        'itp.ne.jp',
+        'townpage.goo.ne.jp',
+        'iタウンページ.jp',
+    ],
+
+    'sns_domains' => [
+        'instagram.com',
+        'facebook.com',
+        'twitter.com',
+        'x.com',
+        'youtube.com',
+        'youtu.be',
+        'tiktok.com',
+        'line.me',
+        'lin.ee',
+        'note.com',
+        'ameblo.jp',
+    ],
+
+    'builder_domains' => [
+        'wixsite.com',
+        'jimdo.com',
+        'jimdosite.com',
+        'jimdofree.com',
+        'peraichi.com',
+        'amebaownd.com',
+        'ownd.site',
+        'studio.site',
+        'strikingly.com',
+        'webnode.jp',
+    ],
+
+    'ec_domains' => [
+        'base.shop',
+        'thebase.in',
+        'stores.jp',
+        'stores.tokyo',
+        'shopify.com',
+        'myshopify.com',
+        'rakuten.co.jp',
+        'yahoo.co.jp',
+        'shopping.yahoo.co.jp',
+        'amazon.co.jp',
+        'minne.com',
+        'creema.jp',
+    ],
+
+    'map_domains' => [
+        'maps.google.com',
+        'google.com',
+        'google.co.jp',
+        'maps.app.goo.gl',
+        'goo.gl',
+    ],
+];

@@ -834,6 +834,9 @@
                 <a class="nav-link {{ request()->routeIs('source-records.*') ? 'active' : '' }}" href="{{ route('source-records.index') }}">
                     source_records
                 </a>
+                <a class="nav-link {{ request()->routeIs('discovery.*') ? 'active' : '' }}" href="{{ route('discovery.lab') }}">
+                    候補収集ラボ
+                </a>
                 <a class="nav-link {{ request()->routeIs('companies.index') || request()->routeIs('companies.show') || request()->routeIs('companies.merge-form') ? 'active' : '' }}" href="{{ route('companies.index') }}">
                     companies
                 </a>
