@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\SourceRecord;
+use App\Services\Discovery\DirectoryLinkExtractor;
 use App\Services\Discovery\UrlCandidateClassifier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,8 +15,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DiscoveryLabController extends Controller
 {
-    public function __construct(private readonly UrlCandidateClassifier $classifier)
-    {
+    public function __construct(
+        private readonly UrlCandidateClassifier $classifier,
+        private readonly DirectoryLinkExtractor $directoryExtractor
+    ) {
     }
 
     public function show(Request $request): View
@@ -65,6 +68,81 @@ class DiscoveryLabController extends Controller
             $row = $this->classifier->classify($line);
             $row['row_id'] = count($classified);
             $row['line_number'] = $lineNumber + 1;
+            $row['duplicate_signals'] = $this->duplicateSignals($row['normalized_url'], $row['normalized_domain']);
+            $row['fanout_count'] = $row['normalized_domain'] ? SourceRecord::query()->where('normalized_domain', $row['normalized_domain'])->count() : 0;
+            $row['high_fanout_warning'] = $this->hasHighFanoutWarning($row['normalized_domain'], $classified, $row['fanout_count']);
+
+            if ($row['high_fanout_warning']) {
+                $row['warnings'][] = '同一ドメイン候補が多い。ポータル/共有ドメイン/誤統合に注意。';
+                $row['warnings'] = array_values(array_unique($row['warnings']));
+            }
+
+            $row['default_checked'] = $this->shouldDefaultCheck($row);
+            $classified[] = $row;
+        }
+
+        $token = (string) Str::uuid();
+        $preview = [
+            'token' => $token,
+            'meta' => $meta,
+            'rows' => $classified,
+            'summary' => $this->buildSummary($classified),
+        ];
+
+        session()->put("discovery_lab_previews.{$token}", $preview);
+
+        return view('discovery.lab', [
+            'preview' => $preview,
+            'defaultSourceType' => $meta['default_source_type'],
+        ]);
+    }
+
+
+    public function directoryPreview(Request $request): View|RedirectResponse
+    {
+        $validated = $request->validate([
+            'directory_url' => ['required', 'string', 'max:2000'],
+            'default_source_type' => ['nullable', 'string', 'max:80'],
+            'source_name' => ['nullable', 'string', 'max:255'],
+            'pref' => ['nullable', 'string', 'max:50'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'raw_industry' => ['nullable', 'string', 'max:100'],
+            'memo' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $directoryUrl = trim($validated['directory_url']);
+        $extraction = $this->directoryExtractor->extract($directoryUrl);
+
+        if (!$extraction['ok']) {
+            return redirect()
+                ->route('discovery.lab')
+                ->withInput()
+                ->withErrors(['directory_url' => $extraction['error'] ?? '名簿URLからリンクを抽出できなかった。']);
+        }
+
+        $meta = [
+            'input_type' => 'directory_link_extract',
+            'default_source_type' => trim($validated['default_source_type'] ?? '') ?: 'discovery_lab_directory',
+            'source_name' => trim($validated['source_name'] ?? '') ?: ($extraction['title'] ?? '候補収集ラボ 名簿URL抽出'),
+            'source_page_url' => $extraction['source_url'] ?? $directoryUrl,
+            'source_page_title' => $extraction['title'] ?? null,
+            'pref' => trim($validated['pref'] ?? ''),
+            'city' => trim($validated['city'] ?? ''),
+            'raw_industry' => trim($validated['raw_industry'] ?? ''),
+            'memo' => trim($validated['memo'] ?? ''),
+            'created_at' => now()->timestamp,
+            'fetch_warnings' => $extraction['warnings'] ?? [],
+        ];
+
+        $classified = [];
+        foreach (($extraction['links'] ?? []) as $index => $link) {
+            $row = $this->classifier->classify($link['url'] ?? '');
+            $row['row_id'] = count($classified);
+            $row['line_number'] = $index + 1;
+            $row['link_text'] = $link['text'] ?? '';
+            $row['link_context'] = $link['context'] ?? '';
+            $row['source_page_url'] = $meta['source_page_url'];
+            $row['discovery_method'] = 'directory_link_extract';
             $row['duplicate_signals'] = $this->duplicateSignals($row['normalized_url'], $row['normalized_domain']);
             $row['fanout_count'] = $row['normalized_domain'] ? SourceRecord::query()->where('normalized_domain', $row['normalized_domain'])->count() : 0;
             $row['high_fanout_warning'] = $this->hasHighFanoutWarning($row['normalized_domain'], $classified, $row['fanout_count']);
@@ -178,8 +256,8 @@ class DiscoveryLabController extends Controller
                 fputcsv($handle, [
                     $meta['default_source_type'] ?? 'discovery_lab_manual',
                     $meta['source_name'] ?: '候補収集ラボ 手動URLリスト',
-                    '',
-                    $row['normalized_domain'] ?? $row['raw_url'] ?? '',
+                    $meta['source_page_url'] ?? '',
+                    $row['link_text'] ?: ($row['normalized_domain'] ?? $row['raw_url'] ?? ''),
                     '',
                     '',
                     $row['normalized_url'] ?? $row['raw_url'] ?? '',
@@ -192,7 +270,7 @@ class DiscoveryLabController extends Controller
             }
 
             fclose($handle);
-        }, 'discovery_lab_manual_url_candidates_v0.18.0.csv', [
+        }, 'discovery_lab_candidates_v0.18.2.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
@@ -279,16 +357,23 @@ class DiscoveryLabController extends Controller
         $rawIndustry = $meta['raw_industry'] ?? null;
         $pref = $meta['pref'] ?? null;
         $city = $meta['city'] ?? null;
-        $sourceName = $meta['source_name'] ?: '候補収集ラボ 手動URLリスト';
-        $sourceType = $meta['default_source_type'] ?: 'discovery_lab_manual';
-        $displayName = $row['normalized_domain'] ?? $row['raw_url'] ?? 'discovery candidate';
+        $inputType = $meta['input_type'] ?? 'manual_url_list';
+        $isDirectory = $inputType === 'directory_link_extract';
+        $sourceName = $meta['source_name'] ?: ($isDirectory ? '候補収集ラボ 名簿URL抽出' : '候補収集ラボ 手動URLリスト');
+        $sourceType = $meta['default_source_type'] ?: ($isDirectory ? 'discovery_lab_directory' : 'discovery_lab_manual');
+        $displayName = trim((string) ($row['link_text'] ?? '')) ?: ($row['normalized_domain'] ?? $row['raw_url'] ?? 'discovery candidate');
 
         $raw = [
-            'origin' => 'discovery_lab',
-            'input_type' => 'manual_url_list',
+            'origin' => $isDirectory ? 'organization_list' : 'discovery_lab',
+            'input_type' => $inputType,
             'source_name' => $sourceName,
-            'discovery_method' => 'manual_url_list',
-            'no_http_fetch' => true,
+            'source_page_url' => $meta['source_page_url'] ?? null,
+            'source_page_title' => $meta['source_page_title'] ?? null,
+            'discovery_method' => $isDirectory ? 'directory_link_extract' : 'manual_url_list',
+            'no_http_fetch' => !$isDirectory,
+            'http_fetch_scope' => $isDirectory ? 'directory_page_only' : null,
+            'link_text' => $row['link_text'] ?? null,
+            'link_context' => $row['link_context'] ?? null,
             'raw_url' => $row['raw_url'] ?? null,
             'normalized_url' => $row['normalized_url'] ?? null,
             'normalized_domain' => $row['normalized_domain'] ?? null,
@@ -303,7 +388,8 @@ class DiscoveryLabController extends Controller
             'city' => $city ?: null,
             'raw_industry' => $rawIndustry ?: null,
             'memo' => $meta['memo'] ?? null,
-            'created_from' => 'discovery_lab v0.18.0 manual_url_list',
+            'fetch_warnings' => $meta['fetch_warnings'] ?? [],
+            'created_from' => 'discovery_lab v0.18.2 ' . $inputType,
             'canonical' => [
                 'company_name' => $displayName,
                 'source_url' => $row['normalized_url'] ?? null,
@@ -330,7 +416,7 @@ class DiscoveryLabController extends Controller
     private function csvMemo(array $row, array $meta): string
     {
         $parts = [
-            'discovery_lab_v0.18.0',
+            'discovery_lab_v0.18.2',
             'classification=' . ($row['classification'] ?? 'unknown'),
             'confidence=' . ($row['confidence'] ?? 0),
         ];

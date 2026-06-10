@@ -3,6 +3,10 @@
 return [
     'manual_url_limit' => 500,
     'high_fanout_threshold' => 5,
+    'directory_link_limit' => 200,
+    'directory_timeout' => 10,
+    'directory_connect_timeout' => 5,
+    'directory_user_agent' => 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.2',
 
     'portal_domains' => [
         'tabelog.com',

@@ -30,12 +30,62 @@
             @endif
 
             <details class="help-panel" style="margin-top:20px;" open>
-                <summary>v0.18.0でやること / やらないこと</summary>
+                <summary>v0.18.2でやること / やらないこと</summary>
                 <div class="help-body">
-                    <div>やる：URL貼り付け、ドメイン正規化、URL分類、重複警告、high-fanout警告、保存前プレビュー、CSV出力、source_records保存。</div>
-                    <div>やらない：HTTP取得、名簿ページ抽出、Googleマップ自動探索、Places API、Web検索API、HP解析、company自動作成。</div>
+                    <div>やる：URL貼り付け、名簿URLからのaタグ抽出、ドメイン正規化、URL分類、重複警告、high-fanout警告、保存前プレビュー、CSV出力、source_records保存。</div>
+                    <div>やらない：Googleマップ自動探索、Places API、Web検索API、HP解析、company自動作成。名簿URL抽出では対象ページのみ低頻度でHTTP取得する。</div>
                 </div>
             </details>
+
+            <form method="POST" action="{{ route('discovery.lab.directory-preview') }}" class="card" style="box-shadow:none; padding:20px; margin-top:22px; border-color:#bfdbfe; background:#f8fbff;">
+                @csrf
+
+                <div class="row" style="align-items:flex-start;">
+                    <div>
+                        <p class="section-label">directory link extract</p>
+                        <h2 style="margin:0 0 8px; font-size:20px;">名簿URLからリンク抽出</h2>
+                        <p class="muted" style="margin:0; font-size:13px;">商工会・自治体・業界団体などの名簿ページURLを1件だけ取得し、aタグのリンクを候補URLとして抽出する。Googleマップは使わない。</p>
+                    </div>
+                    <span class="badge blue">HTTP取得あり</span>
+                </div>
+
+                <div class="field" style="margin-top:16px;">
+                    <label for="directory_url">名簿ページURL</label>
+                    <input id="directory_url" type="text" name="directory_url" value="{{ old('directory_url') }}" placeholder="https://example.jp/member-list">
+                    <p class="muted" style="margin:8px 0 0; font-size:13px;">1回の実行で1ページのみ。robots.txtを確認し、抽出リンクは最大{{ number_format(config('discovery.directory_link_limit', 200)) }}件に制限する。</p>
+                </div>
+
+                <div class="grid">
+                    <div class="field">
+                        <label for="directory_source_type">source_type</label>
+                        <input id="directory_source_type" type="text" name="default_source_type" value="{{ old('default_source_type', 'discovery_lab_directory') }}">
+                    </div>
+                    <div class="field">
+                        <label for="directory_source_name">取得元メモ</label>
+                        <input id="directory_source_name" type="text" name="source_name" value="{{ old('source_name') }}" placeholder="例：長野県商工会 会員名簿">
+                    </div>
+                    <div class="field">
+                        <label for="directory_pref">都道府県</label>
+                        <input id="directory_pref" type="text" name="pref" value="{{ old('pref') }}" placeholder="例：長野県">
+                    </div>
+                    <div class="field">
+                        <label for="directory_city">市区町村</label>
+                        <input id="directory_city" type="text" name="city" value="{{ old('city') }}" placeholder="例：松本市">
+                    </div>
+                    <div class="field">
+                        <label for="directory_raw_industry">業種ヒント</label>
+                        <input id="directory_raw_industry" type="text" name="raw_industry" value="{{ old('raw_industry') }}" placeholder="例：construction">
+                    </div>
+                    <div class="field">
+                        <label for="directory_memo">メモ</label>
+                        <input id="directory_memo" type="text" name="memo" value="{{ old('memo') }}" placeholder="任意。raw_jsonに残す。">
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button class="button" type="submit">名簿URLを取得してプレビュー</button>
+                </div>
+            </form>
 
             <form method="POST" action="{{ route('discovery.lab.preview') }}" class="card" style="box-shadow:none; padding:20px; margin-top:22px;">
                 @csrf
@@ -112,6 +162,14 @@
                             @endforeach
                         </div>
                     @endif
+
+                    @if (!empty($meta['fetch_warnings']))
+                        <div style="margin-top:12px;">
+                            @foreach ($meta['fetch_warnings'] as $warning)
+                                <div><span class="badge amber">取得注意</span> {{ $warning }}</div>
+                            @endforeach
+                        </div>
+                    @endif
                 </div>
 
                 <form method="POST" action="{{ route('discovery.lab.store') }}" style="margin-top:18px;">
@@ -145,8 +203,14 @@
                                         <div class="muted" style="margin-top:6px; font-size:12px;">{{ $row['classification'] ?? 'unknown' }}</div>
                                     </td>
                                     <td style="overflow-wrap:anywhere; min-width:260px;">
+                                        @if (!empty($row['link_text']))
+                                            <div style="font-weight:800; margin-bottom:4px;">{{ $row['link_text'] }}</div>
+                                        @endif
                                         <strong>{{ $row['normalized_domain'] ?? '-' }}</strong>
                                         <div class="muted" style="margin-top:4px;">{{ $row['normalized_url'] ?? $row['input_line'] }}</div>
+                                        @if (!empty($row['link_context']) && $row['link_context'] !== ($row['link_text'] ?? ''))
+                                            <div class="muted" style="margin-top:4px; font-size:12px; max-width:420px;">{{ $row['link_context'] }}</div>
+                                        @endif
                                         <div class="muted" style="margin-top:4px; font-size:12px;">line {{ $row['line_number'] }}</div>
                                     </td>
                                     <td>{{ number_format((float) ($row['confidence'] ?? 0), 2) }}</td>

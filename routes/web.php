@@ -26,6 +26,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/discovery/lab', [DiscoveryLabController::class, 'show'])->name('discovery.lab');
     Route::post('/discovery/lab/preview', [DiscoveryLabController::class, 'preview'])->name('discovery.lab.preview');
+    Route::post('/discovery/lab/directory-preview', [DiscoveryLabController::class, 'directoryPreview'])->name('discovery.lab.directory-preview');
     Route::post('/discovery/lab/store', [DiscoveryLabController::class, 'store'])->name('discovery.lab.store');
     Route::post('/discovery/lab/export-csv', [DiscoveryLabController::class, 'exportCsv'])->name('discovery.lab.export-csv');
 
