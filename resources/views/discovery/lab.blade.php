@@ -8,7 +8,7 @@
                     <p class="page-kicker">Phase1 / Seed Collector</p>
                     <h1 class="page-title">候補収集ラボ</h1>
                     <p class="page-subtitle">
-                        v0.18.0は手動URLリスト投入だけ。HTTP取得・Googleマップスクレイピング・company自動作成は行わず、URL文字列を分類してsource_recordsへ安全に流す入口。
+                        v0.18.3は名簿URL抽出に「事業者詳細ページ1階層掘り」を追加。Googleマップスクレイピング・company自動作成は行わず、source_recordsへ安全に流す入口。
                     </p>
                 </div>
                 <div class="actions">
@@ -30,10 +30,10 @@
             @endif
 
             <details class="help-panel" style="margin-top:20px;" open>
-                <summary>v0.18.2でやること / やらないこと</summary>
+                <summary>v0.18.3でやること / やらないこと</summary>
                 <div class="help-body">
-                    <div>やる：URL貼り付け、名簿URLからのaタグ抽出、ドメイン正規化、URL分類、重複警告、high-fanout警告、保存前プレビュー、CSV出力、source_records保存。</div>
-                    <div>やらない：Googleマップ自動探索、Places API、Web検索API、HP解析、company自動作成。名簿URL抽出では対象ページのみ低頻度でHTTP取得する。</div>
+                    <div>やる：URL貼り付け、名簿URLからのaタグ抽出、事業者詳細ページ1階層掘り、ドメイン正規化、URL分類、重複警告、high-fanout警告、保存前プレビュー、CSV出力、source_records保存。</div>
+                    <div>やらない：Googleマップ自動探索、Places API、Web検索API、HP解析、company自動作成。名簿URL抽出では対象ページと詳細候補ページのみ低頻度でHTTP取得する。</div>
                 </div>
             </details>
 
@@ -44,7 +44,7 @@
                     <div>
                         <p class="section-label">directory link extract</p>
                         <h2 style="margin:0 0 8px; font-size:20px;">名簿URLからリンク抽出</h2>
-                        <p class="muted" style="margin:0; font-size:13px;">商工会・自治体・業界団体などの名簿ページURLを1件だけ取得し、aタグのリンクを候補URLとして抽出する。Googleマップは使わない。</p>
+                        <p class="muted" style="margin:0; font-size:13px;">商工会・自治体・業界団体などの名簿ページURLを1件だけ取得し、外部リンクと事業者詳細ページ候補を抽出する。必要に応じて詳細ページを1階層だけ掘り、詳細ページ内の公式HP候補を拾う。Googleマップは使わない。</p>
                     </div>
                     <span class="badge blue">HTTP取得あり</span>
                 </div>
@@ -52,7 +52,21 @@
                 <div class="field" style="margin-top:16px;">
                     <label for="directory_url">名簿ページURL</label>
                     <input id="directory_url" type="text" name="directory_url" value="{{ old('directory_url') }}" placeholder="https://example.jp/member-list">
-                    <p class="muted" style="margin:8px 0 0; font-size:13px;">1回の実行で1ページのみ。robots.txtを確認し、抽出リンクは最大{{ number_format(config('discovery.directory_link_limit', 200)) }}件に制限する。</p>
+                    <p class="muted" style="margin:8px 0 0; font-size:13px;">1回の実行で名簿1ページのみ。詳細ページ掘り下げONの場合も最大{{ number_format(config('discovery.directory_detail_page_limit', 20)) }}件まで。robots.txtを確認し、抽出リンクは最大{{ number_format(config('discovery.directory_link_limit', 200)) }}件に制限する。</p>
+                </div>
+
+                <div class="grid" style="margin-top:14px;">
+                    <div class="field" style="grid-column:1 / -1;">
+                        <label style="display:flex; gap:10px; align-items:center; font-weight:800;">
+                            <input type="checkbox" name="follow_detail_pages" value="1" @checked(old('follow_detail_pages'))>
+                            事業者詳細ページを1階層だけ掘る
+                        </label>
+                        <p class="muted" style="margin:6px 0 0; font-size:13px;">一覧ページで「〇〇工務店」をクリックして初めて公式HPが載る商工会・団体名簿向け。内部リンクのうち事業者詳細っぽいものだけ最大件数まで取得する。</p>
+                    </div>
+                    <div class="field">
+                        <label for="detail_page_limit">詳細ページ取得上限</label>
+                        <input id="detail_page_limit" type="number" name="detail_page_limit" min="1" max="30" value="{{ old('detail_page_limit', config('discovery.directory_detail_page_limit', 20)) }}">
+                    </div>
                 </div>
 
                 <div class="grid">
@@ -170,6 +184,17 @@
                             @endforeach
                         </div>
                     @endif
+
+                    @if (!empty($meta['detail_stats']))
+                        @php($detailStats = $meta['detail_stats'])
+                        <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px;">
+                            <span class="badge {{ !empty($detailStats['enabled']) ? 'blue' : 'gray' }}">詳細掘り下げ：{{ !empty($detailStats['enabled']) ? 'ON' : 'OFF' }}</span>
+                            <span class="badge gray">詳細候補：{{ number_format($detailStats['candidates'] ?? 0) }}</span>
+                            <span class="badge gray">取得：{{ number_format($detailStats['fetched'] ?? 0) }}</span>
+                            <span class="badge gray">詳細内外部リンク：{{ number_format($detailStats['external_links_found'] ?? 0) }}</span>
+                            <span class="badge gray">上限：{{ number_format($detailStats['limit'] ?? 0) }}</span>
+                        </div>
+                    @endif
                 </div>
 
                 <form method="POST" action="{{ route('discovery.lab.store') }}" style="margin-top:18px;">
@@ -210,6 +235,17 @@
                                         <div class="muted" style="margin-top:4px;">{{ $row['normalized_url'] ?? $row['input_line'] }}</div>
                                         @if (!empty($row['link_context']) && $row['link_context'] !== ($row['link_text'] ?? ''))
                                             <div class="muted" style="margin-top:4px; font-size:12px; max-width:420px;">{{ $row['link_context'] }}</div>
+                                        @endif
+                                        @if (!empty($row['detail_page_url']))
+                                            <div style="margin-top:6px; font-size:12px;">
+                                                <span class="badge blue">詳細ページ由来</span>
+                                                <span class="muted" style="overflow-wrap:anywhere;">{{ $row['detail_page_url'] }}</span>
+                                            </div>
+                                        @elseif (($row['classification'] ?? '') === 'directory_detail_candidate')
+                                            <div style="margin-top:6px; font-size:12px;">
+                                                <span class="badge gray">詳細ページ候補</span>
+                                                <span class="muted">詳細掘り下げONで公式HP候補を探す対象</span>
+                                            </div>
                                         @endif
                                         <div class="muted" style="margin-top:4px; font-size:12px;">line {{ $row['line_number'] }}</div>
                                     </td>

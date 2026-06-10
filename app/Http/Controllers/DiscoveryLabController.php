@@ -108,10 +108,15 @@ class DiscoveryLabController extends Controller
             'city' => ['nullable', 'string', 'max:100'],
             'raw_industry' => ['nullable', 'string', 'max:100'],
             'memo' => ['nullable', 'string', 'max:2000'],
+            'follow_detail_pages' => ['nullable', 'boolean'],
+            'detail_page_limit' => ['nullable', 'integer', 'min:1', 'max:30'],
         ]);
 
         $directoryUrl = trim($validated['directory_url']);
-        $extraction = $this->directoryExtractor->extract($directoryUrl);
+        $extraction = $this->directoryExtractor->extract($directoryUrl, [
+            'follow_detail_pages' => $request->boolean('follow_detail_pages'),
+            'detail_page_limit' => (int) ($validated['detail_page_limit'] ?? config('discovery.directory_detail_page_limit', 20)),
+        ]);
 
         if (!$extraction['ok']) {
             return redirect()
@@ -132,17 +137,25 @@ class DiscoveryLabController extends Controller
             'memo' => trim($validated['memo'] ?? ''),
             'created_at' => now()->timestamp,
             'fetch_warnings' => $extraction['warnings'] ?? [],
+            'detail_stats' => $extraction['detail_stats'] ?? null,
+            'follow_detail_pages' => $request->boolean('follow_detail_pages'),
         ];
 
         $classified = [];
         foreach (($extraction['links'] ?? []) as $index => $link) {
             $row = $this->classifier->classify($link['url'] ?? '');
+            $row = $this->applyDirectoryCandidateMeta($row, $link);
             $row['row_id'] = count($classified);
             $row['line_number'] = $index + 1;
             $row['link_text'] = $link['text'] ?? '';
             $row['link_context'] = $link['context'] ?? '';
             $row['source_page_url'] = $meta['source_page_url'];
-            $row['discovery_method'] = 'directory_link_extract';
+            $row['candidate_type'] = $link['candidate_type'] ?? null;
+            $row['detail_page_url'] = $link['detail_page_url'] ?? null;
+            $row['detail_page_title'] = $link['detail_page_title'] ?? null;
+            $row['detail_parent_text'] = $link['detail_parent_text'] ?? null;
+            $row['detail_parent_context'] = $link['detail_parent_context'] ?? null;
+            $row['discovery_method'] = !empty($link['detail_page_url']) ? 'directory_detail_extract' : 'directory_link_extract';
             $row['duplicate_signals'] = $this->duplicateSignals($row['normalized_url'], $row['normalized_domain']);
             $row['fanout_count'] = $row['normalized_domain'] ? SourceRecord::query()->where('normalized_domain', $row['normalized_domain'])->count() : 0;
             $row['high_fanout_warning'] = $this->hasHighFanoutWarning($row['normalized_domain'], $classified, $row['fanout_count']);
@@ -270,7 +283,7 @@ class DiscoveryLabController extends Controller
             }
 
             fclose($handle);
-        }, 'discovery_lab_candidates_v0.18.2.csv', [
+        }, 'discovery_lab_candidates_v0.18.3.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
@@ -333,6 +346,31 @@ class DiscoveryLabController extends Controller
         ], true);
     }
 
+    private function applyDirectoryCandidateMeta(array $row, array $link): array
+    {
+        $candidateType = $link['candidate_type'] ?? null;
+
+        if ($candidateType === 'directory_detail_candidate') {
+            $row['classification'] = 'directory_detail_candidate';
+            $row['classification_label'] = '詳細候補';
+            $row['badge_color'] = 'gray';
+            $row['confidence'] = 0.35;
+            $row['warnings'][] = '商工会・団体サイト内の事業者詳細ページ候補。公式HPではないため通常は保存しない。詳細ページ掘り下げONで公式HP候補を探す対象。';
+            $row['warnings'] = array_values(array_unique($row['warnings']));
+            $row['default_checked'] = false;
+        }
+
+        if ($candidateType === 'detail_external_link') {
+            $row['warnings'][] = '事業者詳細ページ内で発見した外部リンク。名簿一覧から直接ではなく詳細ページ由来。';
+            $row['warnings'] = array_values(array_unique($row['warnings']));
+            if (($row['classification'] ?? null) === 'official_site_candidate') {
+                $row['confidence'] = min(0.85, (float) ($row['confidence'] ?? 0.70) + 0.10);
+            }
+        }
+
+        return $row;
+    }
+
     private function buildSummary(array $rows): array
     {
         $collection = collect($rows);
@@ -369,9 +407,9 @@ class DiscoveryLabController extends Controller
             'source_name' => $sourceName,
             'source_page_url' => $meta['source_page_url'] ?? null,
             'source_page_title' => $meta['source_page_title'] ?? null,
-            'discovery_method' => $isDirectory ? 'directory_link_extract' : 'manual_url_list',
+            'discovery_method' => $row['discovery_method'] ?? ($isDirectory ? 'directory_link_extract' : 'manual_url_list'),
             'no_http_fetch' => !$isDirectory,
-            'http_fetch_scope' => $isDirectory ? 'directory_page_only' : null,
+            'http_fetch_scope' => $isDirectory ? (!empty($meta['follow_detail_pages']) ? 'directory_page_and_one_level_detail_pages' : 'directory_page_only') : null,
             'link_text' => $row['link_text'] ?? null,
             'link_context' => $row['link_context'] ?? null,
             'raw_url' => $row['raw_url'] ?? null,
@@ -389,7 +427,13 @@ class DiscoveryLabController extends Controller
             'raw_industry' => $rawIndustry ?: null,
             'memo' => $meta['memo'] ?? null,
             'fetch_warnings' => $meta['fetch_warnings'] ?? [],
-            'created_from' => 'discovery_lab v0.18.2 ' . $inputType,
+            'detail_stats' => $meta['detail_stats'] ?? null,
+            'candidate_type' => $row['candidate_type'] ?? null,
+            'detail_page_url' => $row['detail_page_url'] ?? null,
+            'detail_page_title' => $row['detail_page_title'] ?? null,
+            'detail_parent_text' => $row['detail_parent_text'] ?? null,
+            'detail_parent_context' => $row['detail_parent_context'] ?? null,
+            'created_from' => 'discovery_lab v0.18.3 ' . $inputType,
             'canonical' => [
                 'company_name' => $displayName,
                 'source_url' => $row['normalized_url'] ?? null,
@@ -416,7 +460,7 @@ class DiscoveryLabController extends Controller
     private function csvMemo(array $row, array $meta): string
     {
         $parts = [
-            'discovery_lab_v0.18.2',
+            'discovery_lab_v0.18.3',
             'classification=' . ($row['classification'] ?? 'unknown'),
             'confidence=' . ($row['confidence'] ?? 0),
         ];

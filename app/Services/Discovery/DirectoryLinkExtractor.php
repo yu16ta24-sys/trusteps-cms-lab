@@ -11,7 +11,7 @@ use Throwable;
 
 class DirectoryLinkExtractor
 {
-    public function extract(string $url): array
+    public function extract(string $url, array $options = []): array
     {
         $sourceUrl = $this->normalizeUrl($url);
         if (!$sourceUrl) {
@@ -31,47 +31,45 @@ class DirectoryLinkExtractor
         }
 
         $warnings = $robots['warnings'] ?? [];
-
-        try {
-            $response = Http::withHeaders([
-                'User-Agent' => (string) config('discovery.directory_user_agent', 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.2'),
-                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            ])
-                ->timeout((int) config('discovery.directory_timeout', 10))
-                ->connectTimeout((int) config('discovery.directory_connect_timeout', 5))
-                ->get($sourceUrl);
-        } catch (Throwable $e) {
+        $fetched = $this->fetchHtml($sourceUrl);
+        if (!$fetched['ok']) {
             return [
                 'ok' => false,
-                'error' => '名簿URLへのHTTP取得に失敗した: ' . $e->getMessage(),
+                'error' => $fetched['error'] ?? '名簿URLへのHTTP取得に失敗した。',
                 'warnings' => $warnings,
             ];
         }
 
-        if (!$response->successful()) {
-            return [
-                'ok' => false,
-                'error' => '名簿URLのHTTPステータスが正常ではない: ' . $response->status(),
-                'warnings' => $warnings,
-            ];
+        $warnings = array_merge($warnings, $fetched['warnings'] ?? []);
+        $parsed = $this->parseLinks($fetched['html'], $sourceUrl, null);
+
+        $followDetailPages = (bool) ($options['follow_detail_pages'] ?? false);
+        $detailLimit = max(1, min(
+            (int) ($options['detail_page_limit'] ?? config('discovery.directory_detail_page_limit', 20)),
+            (int) config('discovery.directory_detail_page_hard_limit', 30)
+        ));
+
+        $links = $this->primaryLinks($parsed['links']);
+        $detailStats = [
+            'enabled' => $followDetailPages,
+            'candidates' => collect($parsed['links'])->where('candidate_type', 'directory_detail_candidate')->count(),
+            'fetched' => 0,
+            'external_links_found' => 0,
+            'limit' => $detailLimit,
+        ];
+
+        if ($followDetailPages) {
+            $detailResult = $this->extractFromDetailPages($parsed['links'], $sourceUrl, $detailLimit);
+            $links = array_merge($links, $detailResult['links']);
+            $warnings = array_merge($warnings, $detailResult['warnings']);
+            $detailStats['fetched'] = $detailResult['fetched'];
+            $detailStats['external_links_found'] = count($detailResult['links']);
         }
 
-        $contentType = strtolower((string) $response->header('Content-Type', ''));
-        if ($contentType !== '' && !str_contains($contentType, 'text/html') && !str_contains($contentType, 'application/xhtml')) {
-            $warnings[] = 'Content-TypeがHTMLではない可能性: ' . $contentType;
-        }
-
-        $html = $this->toUtf8($response->body(), $contentType);
-        $parsed = $this->parseLinks($html, $sourceUrl);
-        $limit = (int) config('discovery.directory_link_limit', 200);
-        $links = array_slice($parsed['links'], 0, $limit);
-
-        if (count($parsed['links']) > $limit) {
-            $warnings[] = "抽出リンクが多いため先頭 {$limit} 件に制限した。";
-        }
+        $links = $this->dedupeAndLimit($links, $warnings);
 
         if (empty($links)) {
-            $warnings[] = 'aタグからHTTP/HTTPSリンクを抽出できなかった。JS描画ページ、PDF、またはリンクがない名簿の可能性。';
+            $warnings[] = '候補リンクを抽出できなかった。JS描画ページ、PDF、または事業者詳細ページの構造が未対応の可能性。';
         }
 
         return [
@@ -80,6 +78,46 @@ class DirectoryLinkExtractor
             'title' => $parsed['title'],
             'links' => $links,
             'warnings' => array_values(array_unique($warnings)),
+            'detail_stats' => $detailStats,
+        ];
+    }
+
+    private function fetchHtml(string $url): array
+    {
+        try {
+            $response = Http::withHeaders([
+                'User-Agent' => (string) config('discovery.directory_user_agent', 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.3'),
+                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            ])
+                ->timeout((int) config('discovery.directory_timeout', 10))
+                ->connectTimeout((int) config('discovery.directory_connect_timeout', 5))
+                ->get($url);
+        } catch (Throwable $e) {
+            return [
+                'ok' => false,
+                'error' => 'HTTP取得に失敗した: ' . $e->getMessage(),
+                'warnings' => [],
+            ];
+        }
+
+        if (!$response->successful()) {
+            return [
+                'ok' => false,
+                'error' => 'HTTPステータスが正常ではない: ' . $response->status(),
+                'warnings' => [],
+            ];
+        }
+
+        $warnings = [];
+        $contentType = strtolower((string) $response->header('Content-Type', ''));
+        if ($contentType !== '' && !str_contains($contentType, 'text/html') && !str_contains($contentType, 'application/xhtml')) {
+            $warnings[] = 'Content-TypeがHTMLではない可能性: ' . $contentType;
+        }
+
+        return [
+            'ok' => true,
+            'html' => $this->toUtf8($response->body(), $contentType),
+            'warnings' => $warnings,
         ];
     }
 
@@ -117,7 +155,7 @@ class DirectoryLinkExtractor
 
         try {
             $response = Http::withHeaders([
-                'User-Agent' => (string) config('discovery.directory_user_agent', 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.2'),
+                'User-Agent' => (string) config('discovery.directory_user_agent', 'TRUSTEPS-CMS-Lab-DiscoveryBot/0.18.3'),
             ])
                 ->timeout(5)
                 ->connectTimeout(3)
@@ -173,6 +211,10 @@ class DirectoryLinkExtractor
             $encoding = strtoupper($matches[1]);
         }
 
+        if (!$encoding && preg_match('/<meta[^>]+charset=["\']?\s*([a-zA-Z0-9_\-]+)/iu', substr($body, 0, 4096), $matches)) {
+            $encoding = strtoupper($matches[1]);
+        }
+
         if (!$encoding) {
             $encoding = mb_detect_encoding($body, ['UTF-8', 'SJIS-win', 'SJIS', 'EUC-JP', 'ISO-2022-JP'], true) ?: 'UTF-8';
         }
@@ -187,7 +229,7 @@ class DirectoryLinkExtractor
         return $body;
     }
 
-    private function parseLinks(string $html, string $sourceUrl): array
+    private function parseLinks(string $html, string $sourceUrl, ?string $detailPageUrl): array
     {
         $previous = libxml_use_internal_errors(true);
         $dom = new DOMDocument();
@@ -196,9 +238,11 @@ class DirectoryLinkExtractor
         libxml_use_internal_errors($previous);
 
         $xpath = new DOMXPath($dom);
-        $title = trim((string) optional($xpath->query('//title')->item(0))->textContent);
+        $titleNode = $xpath->query('//title')->item(0);
+        $title = trim((string) ($titleNode?->textContent ?? ''));
         $links = [];
         $seen = [];
+        $sourceHost = $this->host($sourceUrl);
 
         foreach ($xpath->query('//a[@href]') as $anchor) {
             if (!$anchor instanceof DOMElement) {
@@ -206,15 +250,16 @@ class DirectoryLinkExtractor
             }
 
             $href = trim((string) $anchor->getAttribute('href'));
-            if ($href === '' || str_starts_with($href, '#') || str_starts_with(strtolower($href), 'javascript:') || str_starts_with(strtolower($href), 'mailto:') || str_starts_with(strtolower($href), 'tel:')) {
+            if (!$this->isUsableHref($href)) {
                 continue;
             }
 
-            $absolute = $this->resolveUrl($href, $sourceUrl);
+            $absolute = $this->resolveUrl($href, $detailPageUrl ?: $sourceUrl);
             if (!$absolute || !preg_match('#^https?://#i', $absolute)) {
                 continue;
             }
 
+            $absolute = $this->stripFragment($absolute);
             $key = strtolower(rtrim($absolute, '/'));
             if (isset($seen[$key])) {
                 continue;
@@ -223,11 +268,22 @@ class DirectoryLinkExtractor
 
             $text = $this->compactText((string) $anchor->textContent);
             $context = $this->extractContext($anchor);
+            $targetHost = $this->host($absolute);
+            $isInternal = $sourceHost !== null && $targetHost === $sourceHost;
+            $candidateType = $this->candidateType($absolute, $text, $context, $isInternal, $detailPageUrl !== null);
+
+            if ($candidateType === 'ignore') {
+                continue;
+            }
 
             $links[] = [
                 'url' => $absolute,
                 'text' => mb_substr($text, 0, 255),
                 'context' => mb_substr($context, 0, 500),
+                'candidate_type' => $candidateType,
+                'is_internal' => $isInternal,
+                'detail_page_url' => $detailPageUrl,
+                'detail_page_title' => $detailPageUrl ? ($title !== '' ? mb_substr($title, 0, 255) : null) : null,
             ];
         }
 
@@ -235,6 +291,184 @@ class DirectoryLinkExtractor
             'title' => $title !== '' ? mb_substr($title, 0, 255) : null,
             'links' => $links,
         ];
+    }
+
+    private function primaryLinks(array $links): array
+    {
+        return collect($links)
+            ->filter(fn (array $link) => in_array($link['candidate_type'] ?? '', ['external_link', 'directory_detail_candidate'], true))
+            ->values()
+            ->all();
+    }
+
+    private function extractFromDetailPages(array $links, string $sourceUrl, int $detailLimit): array
+    {
+        $warnings = [];
+        $detailLinks = collect($links)
+            ->filter(fn (array $link) => ($link['candidate_type'] ?? null) === 'directory_detail_candidate')
+            ->take($detailLimit)
+            ->values();
+
+        $collected = [];
+        $fetched = 0;
+        foreach ($detailLinks as $detailLink) {
+            $detailUrl = (string) ($detailLink['url'] ?? '');
+            if ($detailUrl === '') {
+                continue;
+            }
+
+            $robots = $this->checkRobots($detailUrl);
+            if (!$robots['allowed']) {
+                $warnings[] = '詳細ページ取得停止（robots.txt）: ' . $detailUrl;
+                continue;
+            }
+            $warnings = array_merge($warnings, $robots['warnings'] ?? []);
+
+            $fetched++;
+            $fetchedHtml = $this->fetchHtml($detailUrl);
+            if (!$fetchedHtml['ok']) {
+                $warnings[] = '詳細ページ取得失敗: ' . $detailUrl . ' / ' . ($fetchedHtml['error'] ?? 'unknown');
+                continue;
+            }
+            $warnings = array_merge($warnings, $fetchedHtml['warnings'] ?? []);
+
+            $parsed = $this->parseLinks($fetchedHtml['html'], $sourceUrl, $detailUrl);
+            foreach ($parsed['links'] as $link) {
+                if (($link['candidate_type'] ?? '') !== 'external_link') {
+                    continue;
+                }
+                $link['candidate_type'] = 'detail_external_link';
+                $link['detail_parent_text'] = $detailLink['text'] ?? null;
+                $link['detail_parent_context'] = $detailLink['context'] ?? null;
+                $link['detail_page_title'] = $parsed['title'] ?? $link['detail_page_title'] ?? null;
+                $collected[] = $link;
+            }
+        }
+
+        return [
+            'links' => $collected,
+            'warnings' => array_values(array_unique($warnings)),
+            'fetched' => $fetched,
+        ];
+    }
+
+    private function dedupeAndLimit(array $links, array &$warnings): array
+    {
+        $seen = [];
+        $deduped = [];
+
+        foreach ($links as $link) {
+            $url = (string) ($link['url'] ?? '');
+            if ($url === '') {
+                continue;
+            }
+            $key = strtolower(rtrim($url, '/'));
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $deduped[] = $link;
+        }
+
+        $limit = (int) config('discovery.directory_link_limit', 200);
+        if (count($deduped) > $limit) {
+            $warnings[] = "抽出候補が多いため先頭 {$limit} 件に制限した。";
+            $deduped = array_slice($deduped, 0, $limit);
+        }
+
+        usort($deduped, function (array $a, array $b) {
+            $rank = [
+                'detail_external_link' => 0,
+                'external_link' => 1,
+                'directory_detail_candidate' => 2,
+            ];
+            return ($rank[$a['candidate_type'] ?? ''] ?? 9) <=> ($rank[$b['candidate_type'] ?? ''] ?? 9);
+        });
+
+        return $deduped;
+    }
+
+    private function candidateType(string $url, string $text, string $context, bool $isInternal, bool $fromDetailPage): string
+    {
+        if ($this->isUnwantedPath($url) || $this->isWeakNavigationText($text)) {
+            return 'ignore';
+        }
+
+        if (!$isInternal) {
+            return 'external_link';
+        }
+
+        if ($fromDetailPage) {
+            return 'ignore';
+        }
+
+        if ($this->looksLikeDirectoryDetail($url, $text, $context)) {
+            return 'directory_detail_candidate';
+        }
+
+        return 'ignore';
+    }
+
+    private function isUsableHref(string $href): bool
+    {
+        $lower = strtolower(trim($href));
+        return $lower !== ''
+            && !str_starts_with($lower, '#')
+            && !str_starts_with($lower, 'javascript:')
+            && !str_starts_with($lower, 'mailto:')
+            && !str_starts_with($lower, 'tel:');
+    }
+
+    private function isUnwantedPath(string $url): bool
+    {
+        $path = strtolower((string) parse_url($url, PHP_URL_PATH));
+        if ($path === '') {
+            return false;
+        }
+
+        foreach ((array) config('discovery.directory_exclude_path_keywords', []) as $needle) {
+            if ($needle !== '' && str_contains($path, strtolower((string) $needle))) {
+                return true;
+            }
+        }
+
+        return (bool) preg_match('/\.(jpg|jpeg|png|gif|webp|svg|css|js|ico|zip|doc|docx|xls|xlsx)$/i', $path);
+    }
+
+    private function isWeakNavigationText(string $text): bool
+    {
+        $text = mb_strtolower($this->compactText($text));
+        if ($text === '') {
+            return false;
+        }
+
+        foreach ((array) config('discovery.directory_exclude_text_keywords', []) as $needle) {
+            $needle = mb_strtolower((string) $needle);
+            if ($needle !== '' && str_contains($text, $needle)) {
+                return true;
+            }
+        }
+
+        return mb_strlen($text) <= 1;
+    }
+
+    private function looksLikeDirectoryDetail(string $url, string $text, string $context): bool
+    {
+        $haystack = mb_strtolower($this->compactText($url . ' ' . $text . ' ' . $context));
+
+        foreach ((array) config('discovery.directory_detail_positive_keywords', []) as $needle) {
+            $needle = mb_strtolower((string) $needle);
+            if ($needle !== '' && str_contains($haystack, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function stripFragment(string $url): string
+    {
+        return preg_replace('/#.*$/', '', $url) ?: $url;
     }
 
     private function resolveUrl(string $href, string $base): ?string
@@ -285,7 +519,7 @@ class DirectoryLinkExtractor
     private function extractContext(DOMElement $anchor): string
     {
         $node = $anchor->parentNode;
-        for ($i = 0; $i < 2 && $node; $i++) {
+        for ($i = 0; $i < 3 && $node; $i++) {
             $text = $this->compactText((string) $node->textContent);
             if (mb_strlen($text) >= 8) {
                 return $text;
@@ -302,5 +536,14 @@ class DirectoryLinkExtractor
         $text = preg_replace('/[\s　]+/u', ' ', $text) ?? $text;
 
         return trim($text);
+    }
+
+    private function host(string $url): ?string
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+        if (!$host) {
+            return null;
+        }
+        return preg_replace('/^www\./', '', strtolower($host));
     }
 }
