@@ -1,6 +1,6 @@
-@extends('layouts.app', ['title' => '候補収集ラボ | TRUSTEPS CMS Lab'])
+<?php /* extends */ ?>
 
-@section('content')
+<?php /* section */ ?>
     <main class="content">
         <section class="card">
             <div class="row">
@@ -12,22 +12,22 @@
                     </p>
                 </div>
                 <div class="actions">
-                    <a class="button light" href="{{ route('source-records.index') }}">source_recordsへ</a>
-                    <a class="button light" href="{{ route('source-records.import') }}">既存CSV取り込み</a>
+                    <a class="button light" href="<?php echo e(route('source-records.index')); ?>">source_recordsへ</a>
+                    <a class="button light" href="<?php echo e(route('source-records.import')); ?>">既存CSV取り込み</a>
                 </div>
             </div>
 
-            @if (session('status'))
-                <div class="status" style="margin-top:20px;">{{ session('status') }}</div>
-            @endif
+            <?php if (session('status'): ?>)
+                <div class="status" style="margin-top:20px;"><?php echo e(session('status')); ?></div>
+            <?php endif; ?>
 
-            @if ($errors->any())
+            <?php if ($errors->any(): ?>)
                 <div class="error" style="margin-top:20px;">
-                    @foreach ($errors->all() as $error)
-                        <div>{{ $error }}</div>
-                    @endforeach
+                    <?php foreach ($errors->all(): ?> as $error)
+                        <div><?php echo e($error); ?></div>
+                    <?php endforeach; ?>
                 </div>
-            @endif
+            <?php endif; ?>
 
             <details class="help-panel" style="margin-top:20px;" open>
                 <summary>v0.18.3.6でやること / やらないこと</summary>
@@ -37,8 +37,8 @@
                 </div>
             </details>
 
-            <form method="POST" action="{{ route('discovery.lab.directory-preview') }}" class="card" style="box-shadow:none; padding:20px; margin-top:22px; border-color:#bfdbfe; background:#f8fbff;">
-                @csrf
+            <form method="POST" action="<?php echo e(route('discovery.lab.directory-preview')); ?>" class="card" style="box-shadow:none; padding:20px; margin-top:22px; border-color:#bfdbfe; background:#f8fbff;">
+                <?php /* csrf */ ?>
 
                 <div class="row" style="align-items:flex-start;">
                     <div>
@@ -51,48 +51,48 @@
 
                 <div class="field" style="margin-top:16px;">
                     <label for="directory_url">名簿ページURL</label>
-                    <input id="directory_url" type="text" name="directory_url" value="{{ old('directory_url') }}" placeholder="https://example.jp/member-list">
-                    <p class="muted" style="margin:8px 0 0; font-size:13px;">1回の実行で名簿1ページのみ。詳細ページ掘り下げONの場合も最大{{ number_format(config('discovery.directory_detail_page_limit', 50)) }}件まで。robots.txtを確認し、抽出リンクは最大{{ number_format(config('discovery.directory_link_limit', 200)) }}件に制限する。</p>
+                    <input id="directory_url" type="text" name="directory_url" value="<?php echo e(old('directory_url')); ?>" placeholder="https://example.jp/member-list">
+                    <p class="muted" style="margin:8px 0 0; font-size:13px;">1回の実行で名簿1ページのみ。詳細ページ掘り下げONの場合も最大<?php echo e(number_format(config('discovery.directory_detail_page_limit', 50))); ?>件まで。robots.txtを確認し、抽出リンクは最大<?php echo e(number_format(config('discovery.directory_link_limit', 200))); ?>件に制限する。</p>
                 </div>
 
                 <div class="grid" style="margin-top:14px;">
                     <div class="field" style="grid-column:1 / -1;">
                         <label style="display:flex; gap:10px; align-items:center; font-weight:800;">
-                            <input type="checkbox" name="follow_detail_pages" value="1" @checked(old('follow_detail_pages'))>
+                            <input type="checkbox" name="follow_detail_pages" value="1" <?php echo (old('follow_detail_pages') ? 'checked' : ''; ?>)>
                             事業者詳細ページを1階層だけ掘る
                         </label>
                         <p class="muted" style="margin:6px 0 0; font-size:13px;">一覧ページで「〇〇工務店」をクリックして初めて公式HPが載る商工会・団体名簿向け。内部リンクのうち事業者詳細っぽいものだけ最大件数まで取得する。</p>
                     </div>
                     <div class="field">
                         <label for="detail_page_limit">詳細ページ取得上限</label>
-                        <input id="detail_page_limit" type="number" name="detail_page_limit" min="1" max="50" value="{{ old('detail_page_limit', config('discovery.directory_detail_page_limit', 50)) }}">
+                        <input id="detail_page_limit" type="number" name="detail_page_limit" min="1" max="50" value="<?php echo e(old('detail_page_limit', config('discovery.directory_detail_page_limit', 50))); ?>">
                     </div>
                 </div>
 
                 <div class="grid">
                     <div class="field">
                         <label for="directory_source_type">source_type</label>
-                        <input id="directory_source_type" type="text" name="default_source_type" value="{{ old('default_source_type', 'discovery_lab_directory') }}">
+                        <input id="directory_source_type" type="text" name="default_source_type" value="<?php echo e(old('default_source_type', 'discovery_lab_directory')); ?>">
                     </div>
                     <div class="field">
                         <label for="directory_source_name">取得元メモ</label>
-                        <input id="directory_source_name" type="text" name="source_name" value="{{ old('source_name') }}" placeholder="例：長野県商工会 会員名簿">
+                        <input id="directory_source_name" type="text" name="source_name" value="<?php echo e(old('source_name')); ?>" placeholder="例：長野県商工会 会員名簿">
                     </div>
                     <div class="field">
                         <label for="directory_pref">都道府県</label>
-                        <input id="directory_pref" type="text" name="pref" value="{{ old('pref') }}" placeholder="例：長野県">
+                        <input id="directory_pref" type="text" name="pref" value="<?php echo e(old('pref')); ?>" placeholder="例：長野県">
                     </div>
                     <div class="field">
                         <label for="directory_city">市区町村</label>
-                        <input id="directory_city" type="text" name="city" value="{{ old('city') }}" placeholder="例：松本市">
+                        <input id="directory_city" type="text" name="city" value="<?php echo e(old('city')); ?>" placeholder="例：松本市">
                     </div>
                     <div class="field">
                         <label for="directory_raw_industry">業種ヒント</label>
-                        <input id="directory_raw_industry" type="text" name="raw_industry" value="{{ old('raw_industry') }}" placeholder="例：construction">
+                        <input id="directory_raw_industry" type="text" name="raw_industry" value="<?php echo e(old('raw_industry')); ?>" placeholder="例：construction">
                     </div>
                     <div class="field">
                         <label for="directory_memo">メモ</label>
-                        <input id="directory_memo" type="text" name="memo" value="{{ old('memo') }}" placeholder="任意。raw_jsonに残す。">
+                        <input id="directory_memo" type="text" name="memo" value="<?php echo e(old('memo')); ?>" placeholder="任意。raw_jsonに残す。">
                     </div>
                 </div>
 
@@ -105,56 +105,56 @@
                 <summary style="cursor:pointer; font-weight:900; font-size:16px;">手動URLリスト取り込み（クリックで開く）</summary>
                 <p class="muted" style="margin:10px 0 0; font-size:13px;">1行1URLで手動投入する補助機能。通常は名簿URL抽出を優先するため、初期状態では閉じている。</p>
 
-                <form method="POST" action="{{ route('discovery.lab.preview') }}" style="margin-top:16px;">
-                    @csrf
+                <form method="POST" action="<?php echo e(route('discovery.lab.preview')); ?>" style="margin-top:16px;">
+                    <?php /* csrf */ ?>
 
                     <div class="grid">
                         <div class="field">
                             <label for="default_source_type">source_type</label>
-                            <input id="default_source_type" type="text" name="default_source_type" value="{{ old('default_source_type', $defaultSourceType ?? 'discovery_lab_manual') }}">
+                            <input id="default_source_type" type="text" name="default_source_type" value="<?php echo e(old('default_source_type', $defaultSourceType ?? 'discovery_lab_manual')); ?>">
                             <p class="muted" style="margin:6px 0 0; font-size:12px;">source_recordsのsource_typeに入る。通常は discovery_lab_manual のままでOK。</p>
                         </div>
                         <div class="field">
                             <label for="source_name">取得元メモ</label>
-                            <input id="source_name" type="text" name="source_name" value="{{ old('source_name') }}" placeholder="例：長野県 工務店 手動調査URL">
+                            <input id="source_name" type="text" name="source_name" value="<?php echo e(old('source_name')); ?>" placeholder="例：長野県 工務店 手動調査URL">
                         </div>
                         <div class="field">
                             <label for="pref">都道府県</label>
-                            <input id="pref" type="text" name="pref" value="{{ old('pref') }}" placeholder="例：長野県">
+                            <input id="pref" type="text" name="pref" value="<?php echo e(old('pref')); ?>" placeholder="例：長野県">
                         </div>
                         <div class="field">
                             <label for="city">市区町村</label>
-                            <input id="city" type="text" name="city" value="{{ old('city') }}" placeholder="例：松本市">
+                            <input id="city" type="text" name="city" value="<?php echo e(old('city')); ?>" placeholder="例：松本市">
                         </div>
                         <div class="field">
                             <label for="raw_industry">業種ヒント</label>
-                            <input id="raw_industry" type="text" name="raw_industry" value="{{ old('raw_industry') }}" placeholder="例：construction">
+                            <input id="raw_industry" type="text" name="raw_industry" value="<?php echo e(old('raw_industry')); ?>" placeholder="例：construction">
                         </div>
                         <div class="field">
                             <label for="memo">メモ</label>
-                            <input id="memo" type="text" name="memo" value="{{ old('memo') }}" placeholder="任意。CSV memo/raw_jsonに残す。">
+                            <input id="memo" type="text" name="memo" value="<?php echo e(old('memo')); ?>" placeholder="任意。CSV memo/raw_jsonに残す。">
                         </div>
                     </div>
 
                     <div class="field" style="margin-top:8px;">
                         <label for="urls">URLリスト</label>
-                        <textarea id="urls" name="urls" style="min-height:220px;" placeholder="https://example.com&#10;example-koumuten.jp&#10;https://www.instagram.com/example&#10;https://example.wixsite.com/site">{{ old('urls') }}</textarea>
-                        <p class="muted" style="margin:8px 0 0; font-size:13px;">1行1URL。最大{{ number_format(config('discovery.manual_url_limit', 500)) }}件。URL文字列だけを見るため、外部サイトにはアクセスしない。</p>
+                        <textarea id="urls" name="urls" style="min-height:220px;" placeholder="https://example.com&#10;example-koumuten.jp&#10;https://www.instagram.com/example&#10;https://example.wixsite.com/site"><?php echo e(old('urls')); ?></textarea>
+                        <p class="muted" style="margin:8px 0 0; font-size:13px;">1行1URL。最大<?php echo e(number_format(config('discovery.manual_url_limit', 500))); ?>件。URL文字列だけを見るため、外部サイトにはアクセスしない。</p>
                     </div>
 
                     <div class="form-actions">
                         <button class="button" type="submit">プレビュー生成</button>
-                        <a class="button light" href="{{ route('discovery.lab') }}">リセット</a>
+                        <a class="button light" href="<?php echo e(route('discovery.lab')); ?>">リセット</a>
                     </div>
                 </form>
             </details>
 
-            @if ($preview)
-                @php
+            <?php if ($preview): ?>
+                <?php
                     $summary = $preview['summary'] ?? [];
                     $rows = $preview['rows'] ?? [];
                     $meta = $preview['meta'] ?? [];
-                @endphp
+                ?>
 
                 <div class="card" style="box-shadow:none; padding:18px; margin-top:22px; background:#f8fafc;">
                     <div class="row">
@@ -162,63 +162,63 @@
                             <p class="section-label">preview summary</p>
                             <strong>プレビュー結果</strong>
                             <p class="muted" style="margin:6px 0 0;">
-                                総数 {{ number_format($summary['total'] ?? 0) }}件 / 有効URL {{ number_format($summary['valid'] ?? 0) }}件 / 初期選択 {{ number_format($summary['default_checked'] ?? 0) }}件 / 重複警告 {{ number_format($summary['duplicate'] ?? 0) }}件 / high-fanout {{ number_format($summary['high_fanout'] ?? 0) }}件
+                                総数 <?php echo e(number_format($summary['total'] ?? 0)); ?>件 / 有効URL <?php echo e(number_format($summary['valid'] ?? 0)); ?>件 / 初期選択 <?php echo e(number_format($summary['default_checked'] ?? 0)); ?>件 / 重複警告 <?php echo e(number_format($summary['duplicate'] ?? 0)); ?>件 / high-fanout <?php echo e(number_format($summary['high_fanout'] ?? 0)); ?>件
                             </p>
                         </div>
                         <div class="actions">
-                            <form method="POST" action="{{ route('discovery.lab.export-csv') }}">
-                                @csrf
-                                <input type="hidden" name="preview_token" value="{{ $preview['token'] }}">
+                            <form method="POST" action="<?php echo e(route('discovery.lab.export-csv')); ?>">
+                                <?php /* csrf */ ?>
+                                <input type="hidden" name="preview_token" value="<?php echo e($preview['token']); ?>">
                                 <button class="button light" type="submit">CSV出力（全有効URL）</button>
                             </form>
                         </div>
                     </div>
 
-                    @if (!empty($summary['by_classification']))
+                    <?php if (!empty($summary['by_classification']): ?>)
                         <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px;">
-                            @foreach ($summary['by_classification'] as $classification => $count)
-                                <span class="badge gray">{{ $classification }}：{{ number_format($count) }}</span>
-                            @endforeach
+                            <?php foreach ($summary['by_classification'] as $classification => $count): ?>
+                                <span class="badge gray"><?php echo e($classification); ?>：<?php echo e(number_format($count)); ?></span>
+                            <?php endforeach; ?>
                         </div>
-                    @endif
+                    <?php endif; ?>
 
-                    @if (!empty($meta['fetch_warnings']))
+                    <?php if (!empty($meta['fetch_warnings']): ?>)
                         <div style="margin-top:12px;">
-                            @foreach ($meta['fetch_warnings'] as $warning)
-                                <div><span class="badge amber">取得注意</span> {{ $warning }}</div>
-                            @endforeach
+                            <?php foreach ($meta['fetch_warnings'] as $warning): ?>
+                                <div><span class="badge amber">取得注意</span> <?php echo e($warning); ?></div>
+                            <?php endforeach; ?>
                         </div>
-                    @endif
+                    <?php endif; ?>
 
-                    @if (!empty($meta['detail_stats']))
-                        @php($detailStats = $meta['detail_stats'])
+                    <?php if (!empty($meta['detail_stats']): ?>)
+                        <?php $detailStats = $meta['detail_stats']; ?>
                         <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px;">
-                            <span class="badge {{ !empty($detailStats['enabled']) ? 'blue' : 'gray' }}">詳細掘り下げ：{{ !empty($detailStats['enabled']) ? 'ON' : 'OFF' }}</span>
-                            <span class="badge gray">詳細候補：{{ number_format($detailStats['candidates'] ?? 0) }}</span>
-                            <span class="badge gray">取得：{{ number_format($detailStats['fetched'] ?? 0) }}</span>
-                            <span class="badge gray">詳細内外部リンク：{{ number_format($detailStats['external_links_found'] ?? 0) }}</span>
-                            <span class="badge gray">上限：{{ number_format($detailStats['limit'] ?? 0) }}</span>
+                            <span class="badge <?php echo e(!empty($detailStats['enabled']) ? 'blue' : 'gray'); ?>">詳細掘り下げ：<?php echo e(!empty($detailStats['enabled']) ? 'ON' : 'OFF'); ?></span>
+                            <span class="badge gray">詳細候補：<?php echo e(number_format($detailStats['candidates'] ?? 0)); ?></span>
+                            <span class="badge gray">取得：<?php echo e(number_format($detailStats['fetched'] ?? 0)); ?></span>
+                            <span class="badge gray">詳細内外部リンク：<?php echo e(number_format($detailStats['external_links_found'] ?? 0)); ?></span>
+                            <span class="badge gray">上限：<?php echo e(number_format($detailStats['limit'] ?? 0)); ?></span>
                         </div>
-                    @endif
+                    <?php endif; ?>
 
 
-                    @if (!empty($meta['filter_stats']))
-                        @php($filterStats = $meta['filter_stats'])
-                        @php($detailStats = $meta['detail_stats'] ?? [])
+                    <?php if (!empty($meta['filter_stats']): ?>)
+                        <?php $filterStats = $meta['filter_stats']; ?>
+                        <?php $detailStats = $meta['detail_stats'] ?? []; ?>
                         <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px;">
                             <span class="badge blue">候補ノイズ削減ON</span>
-                            <span class="badge gray">名簿元ドメイン非表示：{{ number_format($filterStats['source_domain_hidden'] ?? 0) }}</span>
-                            <span class="badge gray">同一候補ドメイン非表示：{{ number_format(($filterStats['duplicate_domain_hidden'] ?? 0) + ($filterStats['preview_duplicate_domain_hidden'] ?? 0)) }}</span>
-                            <span class="badge gray">同一URL非表示：{{ number_format($filterStats['duplicate_url_hidden'] ?? 0) }}</span>
-                            <span class="badge gray">既存DBドメイン非表示：{{ number_format($filterStats['existing_domain_hidden'] ?? 0) }}</span>
-                            <span class="badge gray">詳細候補は裏側のみ：{{ number_format($detailStats['hidden_from_final_candidates'] ?? 0) }}</span>
+                            <span class="badge gray">名簿元ドメイン非表示：<?php echo e(number_format($filterStats['source_domain_hidden'] ?? 0)); ?></span>
+                            <span class="badge gray">同一候補ドメイン非表示：<?php echo e(number_format(($filterStats['duplicate_domain_hidden'] ?? 0) + ($filterStats['preview_duplicate_domain_hidden'] ?? 0))); ?></span>
+                            <span class="badge gray">同一URL非表示：<?php echo e(number_format($filterStats['duplicate_url_hidden'] ?? 0)); ?></span>
+                            <span class="badge gray">既存DBドメイン非表示：<?php echo e(number_format($filterStats['existing_domain_hidden'] ?? 0)); ?></span>
+                            <span class="badge gray">詳細候補は裏側のみ：<?php echo e(number_format($detailStats['hidden_from_final_candidates'] ?? 0)); ?></span>
                         </div>
-                    @endif
+                    <?php endif; ?>
                 </div>
 
-                <form method="POST" action="{{ route('discovery.lab.store') }}" style="margin-top:18px;">
-                    @csrf
-                    <input type="hidden" name="preview_token" value="{{ $preview['token'] }}">
+                <form method="POST" action="<?php echo e(route('discovery.lab.store')); ?>" style="margin-top:18px;">
+                    <?php /* csrf */ ?>
+                    <input type="hidden" name="preview_token" value="<?php echo e($preview['token']); ?>">
 
                     <?php
                         $candidateGroups = [
@@ -426,10 +426,10 @@
 
                     <div class="form-actions sticky-ish">
                         <button class="button" type="submit" onclick="return confirm('選択した候補をsource_recordsに保存する？companyは自動作成しない。');">選択分をsource_recordsへ保存</button>
-                        <a class="button light" href="{{ route('discovery.lab') }}">プレビュー破棄</a>
+                        <a class="button light" href="<?php echo e(route('discovery.lab')); ?>">プレビュー破棄</a>
                     </div>
                 </form>
-            @endif
+            <?php endif; ?>
         </section>
     </main>
-@endsection
+<?php /* endsection */ ?>
