@@ -112,19 +112,19 @@ class BizmapsImportController extends Controller
 
         // 検索条件をセッションに保存（再取得用）
         $searchCondition = [
-            'prefecture_id' => $prefectureId,
+            'prefecture_id'   => $prefectureId,
             'prefecture_name' => $prefecture->name ?? '',
-            'city_codes'    => $cityCodes,
-            'industry_type' => $industryType,
-            'industry_id'   => $industryId,
-            'limit'         => $limit,
-            'big_ind_name'  => $request->input('big_ind_name', ''),
-            'm_ind_name'    => $request->input('m_ind_name', ''),
+            'city_codes'      => $cityCodes,
+            'industry_type'   => $industryType,
+            'industry_id'     => $industryId,
+            'limit'           => $limit,
+            'big_ind_name'    => $request->input('big_ind_name', ''),
+            'm_ind_name'      => $request->input('m_ind_name', ''),
         ];
         session(['bizmaps_search_condition' => $searchCondition]);
 
         $industries = $this->getIndustries();
-        $results = $mainResults; // 後方互換用
+        $results    = $mainResults; // 後方互換用
         return view('bizmaps.preview', compact('mainResults', 'excludedResults', 'results', 'prefecture', 'limit', 'searchCondition', 'industries'));
     }
 
@@ -140,17 +140,13 @@ class BizmapsImportController extends Controller
 
             foreach ($detailUrls as $index => $detailUrl) {
                 if (!$detailUrl) {
-                    $this->sseEmit([
-                        'index'  => $index,
-                        'hp_url' => null,
-                        'status' => 'skip',
-                    ]);
+                    $this->sseEmit(['index' => $index, 'hp_url' => null, 'status' => 'skip']);
                     continue;
                 }
 
                 try {
-                    $detail = $scraper->fetchDetailInfo($detailUrl);
-                    $hpUrl  = $detail['hp_url']   ?? null;
+                    $detail   = $scraper->fetchDetailInfo($detailUrl);
+                    $hpUrl    = $detail['hp_url']   ?? null;
                     $industry = $detail['industry'] ?? null;
                     $this->sseEmit([
                         'index'      => $index,
@@ -160,18 +156,13 @@ class BizmapsImportController extends Controller
                         'status'     => $hpUrl ? 'found' : 'not_found',
                     ]);
                 } catch (\Throwable $e) {
-                    $this->sseEmit([
-                        'index'  => $index,
-                        'hp_url' => null,
-                        'status' => 'error',
-                    ]);
+                    $this->sseEmit(['index' => $index, 'hp_url' => null, 'status' => 'error']);
                 }
 
                 if (ob_get_level() > 0) ob_flush();
                 flush();
             }
 
-            // 完了イベント
             echo "event: done\n";
             echo "data: " . json_encode(['total' => count($detailUrls)]) . "\n\n";
             if (ob_get_level() > 0) ob_flush();
@@ -195,16 +186,16 @@ class BizmapsImportController extends Controller
      */
     public function exclude(Request $request)
     {
-        $item = $request->input('item', []);
+        $item      = $request->input('item', []);
         $detailUrl = $item['detail_url'] ?? null;
         if (!$detailUrl) return response()->json(['error' => 'no detail_url'], 400);
 
         DB::table('bizmaps_excluded_companies')->updateOrInsert(
             ['detail_url' => $detailUrl],
             [
-                'name'        => $item['name']  ?? null,
-                'pref'        => $item['pref']  ?? null,
-                'city'        => $item['city']  ?? null,
+                'name'        => $item['name'] ?? null,
+                'pref'        => $item['pref'] ?? null,
+                'city'        => $item['city'] ?? null,
                 'excluded_at' => now(),
                 'updated_at'  => now(),
                 'created_at'  => now(),
@@ -291,7 +282,6 @@ class BizmapsImportController extends Controller
             $name      = $item['name']       ?? null;
             if (!$name) { $skipped++; continue; }
 
-            // HP URLまたはdetail_urlで重複チェック
             $checkUrl = $hpUrl ?: $detailUrl;
             if ($checkUrl && DB::table('domains')->where('url', $checkUrl)->exists()) {
                 $skipped++;
@@ -302,26 +292,23 @@ class BizmapsImportController extends Controller
             $industryText = $item['industry'] ?? null;
             $industryId   = null;
             if ($industryText) {
-                // "大分類, 中分類" の形式をパース
-                $parts = array_map('trim', explode(',', $industryText));
-                $bigCat = $parts[0] ?? '';
-                $subCat = $parts[1] ?? null;
+                $parts      = array_map('trim', explode(',', $industryText));
+                $bigCat     = $parts[0] ?? '';
+                $subCat     = $parts[1] ?? null;
                 $industryId = $mapper->resolveId($bigCat, $subCat);
             }
 
-            // municipality_idをpref+cityから検索
+            // municipality_id
             $municipalityId = null;
             if (!empty($item['pref']) && !empty($item['city'])) {
-                $municipality = DB::table('municipalities')
-                    ->where('name', $item['city'])
-                    ->first();
+                $municipality   = DB::table('municipalities')->where('name', $item['city'])->first();
                 $municipalityId = $municipality?->id;
             }
 
             // 正規化ドメイン
             $normalizedDomain = null;
             if ($hpUrl) {
-                $host = parse_url($hpUrl, PHP_URL_HOST);
+                $host             = parse_url($hpUrl, PHP_URL_HOST);
                 $normalizedDomain = $host ? preg_replace('/^www\./', '', $host) : null;
             }
 
@@ -329,25 +316,23 @@ class BizmapsImportController extends Controller
                 $item, $hpUrl, $detailUrl, $name, $industryId,
                 $municipalityId, $normalizedDomain, $now, &$saved
             ) {
-                // company作成
                 $companyId = DB::table('companies')->insertGetId([
-                    'status'          => 'candidate',
-                    'municipality_id' => $municipalityId,
-                    'industry_id'     => $industryId,
+                    'status'            => 'candidate',
+                    'municipality_id'   => $municipalityId,
+                    'industry_id'       => $industryId,
                     'primary_domain_id' => null,
-                    'legal_name'      => null,
-                    'display_name'    => $name,
-                    'name_norm'       => mb_strtolower(preg_replace('/[\s　]+/u', '', $name)),
-                    'alias_names_json' => null,
-                    'corporate_number' => null,
-                    'pref'            => $municipalityId ? null : ($item['pref'] ?? null),
-                    'city'            => $municipalityId ? null : ($item['city'] ?? null),
-                    'is_killed'       => false,
-                    'created_at'      => $now,
-                    'updated_at'      => $now,
+                    'legal_name'        => null,
+                    'display_name'      => $name,
+                    'name_norm'         => mb_strtolower(preg_replace('/[\s　]+/u', '', $name)),
+                    'alias_names_json'  => null,
+                    'corporate_number'  => null,
+                    'pref'              => $municipalityId ? null : ($item['pref'] ?? null),
+                    'city'              => $municipalityId ? null : ($item['city'] ?? null),
+                    'is_killed'         => false,
+                    'created_at'        => $now,
+                    'updated_at'        => $now,
                 ]);
 
-                // HP URLがあればdomainsに追加
                 if ($hpUrl) {
                     $domainId = DB::table('domains')->insertGetId([
                         'company_id'        => $companyId,
@@ -369,6 +354,8 @@ class BizmapsImportController extends Controller
 
         return response()->json(['saved' => $saved, 'skipped' => $skipped]);
     }
+
+    private function buildUrls(int $prefectureId, array $cityCodes, string $industryType, ?int $industryId): array
     {
         $urls = [];
 
