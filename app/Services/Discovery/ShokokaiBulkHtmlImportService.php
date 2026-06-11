@@ -16,6 +16,39 @@ class ShokokaiBulkHtmlImportService
         $rows = $this->parseRows($html);
         $rows = $this->applyDuplicateSignals($rows);
 
+        return $this->buildPreview($rows, 'pasted_html');
+    }
+
+    /**
+     * @param array<int,mixed> $clientRows
+     * @return array<string,mixed>
+     */
+    public function previewClientRows(array $clientRows): array
+    {
+        $rows = [];
+        $rowId = 1;
+
+        foreach ($clientRows as $index => $clientRow) {
+            if (!is_array($clientRow)) {
+                continue;
+            }
+
+            $rows[] = $this->normalizeClientRow($clientRow, $index + 1, $rowId);
+            $rowId++;
+        }
+
+        $rows = $this->applyWithinImportDuplicateSignals($rows);
+        $rows = $this->applyDuplicateSignals($rows);
+
+        return $this->buildPreview($rows, 'browser_preprocessed_rows');
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $rows
+     * @return array<string,mixed>
+     */
+    private function buildPreview(array $rows, string $source): array
+    {
         $summary = $this->buildSummary($rows);
         $prefGroups = $this->buildPrefGroups($rows);
 
@@ -24,12 +57,117 @@ class ShokokaiBulkHtmlImportService
             'summary' => $summary,
             'pref_groups' => $prefGroups,
             'meta' => [
-                'collector_version' => '0.18.9',
+                'collector_version' => '0.18.9.1',
                 'collector_type' => 'shokokai_web_search_bulk_html',
                 'source_name' => '全国商工会WEBサーチ 全件HTML',
                 'created_at' => now()->timestamp,
+                'source' => $source,
             ],
         ];
+    }
+
+    /**
+     * @param array<string,mixed> $clientRow
+     * @return array<string,mixed>
+     */
+    private function normalizeClientRow(array $clientRow, int $rawIndex, int $rowId): array
+    {
+        $href = $this->toNullableString($clientRow['url'] ?? $clientRow['raw_url'] ?? null);
+        $urlInfo = $this->normalizeUrl($href);
+        $organizationName = $this->cleanText($this->toNullableString($clientRow['organization_name'] ?? null)) ?: '名称未取得';
+        $prefCode = $this->normalizePrefCode($this->toNullableString($clientRow['pref_code'] ?? null));
+        $address = $this->cleanText($this->toNullableString($clientRow['address'] ?? null));
+        $prefCode = $prefCode ?? $this->guessPrefCodeByAddress($address);
+        $prefLabel = $this->prefLabel($prefCode, $address);
+        $shokokaiCode = $this->cleanText($this->toNullableString($clientRow['shokokai_code'] ?? null));
+        $organizationType = $this->classifyOrganizationType($organizationName, $prefCode, $shokokaiCode);
+        $statusKey = $this->statusKey($href, $urlInfo);
+        $statusLabel = $this->statusLabel($statusKey);
+        $categoryLabel = $this->categoryLabel($organizationType, $urlInfo['domain'] ?? null);
+        $storable = $statusKey === 'valid_url';
+        $duplicateSignals = [];
+
+        if ($statusKey === 'no_url') {
+            $duplicateSignals[] = 'URLなし';
+        }
+        if ($statusKey === 'invalid_url') {
+            $duplicateSignals[] = 'URL要確認';
+        }
+
+        $confidence = $this->confidenceFor($statusKey, $organizationType, $urlInfo['domain'] ?? null);
+
+        return [
+            'row_id' => $rowId,
+            'raw_index' => (int) ($clientRow['raw_index'] ?? $rawIndex),
+            'organization_name' => $organizationName,
+            'organization_type' => $organizationType,
+            'organization_type_label' => $this->organizationTypeLabel($organizationType),
+            'category_label' => $categoryLabel,
+            'pref_code' => $prefCode,
+            'pref_label' => $prefLabel,
+            'shokokai_code' => $shokokaiCode,
+            'postal_code' => $this->cleanText($this->toNullableString($clientRow['postal_code'] ?? null)),
+            'address' => $address,
+            'tel' => $this->cleanText($this->toNullableString($clientRow['tel'] ?? null)),
+            'fax' => $this->cleanText($this->toNullableString($clientRow['fax'] ?? null)),
+            'url' => $urlInfo['url'] ?? null,
+            'raw_url' => $href,
+            'normalized_domain' => $urlInfo['domain'] ?? null,
+            'status_key' => $statusKey,
+            'status_label' => $statusLabel,
+            'storable' => $storable,
+            'default_checked' => $storable,
+            'duplicate_signals' => $duplicateSignals,
+            'confidence_label' => $confidence['label'],
+            'confidence_reason' => $confidence['reason'],
+            'recommendation_label' => $storable ? '保存推奨' : '保存不可',
+            'recommendation_reason' => $storable
+                ? '全国商工会WEBサーチのHTMLからブラウザ側で前処理した有効URL。名簿元候補として保存可能。'
+                : 'URLが無い、またはURL形式が壊れているため自動保存しない。',
+        ];
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $rows
+     * @return array<int,array<string,mixed>>
+     */
+    private function applyWithinImportDuplicateSignals(array $rows): array
+    {
+        $seenUrls = [];
+        $seenDomains = [];
+        $seenCodes = [];
+
+        foreach ($rows as &$row) {
+            $withinDuplicateSignals = [];
+            if (!empty($row['url'])) {
+                $urlKey = mb_strtolower((string) $row['url']);
+                if (isset($seenUrls[$urlKey])) {
+                    $withinDuplicateSignals[] = '貼り付けHTML内でURL重複';
+                }
+                $seenUrls[$urlKey] = true;
+            }
+
+            if (!empty($row['normalized_domain'])) {
+                $domainKey = (string) $row['normalized_domain'];
+                if (isset($seenDomains[$domainKey])) {
+                    $withinDuplicateSignals[] = '貼り付けHTML内でドメイン重複';
+                }
+                $seenDomains[$domainKey] = true;
+            }
+
+            $codeKey = trim((string) ($row['pref_code'] ?? '')) . ':' . trim((string) ($row['shokokai_code'] ?? ''));
+            if ($codeKey !== ':' && isset($seenCodes[$codeKey])) {
+                $withinDuplicateSignals[] = '貼り付けHTML内で商工会コード重複';
+            }
+            if ($codeKey !== ':') {
+                $seenCodes[$codeKey] = true;
+            }
+
+            $row['duplicate_signals'] = array_values(array_unique(array_merge($row['duplicate_signals'] ?? [], $withinDuplicateSignals)));
+        }
+        unset($row);
+
+        return $rows;
     }
 
     /**
@@ -260,6 +398,30 @@ class ShokokaiBulkHtmlImportService
             ->sortBy(fn ($group) => (string) ($group['pref_code'] ?? '99'))
             ->values()
             ->all();
+    }
+
+    private function toNullableString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+        return $value !== '' ? $value : null;
+    }
+
+    private function normalizePrefCode(?string $prefCode): ?string
+    {
+        if ($prefCode === null || trim($prefCode) === '') {
+            return null;
+        }
+
+        $prefCode = mb_convert_kana(trim($prefCode), 'n', 'UTF-8');
+        if (!preg_match('/^\d{1,2}$/', $prefCode)) {
+            return $prefCode;
+        }
+
+        return str_pad($prefCode, 2, '0', STR_PAD_LEFT);
     }
 
     private function normalizeEncoding(string $html): string

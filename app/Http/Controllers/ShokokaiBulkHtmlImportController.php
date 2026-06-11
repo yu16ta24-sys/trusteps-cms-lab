@@ -30,37 +30,66 @@ class ShokokaiBulkHtmlImportController extends Controller
 
     public function preview(Request $request): View|RedirectResponse
     {
-        $validator = Validator::make($request->all(), [
-            'html' => ['required', 'string'],
-        ], [
-            'html.required' => '全国商工会WEBサーチの全件表示HTMLを貼り付けてからプレビューして。',
-        ]);
+        $html = (string) $request->input('html', '');
+        $clientRowsJson = (string) $request->input('client_rows_json', '');
 
-        if ($validator->fails()) {
+        if (trim($html) === '' && trim($clientRowsJson) === '') {
             return redirect()
                 ->route('directory-sources.shokokai-bulk-html')
-                ->withErrors($validator)
-                ->withInput();
+                ->withErrors(['html' => '全国商工会WEBサーチの全件表示HTMLを貼り付けてからプレビューして。']);
         }
 
-        $html = (string) $request->input('html', '');
-        $preview = $this->importService->preview($html);
+        $preview = null;
+        $usedClientRows = false;
+
+        if (trim($clientRowsJson) !== '') {
+            $clientRows = json_decode($clientRowsJson, true);
+            if (!is_array($clientRows)) {
+                return redirect()
+                    ->route('directory-sources.shokokai-bulk-html')
+                    ->withErrors(['html' => 'ブラウザ側のHTML前処理結果を読み込めなかった。ページを再読み込みしてもう一度試して。']);
+            }
+
+            if (count($clientRows) > 5000) {
+                return redirect()
+                    ->route('directory-sources.shokokai-bulk-html')
+                    ->withErrors(['html' => '一度に処理できる件数は5000件まで。HTMLを分割して取り込んで。']);
+            }
+
+            $preview = $this->importService->previewClientRows($clientRows);
+            $usedClientRows = true;
+        } else {
+            $validator = Validator::make(['html' => $html], [
+                'html' => ['required', 'string', 'max:800000'],
+            ], [
+                'html.required' => '全国商工会WEBサーチの全件表示HTMLを貼り付けてからプレビューして。',
+                'html.max' => '貼り付けHTMLが大きすぎるため、ブラウザ側の前処理を使ってプレビューして。',
+            ]);
+
+            if ($validator->fails()) {
+                return redirect()
+                    ->route('directory-sources.shokokai-bulk-html')
+                    ->withErrors($validator);
+            }
+
+            $preview = $this->importService->preview($html);
+        }
 
         if ((int) data_get($preview, 'summary.total', 0) === 0) {
             return redirect()
                 ->route('directory-sources.shokokai-bulk-html')
-                ->withErrors(['html' => '商工会データを抽出できなかった。<li>...</li> が並んでいる検索結果HTMLを貼って。'])
-                ->withInput();
+                ->withErrors(['html' => '商工会データを抽出できなかった。<li>...</li> が並んでいる検索結果HTMLを貼って。']);
         }
 
         $token = Str::random(40);
         session()->put("shokokai_bulk_html_previews.{$token}", $preview);
 
         $preview['token'] = $token;
+        $preview['used_client_rows'] = $usedClientRows;
 
         return view('directory-sources.shokokai-bulk-html', [
             'preview' => $preview,
-            'htmlInput' => $html,
+            'htmlInput' => '',
         ]);
     }
 
@@ -101,7 +130,7 @@ class ShokokaiBulkHtmlImportController extends Controller
                     'source_type' => 'directory_source_candidate',
                     'source_url' => $row['url'] ?? null,
                     'raw_json' => [
-                        'collector_version' => '0.18.9',
+                        'collector_version' => '0.18.9.1',
                         'collector_type' => 'shokokai_web_search_bulk_html',
                         'origin' => 'shokokai_web_search_bulk_html',
                         'source_name' => '全国商工会WEBサーチ 全件HTML',
