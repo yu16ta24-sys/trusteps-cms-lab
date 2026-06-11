@@ -837,6 +837,9 @@
                 <a class="nav-link {{ request()->routeIs('discovery.*') ? 'active' : '' }}" href="{{ route('discovery.lab') }}">
                     候補収集ラボ
                 </a>
+                <a class="nav-link {{ request()->routeIs('directory-sources.index') || request()->routeIs('directory-sources.show') ? 'active' : '' }}" href="{{ route('directory-sources.index') }}">
+                    名簿元管理
+                </a>
                 <a class="nav-link {{ request()->routeIs('directory-sources.lab') || request()->routeIs('directory-sources.lab.*') ? 'active' : '' }}" href="{{ route('directory-sources.lab') }}">
                     名簿元収集
                 </a>

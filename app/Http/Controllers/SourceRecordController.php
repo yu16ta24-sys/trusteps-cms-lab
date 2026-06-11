@@ -24,7 +24,7 @@ class SourceRecordController extends Controller
     public function index(Request $request): View
     {
         $query = SourceRecord::query()
-            ->with('sourceLink');
+            ->with(['sourceLink', 'directorySource']);
 
         if ($request->filled('q')) {
             $q = trim((string) $request->input('q'));
@@ -329,7 +329,7 @@ class SourceRecordController extends Controller
 
     public function show(SourceRecord $sourceRecord): View
     {
-        $sourceRecord->load('sourceLink.company');
+        $sourceRecord->load(['sourceLink.company', 'directorySource']);
 
         $isDirectorySource = $this->isDirectorySourceRecord($sourceRecord);
 

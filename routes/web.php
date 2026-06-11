@@ -5,6 +5,7 @@ use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DiscoveryLabController;
 use App\Http\Controllers\DirectorySourceLabController;
+use App\Http\Controllers\DirectorySourceController;
 use App\Http\Controllers\IndustryScoreController;
 use App\Http\Controllers\MvpResetController;
 use App\Http\Controllers\OfficialSiteResolverController;
@@ -43,6 +44,14 @@ Route::middleware('auth')->group(function () {
     Route::post('/directory-sources/shokokai-web-search/store', [ShokokaiWebSearchController::class, 'store'])->name('directory-sources.shokokai-web-search.store');
     Route::get('/directory-sources/shokokai-web-search/preview', fn () => redirect()->route('directory-sources.shokokai-web-search'));
     Route::get('/directory-sources/shokokai-web-search/store', fn () => redirect()->route('directory-sources.shokokai-web-search'));
+
+
+    Route::get('/directory-sources', [DirectorySourceController::class, 'index'])->name('directory-sources.index');
+    Route::post('/directory-sources/import-source-records', [DirectorySourceController::class, 'importFromSourceRecords'])->name('directory-sources.import-source-records');
+    Route::post('/directory-sources/crawl-selected', [DirectorySourceController::class, 'crawlSelected'])->name('directory-sources.crawl-selected');
+    Route::post('/directory-sources/crawl-queue', [DirectorySourceController::class, 'crawlQueue'])->name('directory-sources.crawl-queue');
+    Route::post('/directory-sources/{directorySource}/crawl', [DirectorySourceController::class, 'crawlOne'])->whereNumber('directorySource')->name('directory-sources.crawl-one');
+    Route::get('/directory-sources/{directorySource}', [DirectorySourceController::class, 'show'])->whereNumber('directorySource')->name('directory-sources.show');
 
     Route::get('/directory-sources/lab', [DirectorySourceLabController::class, 'show'])->name('directory-sources.lab');
     Route::post('/directory-sources/lab/preview', [DirectorySourceLabController::class, 'preview'])->name('directory-sources.lab.preview');

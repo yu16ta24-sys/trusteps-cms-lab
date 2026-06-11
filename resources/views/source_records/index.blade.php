@@ -102,6 +102,7 @@
                     </div>
                     <div class="actions">
                         <a class="button light" href="{{ route('source-records.index', ['source_type' => 'directory_source_candidate']) }}">名簿元だけ表示</a>
+                        <a class="button" href="{{ route('directory-sources.index') }}">名簿元管理へ</a>
                     </div>
                 </div>
             </div>
@@ -276,6 +277,7 @@
                             @php
                                 $isLinked = (bool) $record->sourceLink;
                                 $isDirectorySource = $record->source_type === 'directory_source_candidate';
+                                $registeredDirectorySource = $record->directorySource ?? null;
                             @endphp
                             <tr @if (! $isLinked && $record->id === ($firstUnlinkedId ?? null)) style="background:#fffbeb;" @endif>
                                 <td>
@@ -314,6 +316,11 @@
                                     @elseif ($isDirectorySource)
                                         <span class="badge" style="background:#dbeafe; color:#1d4ed8;">名簿元</span>
                                         <span class="badge gray">company化対象外</span>
+                                        @if ($registeredDirectorySource)
+                                            <span class="badge green">directory_sources登録済み</span>
+                                        @else
+                                            <span class="badge amber">directory_sources未登録</span>
+                                        @endif
                                     @else
                                         <span class="badge gray">未リンク</span>
                                         @if ($record->id === ($firstUnlinkedId ?? null))
@@ -323,6 +330,9 @@
                                 </td>
                                 <td>
                                     <a class="button small light" href="{{ route('source-records.show', $record) }}">詳細</a>
+                                    @if ($registeredDirectorySource)
+                                        <a class="button small" href="{{ route('directory-sources.show', $registeredDirectorySource) }}">名簿元</a>
+                                    @endif
                                 </td>
                             </tr>
                         @empty

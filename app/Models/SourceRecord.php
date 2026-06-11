@@ -31,4 +31,9 @@ class SourceRecord extends Model
     {
         return $this->hasOne(CompanySourceLink::class);
     }
+
+    public function directorySource()
+    {
+        return $this->hasOne(DirectorySource::class);
+    }
 }
