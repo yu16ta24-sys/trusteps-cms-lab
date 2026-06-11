@@ -17,82 +17,101 @@ class IndustryScoreController extends Controller
     private array $categoryLabels = [
         'opportunity' => '機会系',
         'white_space' => '参入余白系',
-        'execution' => '営業・実行系',
-        'risk' => 'リスク系',
+        'execution'   => '営業・実行系',
+        'risk'        => 'リスク系',
     ];
 
     public function index(): View
     {
-        $industries = Industry::query()
+        // 大分類（parent_id = null）
+        $parents = Industry::query()
+            ->whereNull('parent_id')
+            ->where('is_active', true)
             ->orderBy('sort_order')
-            ->orderBy('id')
             ->get();
 
-        $axes = $this->activeAxes();
+        // 中分類（parent_id != null）
+        $children = Industry::query()
+            ->whereNotNull('parent_id')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get()
+            ->groupBy('parent_id');
+
+        // 全スラグ収集
+        $allSlugs = Industry::query()
+            ->whereNotNull('parent_id')
+            ->where('is_active', true)
+            ->pluck('slug')
+            ->filter()
+            ->values();
+
+        $axes   = $this->activeAxes();
         $scores = IndustryScore::query()
-            ->whereIn('industry_key', $industries->pluck('slug')->filter()->values())
+            ->whereIn('industry_key', $allSlugs)
             ->get()
             ->groupBy('industry_key');
 
         $categoryKeys = $axes->pluck('category')->unique()->values();
-        $summaries = [];
+        $summaries    = [];
 
-        foreach ($industries as $industry) {
-            $industryScores = $scores->get($industry->slug, collect())->keyBy('axis_key');
+        foreach ($allSlugs as $slug) {
+            $industryScores  = $scores->get($slug, collect())->keyBy('axis_key');
             $latestUpdatedAt = $industryScores->pluck('updated_at')->filter()->sortDesc()->first();
 
-            $summaries[$industry->slug] = [
-                'filled_count' => $industryScores->filter(fn ($score) => $score->value !== null)->count(),
-                'updated_at' => $latestUpdatedAt ? $latestUpdatedAt->format('Y-m-d H:i') : null,
-                'categories' => [],
+            $summaries[$slug] = [
+                'filled_count' => $industryScores->filter(fn($s) => $s->value !== null)->count(),
+                'updated_at'   => $latestUpdatedAt ? $latestUpdatedAt->format('Y-m-d') : null,
+                'categories'   => [],
             ];
 
             foreach ($categoryKeys as $category) {
                 $categoryAxes = $axes->where('category', $category);
                 $values = $categoryAxes
-                    ->map(fn ($axis) => optional($industryScores->get($axis->key))->value)
-                    ->filter(fn ($value) => $value !== null)
+                    ->map(fn($axis) => optional($industryScores->get($axis->key))->value)
+                    ->filter(fn($v) => $v !== null)
                     ->values();
 
-                $summaries[$industry->slug]['categories'][$category] = $values->isEmpty()
+                $summaries[$slug]['categories'][$category] = $values->isEmpty()
                     ? null
                     : round((float) $values->avg(), 1);
             }
         }
 
         return view('industries.scores.index', [
-            'industries' => $industries,
-            'axes' => $axes,
+            'parents'        => $parents,
+            'children'       => $children,
+            'axes'           => $axes,
             'categoryLabels' => $this->categoryLabels,
-            'categoryKeys' => $categoryKeys,
-            'summaries' => $summaries,
+            'categoryKeys'   => $categoryKeys,
+            'summaries'      => $summaries,
         ]);
     }
 
     public function edit(string $industry): View
     {
         $industryModel = Industry::query()->where('slug', $industry)->firstOrFail();
-        $axes = $this->activeAxes();
+        $axes   = $this->activeAxes();
         $scores = IndustryScore::query()
             ->where('industry_key', $industryModel->slug)
             ->get()
             ->keyBy('axis_key');
 
         return view('industries.scores.edit', [
-            'industry' => $industryModel,
+            'industry'       => $industryModel,
             'axesByCategory' => $axes->groupBy('category'),
-            'scores' => $scores,
+            'scores'         => $scores,
             'categoryLabels' => $this->categoryLabels,
-            'scoreTypes' => [
+            'scoreTypes'     => [
                 'hypothesis' => '仮説',
-                'observed' => '実測',
-                'mixed' => '混合',
+                'observed'   => '実測',
+                'mixed'      => '混合',
             ],
             'confidences' => [
-                '' => '未設定',
-                'low' => '低',
+                ''       => '未設定',
+                'low'    => '低',
                 'medium' => '中',
-                'high' => '高',
+                'high'   => '高',
             ],
         ]);
     }
@@ -103,23 +122,22 @@ class IndustryScoreController extends Controller
         $axes = $this->activeAxes();
 
         $validated = $request->validate([
-            'scores' => ['nullable', 'array'],
-            'scores.*.value' => ['nullable', 'integer', 'min:0', 'max:5'],
-            'scores.*.confidence' => ['nullable', Rule::in(['low', 'medium', 'high'])],
-            'scores.*.score_type' => ['nullable', Rule::in(['hypothesis', 'observed', 'mixed'])],
-            'scores.*.note' => ['nullable', 'string', 'max:5000'],
+            'scores'                => ['nullable', 'array'],
+            'scores.*.value'        => ['nullable', 'integer', 'min:0', 'max:5'],
+            'scores.*.confidence'   => ['nullable', Rule::in(['low', 'medium', 'high'])],
+            'scores.*.score_type'   => ['nullable', Rule::in(['hypothesis', 'observed', 'mixed'])],
+            'scores.*.note'         => ['nullable', 'string', 'max:5000'],
         ]);
 
         $inputScores = collect($validated['scores'] ?? []);
 
         DB::transaction(function () use ($industryModel, $axes, $inputScores) {
             foreach ($axes as $axis) {
-                $payload = (array) $inputScores->get($axis->key, []);
-                $value = array_key_exists('value', $payload) && $payload['value'] !== '' ? (int) $payload['value'] : null;
+                $payload    = (array) $inputScores->get($axis->key, []);
+                $value      = array_key_exists('value', $payload) && $payload['value'] !== '' ? (int) $payload['value'] : null;
                 $confidence = trim((string) ($payload['confidence'] ?? '')) ?: null;
-                $scoreType = trim((string) ($payload['score_type'] ?? '')) ?: 'hypothesis';
-                $note = trim((string) ($payload['note'] ?? ''));
-
+                $scoreType  = trim((string) ($payload['score_type'] ?? '')) ?: 'hypothesis';
+                $note       = trim((string) ($payload['note'] ?? ''));
                 $hasContent = $value !== null || $confidence !== null || $note !== '' || $scoreType !== 'hypothesis';
 
                 if (!$hasContent) {
@@ -131,15 +149,12 @@ class IndustryScoreController extends Controller
                 }
 
                 IndustryScore::query()->updateOrCreate(
+                    ['industry_key' => $industryModel->slug, 'axis_key' => $axis->key],
                     [
-                        'industry_key' => $industryModel->slug,
-                        'axis_key' => $axis->key,
-                    ],
-                    [
-                        'value' => $value,
+                        'value'      => $value,
                         'confidence' => $confidence,
                         'score_type' => $scoreType,
-                        'note' => $note !== '' ? $note : null,
+                        'note'       => $note !== '' ? $note : null,
                         'updated_by' => auth()->id(),
                     ]
                 );
@@ -148,7 +163,7 @@ class IndustryScoreController extends Controller
 
         return redirect()
             ->route('industries.scores.edit', $industryModel->slug)
-            ->with('status', '業界スコアを保存した。個社スコア・営業候補ランキングにはまだ反映していない。');
+            ->with('status', '業界スコアを保存しました。');
     }
 
     private function activeAxes(): Collection
