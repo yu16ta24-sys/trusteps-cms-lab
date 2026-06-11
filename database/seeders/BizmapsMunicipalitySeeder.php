@@ -9,8 +9,10 @@ class BizmapsMunicipalitySeeder extends Seeder
 {
     public function run(): void
     {
-        // 既存データをトランケート（テスト用15件を削除）
+        // 既存データをトランケート（外部キー制約を一時無効化）
+        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
         DB::table('municipalities')->truncate();
+        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
 
         $data = $this->getData();
         $now = now();
