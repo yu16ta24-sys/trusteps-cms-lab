@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\BizmapsImportController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DiscoveryLabController;
@@ -123,4 +124,12 @@ Route::middleware('auth')->group(function () {
     Route::post('/companies/{company}/kill-flags', [CompanyController::class, 'storeKillFlag'])->name('companies.kill-flags.store');
     Route::delete('/companies/{company}/kill-flags/{killFlag}', [CompanyController::class, 'deleteKillFlag'])->name('companies.kill-flags.destroy');
     Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
+
+    // BIZMAPSインポート
+    Route::get('/bizmaps/import', [BizmapsImportController::class, 'index'])->name('bizmaps.import');
+    Route::get('/bizmaps/municipalities', [BizmapsImportController::class, 'getMunicipalities'])->name('bizmaps.municipalities');
+    Route::get('/bizmaps/sub-industries', [BizmapsImportController::class, 'getSubIndustries'])->name('bizmaps.sub-industries');
+    Route::post('/bizmaps/preview', [BizmapsImportController::class, 'preview'])->name('bizmaps.preview');
+    Route::get('/bizmaps/preview', fn () => redirect()->route('bizmaps.import'));
+    Route::post('/bizmaps/store', [BizmapsImportController::class, 'store'])->name('bizmaps.store');
 });
