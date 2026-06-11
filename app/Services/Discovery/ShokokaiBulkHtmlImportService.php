@@ -57,7 +57,7 @@ class ShokokaiBulkHtmlImportService
             'summary' => $summary,
             'pref_groups' => $prefGroups,
             'meta' => [
-                'collector_version' => '0.18.9.1',
+                'collector_version' => '0.18.9.2',
                 'collector_type' => 'shokokai_web_search_bulk_html',
                 'source_name' => '全国商工会WEBサーチ 全件HTML',
                 'created_at' => now()->timestamp,
@@ -124,6 +124,8 @@ class ShokokaiBulkHtmlImportService
             'recommendation_reason' => $storable
                 ? '全国商工会WEBサーチのHTMLからブラウザ側で前処理した有効URL。名簿元候補として保存可能。'
                 : 'URLが無い、またはURL形式が壊れているため自動保存しない。',
+            'search_query' => $this->buildOfficialSiteSearchQuery($organizationName, $prefLabel, $address),
+            'google_search_url' => $this->buildGoogleSearchUrl($organizationName, $prefLabel, $address),
         ];
     }
 
@@ -149,10 +151,12 @@ class ShokokaiBulkHtmlImportService
 
             if (!empty($row['normalized_domain'])) {
                 $domainKey = (string) $row['normalized_domain'];
-                if (isset($seenDomains[$domainKey])) {
+                if (!$this->isGoopeDomain($domainKey) && isset($seenDomains[$domainKey])) {
                     $withinDuplicateSignals[] = '貼り付けHTML内でドメイン重複';
                 }
-                $seenDomains[$domainKey] = true;
+                if (!$this->isGoopeDomain($domainKey)) {
+                    $seenDomains[$domainKey] = true;
+                }
             }
 
             $codeKey = trim((string) ($row['pref_code'] ?? '')) . ':' . trim((string) ($row['shokokai_code'] ?? ''));
@@ -200,10 +204,12 @@ class ShokokaiBulkHtmlImportService
 
             if (!empty($row['normalized_domain'])) {
                 $domainKey = (string) $row['normalized_domain'];
-                if (isset($seenDomains[$domainKey])) {
+                if (!$this->isGoopeDomain($domainKey) && isset($seenDomains[$domainKey])) {
                     $withinDuplicateSignals[] = '貼り付けHTML内でドメイン重複';
                 }
-                $seenDomains[$domainKey] = true;
+                if (!$this->isGoopeDomain($domainKey)) {
+                    $seenDomains[$domainKey] = true;
+                }
             }
 
             $codeKey = trim((string) ($row['pref_code'] ?? '')) . ':' . trim((string) ($row['shokokai_code'] ?? ''));
@@ -291,6 +297,8 @@ class ShokokaiBulkHtmlImportService
             'recommendation_reason' => $storable
                 ? '全国商工会WEBサーチのHTMLから抽出した有効URL。名簿元候補として保存可能。'
                 : 'URLが無い、またはURL形式が壊れているため自動保存しない。',
+            'search_query' => $this->buildOfficialSiteSearchQuery($organizationName, $prefLabel, $address),
+            'google_search_url' => $this->buildGoogleSearchUrl($organizationName, $prefLabel, $address),
         ];
     }
 
@@ -338,12 +346,19 @@ class ShokokaiBulkHtmlImportService
             if ($urlKey !== '' && $existingUrls->has($urlKey)) {
                 $signals[] = '既存source_recordsにURL登録済み';
             }
-            if ($domainKey !== '' && $existingDomains->has($domainKey)) {
+            if ($domainKey !== '' && !$this->isGoopeDomain($domainKey) && $existingDomains->has($domainKey)) {
                 $signals[] = '既存source_recordsにドメイン登録済み';
             }
 
             $row['duplicate_signals'] = array_values(array_unique($signals));
-            if (!empty($signals)) {
+            $blockingSignals = array_filter($signals, function ($signal) use ($domainKey) {
+                if ($this->isGoopeDomain($domainKey) && str_contains((string) $signal, 'ドメイン重複')) {
+                    return false;
+                }
+
+                return true;
+            });
+            if (!empty($blockingSignals)) {
                 $row['default_checked'] = false;
             }
         }
@@ -612,6 +627,50 @@ class ShokokaiBulkHtmlImportService
         }
 
         return ['label' => '中', 'reason' => '有効URLだが連合会または共通CMS系の可能性があるため確認推奨。'];
+    }
+
+    private function isGoopeDomain(?string $domain): bool
+    {
+        if ($domain === null || trim($domain) === '') {
+            return false;
+        }
+
+        $domain = mb_strtolower(trim($domain));
+
+        return $domain === 'goope.jp' || str_ends_with($domain, '.goope.jp');
+    }
+
+    private function buildOfficialSiteSearchQuery(string $organizationName, string $prefLabel, ?string $address): string
+    {
+        $parts = [$organizationName, '公式', 'ホームページ'];
+        if ($prefLabel !== '' && $prefLabel !== '不明') {
+            $parts[] = $prefLabel;
+        }
+
+        $city = $this->extractCityForSearch($address);
+        if ($city) {
+            $parts[] = $city;
+        }
+
+        return trim(implode(' ', array_values(array_unique(array_filter($parts)))));
+    }
+
+    private function buildGoogleSearchUrl(string $organizationName, string $prefLabel, ?string $address): string
+    {
+        return 'https://www.google.com/search?q=' . rawurlencode($this->buildOfficialSiteSearchQuery($organizationName, $prefLabel, $address));
+    }
+
+    private function extractCityForSearch(?string $address): ?string
+    {
+        if (!$address) {
+            return null;
+        }
+
+        if (preg_match('/(?:都|道|府|県)([^\s　]+?(?:市|区|町|村))/u', $address, $m)) {
+            return $this->cleanText($m[1]);
+        }
+
+        return null;
     }
 
     private function guessPrefCodeByAddress(?string $address): ?string

@@ -40,6 +40,8 @@
             <textarea id="html" name="html" rows="14" class="form-textarea" placeholder="<li>...商工会データ...</li> を含むHTMLを貼り付け">{{ old('html', $htmlInput ?? '') }}</textarea>
             <p class="form-hint">
                 1600件前後のHTMLは送信前にブラウザ内で軽量データへ前処理します。巨大な生HTMLをそのまま送らないため、nginxの413を避けます。
+                グーペ系URLは複数商工会が同一ドメイン配下に存在するため、URLが有効なら初期チェックONにします。
+                URLなしの行には、公式HP確認用のGoogle検索リンクを表示します。
             </p>
             <div class="muted small-text" id="clientParseStatus"></div>
             <div class="button-row">
@@ -168,6 +170,12 @@
                                                             <div class="danger-text">{{ $row['raw_url'] }}</div>
                                                         @else
                                                             <span class="muted">URLなし</span>
+                                                            @if (!empty($row['google_search_url']))
+                                                                <div class="small-text">
+                                                                    <a href="{{ $row['google_search_url'] }}" target="_blank" rel="noopener">Googleで公式HP候補を確認</a>
+                                                                </div>
+                                                                <div class="muted small-text">{{ $row['search_query'] ?? '' }}</div>
+                                                            @endif
                                                         @endif
                                                     </td>
                                                     <td>
