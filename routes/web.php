@@ -85,6 +85,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/source-records/import/confirm', [SourceRecordController::class, 'confirmImport'])->name('source-records.import.confirm');
     Route::post('/source-records/import/cancel', [SourceRecordController::class, 'cancelImport'])->name('source-records.import.cancel');
     Route::post('/source-records/bulk-create-companies', [SourceRecordController::class, 'bulkCreateCompanies'])->name('source-records.bulk-create-companies');
+    Route::post('/source-records/cleanup-directory-source-companies', [SourceRecordController::class, 'cleanupDirectorySourceCompanies'])->name('source-records.cleanup-directory-source-companies');
 
     Route::get('/source-records/{sourceRecord}/create-company', [CompanyController::class, 'createFromSource'])
         ->name('companies.create-from-source');

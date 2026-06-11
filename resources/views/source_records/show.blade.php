@@ -15,6 +15,8 @@
                     <a class="button light" href="{{ route('source-records.index') }}">一覧へ戻る</a>
                     @if ($sourceRecord->sourceLink)
                         <a class="button" href="{{ route('companies.show', $sourceRecord->sourceLink->company) }}">リンク済みcompany</a>
+                    @elseif ($isDirectorySource ?? false)
+                        <span class="button light" style="opacity:.7; cursor:not-allowed;">名簿元：company化対象外</span>
                     @else
                         <a class="button" href="{{ route('companies.create-from-source', $sourceRecord) }}">新規company作成</a>
                         <a class="button light" href="{{ route('companies.link-existing-from-source', $sourceRecord) }}">既存companyへリンク</a>
@@ -44,6 +46,18 @@
                             </div>
                         </div>
                         <a class="button light" href="{{ route('companies.show', $sourceRecord->sourceLink->company) }}">companyを開く</a>
+                    </div>
+                </div>
+            @elseif ($isDirectorySource ?? false)
+                <div class="info-strip" style="margin-top:20px; background:#eff6ff; border-color:#bfdbfe;">
+                    <div class="row">
+                        <div>
+                            <strong>名簿元source_record</strong>
+                            <div class="muted" style="margin-top:4px;">
+                                これは営業先companyではなく、会員一覧・事業者一覧を探すための情報源。company化せずsource_recordsに残す。
+                            </div>
+                        </div>
+                        <span class="button light" style="opacity:.7; cursor:not-allowed;">company化対象外</span>
                     </div>
                 </div>
             @else
@@ -86,8 +100,8 @@
                 <div class="row">
                     <div>
                         <p class="section-label">processing navigation</p>
-                        <strong>未リンクsource_recordを前後に移動</strong>
-                        <div class="muted" style="margin-top:4px;">新規ルートは使わず、既存の詳細リンクだけで移動する。</div>
+                        <strong>company化対象source_recordを前後に移動</strong>
+                        <div class="muted" style="margin-top:4px;">名簿元を除いたcompany化対象の未リンクだけを前後移動する。</div>
                     </div>
                     <div class="actions">
                         @if ($previousUnlinkedSourceRecord)
@@ -109,7 +123,7 @@
                 <table>
                     <tbody>
                     <tr><th>ID</th><td>{{ $sourceRecord->id }}</td></tr>
-                    <tr><th>source_type</th><td><span class="badge gray">{{ $sourceRecord->source_type }}</span></td></tr>
+                    <tr><th>source_type</th><td><span class="badge gray">{{ $sourceRecord->source_type }}</span> @if ($isDirectorySource ?? false)<span class="badge" style="background:#dbeafe; color:#1d4ed8;">名簿元</span>@endif</td></tr>
                     <tr><th>source_url</th><td style="overflow-wrap:anywhere;">{{ $sourceRecord->source_url ?? '-' }}</td></tr>
                     <tr><th>corporate_number</th><td>{{ $sourceRecord->corporate_number ?? '-' }}</td></tr>
                     <tr><th>normalized_domain</th><td>{{ $sourceRecord->normalized_domain ?? '-' }}</td></tr>

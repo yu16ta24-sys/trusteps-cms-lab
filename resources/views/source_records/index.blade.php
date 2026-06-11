@@ -7,7 +7,7 @@
                 <div>
                     <p class="page-kicker">Phase1 / Intake</p>
                     <h1 class="page-title">source_records</h1>
-                    <p class="page-subtitle">外部から取った生データを整理して、company化する入口。</p>
+                    <p class="page-subtitle">外部から取った生データを整理する入口。営業先候補と名簿元は分けて扱う。</p>
                 </div>
                 <div class="actions">
                     <a class="button light" href="{{ route('source-records.import') }}">CSV取り込み</a>
@@ -27,7 +27,7 @@
                 </div>
             @endif
 
-            <p class="muted">総件数：{{ number_format($totalCount) }} 件</p>
+            <p class="muted">総件数：{{ number_format($totalCount) }} 件 / 名簿元：{{ number_format($directorySourceCount ?? 0) }} 件</p>
 
             <form method="GET" action="{{ route('source-records.index') }}" class="card" style="box-shadow:none; padding:18px; margin:20px 0;">
                 <div class="grid">
@@ -88,6 +88,43 @@
                 </div>
             </form>
 
+
+
+            <div class="card" style="box-shadow:none; padding:14px 18px; margin:0 0 16px; background:#eff6ff; border:1px solid #bfdbfe;">
+                <div class="row">
+                    <div>
+                        <strong>名簿元の扱い</strong>
+                        <p class="muted" style="margin:6px 0 0;">
+                            <code>directory_source_candidate</code> は営業先companyではなく、会員一覧・事業者一覧を探すための情報源。
+                            一括company化・詳細画面からのcompany作成対象から除外する。
+                        </p>
+                        <details class="help-panel"><summary>なぜ除外する？</summary><div class="help-body">商工会・商工会議所・組合・団体サイトは、営業候補企業そのものではなく、営業候補を生む入口として扱う。companiesへ入れるのは、そこから抽出した事業者HP。</div></details>
+                    </div>
+                    <div class="actions">
+                        <a class="button light" href="{{ route('source-records.index', ['source_type' => 'directory_source_candidate']) }}">名簿元だけ表示</a>
+                    </div>
+                </div>
+            </div>
+
+            @if (($directorySourceCompanyCleanupCount ?? 0) > 0)
+                <div class="card" style="box-shadow:none; padding:14px 18px; margin:0 0 16px; background:#fff1f2; border:1px solid #fecdd3;">
+                    <div class="row">
+                        <div>
+                            <strong>名簿元company混入の整理</strong>
+                            <p class="muted" style="margin:6px 0 0;">
+                                名簿元source_recordから作られたcandidate companyが {{ number_format($directorySourceCompanyCleanupCount) }} 件ある。
+                                source_recordsは残したまま、誤って作られたcompaniesだけ削除できる。
+                            </p>
+                        </div>
+                        <form method="POST" action="{{ route('source-records.cleanup-directory-source-companies') }}" onsubmit="return confirm('名簿元から誤って作られたcandidate companyを削除する？source_recordsは残る。');">
+                            @csrf
+                            <input type="hidden" name="confirm_cleanup" value="1">
+                            <button class="button" type="submit" style="background:#be123c;">混入companyを整理</button>
+                        </form>
+                    </div>
+                </div>
+            @endif
+
             @php
                 $sortKey = $sort ?? request('sort', 'id');
                 $sortDirection = $direction ?? request('direction', 'desc');
@@ -106,9 +143,9 @@
                 };
 
                 $currentPageUnlinked = $sourceRecords->getCollection()->filter(function ($record) {
-                    return ! $record->sourceLink;
+                    return ! $record->sourceLink && $record->source_type !== 'directory_source_candidate';
                 });
-                $currentPageLinkedCount = $sourceRecords->getCollection()->count() - $currentPageUnlinked->count();
+                $currentPageLinkedCount = $sourceRecords->getCollection()->filter(fn ($record) => (bool) $record->sourceLink)->count();
                 $firstUnlinkedId = optional($currentPageUnlinked->first())->id;
                 $activeFilterItems = collect([
                     ['key' => 'q', 'label' => '語句', 'value' => request('q')],
@@ -135,7 +172,7 @@
                         <strong>作業セッション</strong>
                         <p class="muted" style="margin:6px 0 0;">
                             現在の一覧：{{ number_format($sourceRecords->total()) }}件 / このページ：{{ number_format($sourceRecords->count()) }}件。
-                            このページの未リンク：{{ number_format($currentPageUnlinked->count()) }}件 / company化済み：{{ number_format($currentPageLinkedCount) }}件。
+                            このページのcompany化対象未リンク：{{ number_format($currentPageUnlinked->count()) }}件 / company化済み：{{ number_format($currentPageLinkedCount) }}件 / 名簿元：{{ number_format($currentPageDirectorySourceCount ?? 0) }}件。
                         </p>
                         @if ($activeFilterItems->isNotEmpty())
                             <div class="muted" style="margin:8px 0 0;">
@@ -184,8 +221,8 @@
                 <div class="row">
                     <div>
                         <strong>処理キュー</strong>
-                        <p class="muted" style="margin:6px 0 0;">未リンク {{ number_format($unlinkedQueueCount ?? 0) }} 件</p>
-                            <details class="help-panel"><summary>処理キューの考え方</summary><div class="help-body">現在の検索条件内で未リンクsource_recordを順番に処理する。専用ルートは追加せず、既存の一覧/詳細リンクだけで安全に動かす。</div></details>
+                        <p class="muted" style="margin:6px 0 0;">company化対象未リンク {{ number_format($unlinkedQueueCount ?? 0) }} 件</p>
+                            <details class="help-panel"><summary>処理キューの考え方</summary><div class="help-body">現在の検索条件内でcompany化対象の未リンクsource_recordを順番に処理する。名簿元はこのキューから除外する。</div></details>
                     </div>
                     <div class="actions">
                         <a class="button light" href="{{ route('source-records.index', array_merge(request()->except(['page']), ['link_status' => 'unlinked'])) }}">未リンクだけ表示</a>
@@ -210,10 +247,10 @@
                     <div class="row">
                         <div>
                             <strong>一括操作</strong>
-                            <details class="help-panel"><summary>一括company化の注意</summary><div class="help-body">チェックした未リンクsource_recordをcandidate companyとして一括作成する。既存companyへの自動リンクは誤統合防止のため行わない。</div></details>
+                            <details class="help-panel"><summary>一括company化の注意</summary><div class="help-body">チェックした未リンクsource_recordをcandidate companyとして一括作成する。directory_source_candidateは営業先ではないため自動的にスキップする。</div></details>
                         </div>
                         <div class="actions">
-                            <button class="button" type="submit" onclick="return confirm('チェックした未リンクsource_recordを一括company化する？リンク済みはスキップされる。');">選択分を一括company化</button>
+                            <button class="button" type="submit" onclick="return confirm('チェックしたcompany化対象の未リンクsource_recordを一括company化する？リンク済み・名簿元はスキップされる。');">選択分を一括company化</button>
                         </div>
                     </div>
                 </div>
@@ -238,6 +275,7 @@
                         @forelse ($sourceRecords as $record)
                             @php
                                 $isLinked = (bool) $record->sourceLink;
+                                $isDirectorySource = $record->source_type === 'directory_source_candidate';
                             @endphp
                             <tr @if (! $isLinked && $record->id === ($firstUnlinkedId ?? null)) style="background:#fffbeb;" @endif>
                                 <td>
@@ -246,12 +284,17 @@
                                         class="source-record-check"
                                         name="source_record_ids[]"
                                         value="{{ $record->id }}"
-                                        @disabled($isLinked)
+                                        @disabled($isLinked || $isDirectorySource)
                                         aria-label="source_record #{{ $record->id }}を選択"
                                     >
                                 </td>
                                 <td>{{ $record->id }}</td>
-                                <td>{{ $record->source_type }}</td>
+                                <td>
+                                    {{ $record->source_type }}
+                                    @if ($isDirectorySource)
+                                        <div><span class="badge" style="background:#dbeafe; color:#1d4ed8;">名簿元</span></div>
+                                    @endif
+                                </td>
                                 <td>{{ $record->name_norm ?? '-' }}</td>
                                 <td>{{ data_get($record->raw_json, 'canonical.raw_industry') ?: data_get($record->raw_json, 'raw_industry', '-') }}</td>
                                 <td>
@@ -265,6 +308,12 @@
                                 <td>
                                     @if ($isLinked)
                                         <span class="badge green">company化済み</span>
+                                        @if ($isDirectorySource)
+                                            <span class="badge" style="background:#fff1f2; color:#be123c;">名簿元リンク済み</span>
+                                        @endif
+                                    @elseif ($isDirectorySource)
+                                        <span class="badge" style="background:#dbeafe; color:#1d4ed8;">名簿元</span>
+                                        <span class="badge gray">company化対象外</span>
                                     @else
                                         <span class="badge gray">未リンク</span>
                                         @if ($record->id === ($firstUnlinkedId ?? null))

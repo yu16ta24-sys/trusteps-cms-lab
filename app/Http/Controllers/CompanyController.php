@@ -19,6 +19,8 @@ use Illuminate\View\View;
 
 class CompanyController extends Controller
 {
+    private const DIRECTORY_SOURCE_TYPES = ['directory_source_candidate'];
+
     public function index(Request $request): View
     {
         $query = Company::query()
@@ -447,6 +449,12 @@ class CompanyController extends Controller
                 ->with('status', 'このsource_recordはすでにcompanyへリンク済み。');
         }
 
+        if ($this->isDirectorySourceRecord($sourceRecord)) {
+            return redirect()
+                ->route('source-records.show', $sourceRecord)
+                ->with('status', 'このsource_recordは名簿元のため、営業先companyには変換しない。');
+        }
+
         $industries = Industry::query()
             ->where('is_active', true)
             ->orderBy('sort_order')
@@ -476,6 +484,12 @@ class CompanyController extends Controller
             return redirect()
                 ->route('companies.show', $sourceRecord->sourceLink->company)
                 ->with('status', 'このsource_recordはすでにcompanyへリンク済み。');
+        }
+
+        if ($this->isDirectorySourceRecord($sourceRecord)) {
+            return redirect()
+                ->route('source-records.show', $sourceRecord)
+                ->with('status', 'このsource_recordは名簿元のため、営業先companyには変換しない。');
         }
 
         $validated = $request->validate([
@@ -558,6 +572,12 @@ class CompanyController extends Controller
                 ->with('status', 'このsource_recordはすでにcompanyへリンク済み。');
         }
 
+        if ($this->isDirectorySourceRecord($sourceRecord)) {
+            return redirect()
+                ->route('source-records.show', $sourceRecord)
+                ->with('status', 'このsource_recordは名簿元のため、既存companyへリンクしない。');
+        }
+
         $query = Company::query()
             ->with(['industry', 'municipality.prefecture', 'primaryDomain'])
             ->where('status', '!=', 'merged')
@@ -589,6 +609,12 @@ class CompanyController extends Controller
             return redirect()
                 ->route('companies.show', $sourceRecord->sourceLink->company)
                 ->with('status', 'このsource_recordはすでにcompanyへリンク済み。');
+        }
+
+        if ($this->isDirectorySourceRecord($sourceRecord)) {
+            return redirect()
+                ->route('source-records.show', $sourceRecord)
+                ->with('status', 'このsource_recordは名簿元のため、既存companyへリンクしない。');
         }
 
         $validated = $request->validate([
@@ -1163,4 +1189,11 @@ class CompanyController extends Controller
 
         return $name !== '' ? $name : null;
     }
+
+
+    private function isDirectorySourceRecord(SourceRecord $sourceRecord): bool
+    {
+        return in_array($sourceRecord->source_type, self::DIRECTORY_SOURCE_TYPES, true);
+    }
+
 }

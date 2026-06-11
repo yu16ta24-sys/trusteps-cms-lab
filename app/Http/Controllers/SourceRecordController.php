@@ -19,6 +19,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SourceRecordController extends Controller
 {
+    private const DIRECTORY_SOURCE_TYPES = ['directory_source_candidate'];
+
     public function index(Request $request): View
     {
         $query = SourceRecord::query()
@@ -62,9 +64,11 @@ class SourceRecordController extends Controller
         $unlinkedQueueQuery = clone $query;
         $unlinkedQueueCount = (clone $unlinkedQueueQuery)
             ->whereDoesntHave('sourceLink')
+            ->whereNotIn('source_type', self::DIRECTORY_SOURCE_TYPES)
             ->count();
         $nextUnlinkedSourceRecord = (clone $unlinkedQueueQuery)
             ->whereDoesntHave('sourceLink')
+            ->whereNotIn('source_type', self::DIRECTORY_SOURCE_TYPES)
             ->orderBy('id')
             ->first();
 
@@ -103,6 +107,16 @@ class SourceRecordController extends Controller
         }
 
         $sourceRecords = $query->paginate(30)->withQueryString();
+
+        $currentPageDirectorySourceCount = $sourceRecords->getCollection()
+            ->filter(fn (SourceRecord $record) => $this->isDirectorySourceRecord($record))
+            ->count();
+
+        $directorySourceCount = SourceRecord::query()
+            ->whereIn('source_type', self::DIRECTORY_SOURCE_TYPES)
+            ->count();
+
+        $directorySourceCompanyCleanupCount = $this->directorySourceCompanyCleanupQuery()->count();
 
         $sourceTypes = SourceRecord::query()
             ->select('source_type')
@@ -148,7 +162,10 @@ class SourceRecordController extends Controller
             'sort',
             'direction',
             'unlinkedQueueCount',
-            'nextUnlinkedSourceRecord'
+            'nextUnlinkedSourceRecord',
+            'currentPageDirectorySourceCount',
+            'directorySourceCount',
+            'directorySourceCompanyCleanupCount'
         ));
     }
 
@@ -167,11 +184,17 @@ class SourceRecordController extends Controller
 
         $created = 0;
         $skipped = 0;
+        $directorySkipped = 0;
 
-        DB::transaction(function () use ($records, &$created, &$skipped) {
+        DB::transaction(function () use ($records, &$created, &$skipped, &$directorySkipped) {
             foreach ($records as $record) {
                 if ($record->sourceLink) {
                     $skipped++;
+                    continue;
+                }
+
+                if ($this->isDirectorySourceRecord($record)) {
+                    $directorySkipped++;
                     continue;
                 }
 
@@ -221,7 +244,39 @@ class SourceRecordController extends Controller
 
         return redirect()
             ->route('source-records.index', $request->except(['source_record_ids', '_token']))
-            ->with('status', "一括company化完了。作成 {$created} 件 / スキップ {$skipped} 件。リンク済みsource_recordは安全のためスキップした。");
+            ->with('status', "一括company化完了。作成 {$created} 件 / リンク済みスキップ {$skipped} 件 / 名簿元スキップ {$directorySkipped} 件。directory_source_candidateはcompany化対象外。");
+    }
+
+
+    public function cleanupDirectorySourceCompanies(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'confirm_cleanup' => ['required', 'accepted'],
+        ]);
+
+        unset($validated);
+
+        $ids = $this->directorySourceCompanyCleanupQuery()
+            ->pluck('companies.id');
+
+        $deleted = 0;
+
+        DB::transaction(function () use ($ids, &$deleted) {
+            foreach ($ids as $id) {
+                $company = Company::query()->find($id);
+
+                if (! $company) {
+                    continue;
+                }
+
+                $company->delete();
+                $deleted++;
+            }
+        });
+
+        return redirect()
+            ->route('source-records.index', $request->except(['_token', 'confirm_cleanup']))
+            ->with('status', "名簿元から誤って作られたcandidate companyを {$deleted} 件削除した。source_recordsは残している。");
     }
 
     public function create(): View
@@ -276,27 +331,33 @@ class SourceRecordController extends Controller
     {
         $sourceRecord->load('sourceLink.company');
 
+        $isDirectorySource = $this->isDirectorySourceRecord($sourceRecord);
+
         $nextUnlinkedSourceRecord = SourceRecord::query()
             ->where('id', '>', $sourceRecord->id)
             ->whereDoesntHave('sourceLink')
+            ->whereNotIn('source_type', self::DIRECTORY_SOURCE_TYPES)
             ->orderBy('id')
             ->first();
 
         $previousUnlinkedSourceRecord = SourceRecord::query()
             ->where('id', '<', $sourceRecord->id)
             ->whereDoesntHave('sourceLink')
+            ->whereNotIn('source_type', self::DIRECTORY_SOURCE_TYPES)
             ->orderByDesc('id')
             ->first();
 
         $remainingUnlinkedCount = SourceRecord::query()
             ->whereDoesntHave('sourceLink')
+            ->whereNotIn('source_type', self::DIRECTORY_SOURCE_TYPES)
             ->count();
 
         return view('source_records.show', compact(
             'sourceRecord',
             'nextUnlinkedSourceRecord',
             'previousUnlinkedSourceRecord',
-            'remainingUnlinkedCount'
+            'remainingUnlinkedCount',
+            'isDirectorySource'
         ));
     }
 
@@ -864,4 +925,23 @@ class SourceRecordController extends Controller
 
         return $name !== '' ? $name : null;
     }
+
+
+    private function isDirectorySourceRecord(SourceRecord $sourceRecord): bool
+    {
+        return in_array($sourceRecord->source_type, self::DIRECTORY_SOURCE_TYPES, true);
+    }
+
+    private function directorySourceCompanyCleanupQuery()
+    {
+        return Company::query()
+            ->where('companies.status', 'candidate')
+            ->whereHas('sourceLinks.sourceRecord', function ($query) {
+                $query->whereIn('source_type', self::DIRECTORY_SOURCE_TYPES);
+            })
+            ->whereDoesntHave('sourceLinks.sourceRecord', function ($query) {
+                $query->whereNotIn('source_type', self::DIRECTORY_SOURCE_TYPES);
+            });
+    }
+
 }
