@@ -6,6 +6,7 @@ use App\Models\SourceRecord;
 use DOMDocument;
 use DOMElement;
 use DOMXPath;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
@@ -19,79 +20,67 @@ class ShokokaiWebSearchService
         $hardPageLimit = (int) config('discovery.shokokai_web_search_page_hard_limit', 20);
         $resultLimit = (int) config('discovery.shokokai_web_search_result_limit', 500);
         $maxPages = max(1, min($maxPages, $hardPageLimit));
-        $kensu = in_array($kensu, [10, 20, 50], true) ? $kensu : 10;
+        $kensu = in_array($kensu, [10, 50, 100], true) ? $kensu : 50;
 
         $rows = [];
         $excluded = [];
         $pageResults = [];
         $seenKeys = [];
         $seenPayloads = [];
-        $payload = $this->initialPayload($prefCode, $kensu, $keyword);
+        $payload = null;
         $rowId = 0;
         $stopReason = null;
 
         for ($page = 1; $page <= $maxPages; $page++) {
-            $payloadSignature = md5(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
-            if (isset($seenPayloads[$payloadSignature])) {
-                $stopReason = '同じ検索ペイロードが再登場したため停止。';
-                break;
+            if ($page === 1) {
+                $fetched = $this->fetchFirstSearchHtml($prefCode, $prefLabel, $kensu, $keyword);
+                $payload = $fetched['payload'] ?? $this->initialPayload($prefCode, $kensu, $keyword, '0', 'Plus');
+            } else {
+                if (!is_array($payload)) {
+                    $stopReason = '次ページ用ペイロードなし。';
+                    break;
+                }
+
+                $payloadSignature = md5(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+                if (isset($seenPayloads[$payloadSignature])) {
+                    $stopReason = '同じ検索ペイロードが再登場したため停止。';
+                    break;
+                }
+                $seenPayloads[$payloadSignature] = true;
+
+                $fetched = $this->postHtml($endpoint, $payload, 'https://www12.shokokai.or.jp/hpsearch/top/php/search.php');
+                $fetched['page'] = $page;
+                $fetched['attempt_label'] = 'pagination';
+                $fetched['attempts'] = [];
             }
-            $seenPayloads[$payloadSignature] = true;
 
             $pageResult = [
                 'page' => $page,
                 'ok' => false,
-                'http_status' => null,
+                'http_status' => $fetched['http_status'] ?? null,
                 'payload' => $payload,
+                'attempt_label' => $fetched['attempt_label'] ?? null,
+                'attempts' => $fetched['attempts'] ?? [],
                 'row_count' => 0,
                 'new_row_count' => 0,
                 'excluded_count' => 0,
-                'error' => null,
+                'error' => $fetched['error'] ?? null,
             ];
 
-            try {
-                $response = Http::asForm()
-                    ->withHeaders([
-                        'User-Agent' => (string) config('discovery.shokokai_web_search_user_agent', 'TRUSTEPS-CMS-Lab-ShokokaiWebSearch/0.18.8'),
-                        'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                        'Referer' => 'https://www.shokokai.or.jp/?page_id=1754',
-                    ])
-                    ->timeout((int) config('discovery.shokokai_web_search_timeout', 12))
-                    ->connectTimeout((int) config('discovery.shokokai_web_search_connect_timeout', 6))
-                    ->withOptions([
-                        'allow_redirects' => [
-                            'max' => 5,
-                            'strict' => false,
-                            'referer' => true,
-                            'track_redirects' => true,
-                        ],
-                    ])
-                    ->post($endpoint, $payload);
-            } catch (Throwable $e) {
-                $pageResult['error'] = 'HTTP取得に失敗: ' . $e->getMessage();
+            if (empty($fetched['ok']) || !is_string($fetched['html'] ?? null)) {
                 $pageResults[] = $pageResult;
-                $stopReason = 'HTTP取得失敗';
+                $stopReason = $fetched['stop_reason'] ?? '検索ページ取得失敗';
                 break;
             }
 
-            $pageResult['http_status'] = $response->status();
-            if (!$response->successful()) {
-                $pageResult['error'] = 'HTTPステータスが正常ではない: ' . $response->status();
-                $pageResults[] = $pageResult;
-                $stopReason = 'HTTPステータス異常';
-                break;
-            }
-
-            $contentType = strtolower((string) $response->header('Content-Type', ''));
-            $bodyLimit = (int) config('discovery.shokokai_web_search_body_limit', 1600000);
-            $html = $this->toUtf8(substr($response->body(), 0, $bodyLimit), $contentType);
+            $html = (string) $fetched['html'];
             $parsed = $this->parseSearchResult($html, $prefCode, $prefLabel, $page);
             $pageRows = $parsed['rows'];
             $pageExcluded = $parsed['excluded'];
             $newRows = 0;
 
             foreach ($pageRows as $row) {
-                $key = (string) ($row['url_key'] ?: ('name:' . $row['organization_name'] . ':' . $row['address']));
+                $key = (string) ($row['url_key'] ?: ('name:' . ($row['organization_name'] ?? '') . ':' . ($row['address'] ?? '')));
                 if ($key !== '' && isset($seenKeys[$key])) {
                     $row['excluded_reason'] = '検索結果内で同一候補が重複している。';
                     $excluded[] = $row;
@@ -124,7 +113,9 @@ class ShokokaiWebSearchService
 
             $nextPayload = $this->extractNextPayload($html, $prefCode, $kensu, $keyword);
             if (!$nextPayload) {
-                $stopReason = '次ページフォームなし。';
+                $stopReason = count($rows) > 0
+                    ? '最終ページ。次ページフォームなし。'
+                    : '検索結果0件。POST条件が公式側フォームと合っていない、または該当なし。取得ページログを確認して。';
                 break;
             }
 
@@ -156,17 +147,272 @@ class ShokokaiWebSearchService
         ];
     }
 
-    private function initialPayload(string $prefCode, int $kensu, string $keyword): array
+    private function fetchFirstSearchHtml(string $prefCode, string $prefLabel, int $kensu, string $keyword): array
+    {
+        $endpoint = (string) config('discovery.shokokai_web_search_endpoint');
+        $attempts = [];
+        $lastFetched = null;
+
+        foreach ($this->initialDirectPayloads($prefCode, $kensu, $keyword) as $label => $payload) {
+            $fetched = $this->postHtml($endpoint, $payload, 'https://www.shokokai.or.jp/?page_id=1754');
+            $attempt = $this->summarizeAttempt($label, $fetched, $prefCode, $prefLabel);
+            $attempts[] = $attempt;
+            $lastFetched = $fetched;
+
+            if (!empty($attempt['row_count'])) {
+                $fetched['attempt_label'] = $label;
+                $fetched['attempts'] = $attempts;
+                $fetched['payload'] = $payload;
+                return $fetched;
+            }
+        }
+
+        $conditionFetched = $this->postConditionAndSearch($prefCode, $prefLabel, $kensu, $keyword, $attempts);
+        if (is_array($conditionFetched) && !empty($conditionFetched['ok'])) {
+            return $conditionFetched;
+        }
+
+        if (is_array($conditionFetched)) {
+            $lastFetched = $conditionFetched;
+        }
+
+        return [
+            'ok' => false,
+            'html' => $lastFetched['html'] ?? null,
+            'http_status' => $lastFetched['http_status'] ?? null,
+            'payload' => $lastFetched['payload'] ?? $this->initialPayload($prefCode, $kensu, $keyword, '0', 'Plus'),
+            'attempt_label' => $lastFetched['attempt_label'] ?? 'all_attempts_failed',
+            'attempts' => $attempts,
+            'error' => $lastFetched['error'] ?? '初回検索で商工会結果行を抽出できなかった。',
+            'stop_reason' => '初回検索結果を抽出できなかった。取得ページログを確認して。',
+        ];
+    }
+
+    private function postConditionAndSearch(string $prefCode, string $prefLabel, int $kensu, string $keyword, array &$attempts): ?array
+    {
+        $conditionEndpoint = (string) config('discovery.shokokai_web_search_condition_endpoint', 'https://www12.shokokai.or.jp/hpsearch/top/php/zyokensentaku.php');
+        $searchEndpoint = (string) config('discovery.shokokai_web_search_endpoint');
+        $conditionPayload = [
+            'shokokai' => $keyword,
+            'kensu' => (string) $kensu,
+            'kencdTbl' => $prefCode,
+            'loadtype' => '1',
+        ];
+
+        $condition = $this->postHtml($conditionEndpoint, $conditionPayload, 'https://www.shokokai.or.jp/?page_id=1754');
+        $conditionAttempt = $this->summarizeAttempt('condition_page', $condition, $prefCode, $prefLabel);
+        $attempts[] = $conditionAttempt;
+
+        if (empty($condition['ok']) || !is_string($condition['html'] ?? null)) {
+            $condition['attempt_label'] = 'condition_page';
+            $condition['attempts'] = $attempts;
+            $condition['payload'] = $conditionPayload;
+            return $condition;
+        }
+
+        $formPayloads = $this->extractSearchFormPayloads((string) $condition['html'], $prefCode, $kensu, $keyword);
+        if (empty($formPayloads)) {
+            return [
+                'ok' => false,
+                'html' => (string) $condition['html'],
+                'http_status' => $condition['http_status'] ?? null,
+                'payload' => $conditionPayload,
+                'attempt_label' => 'condition_page_no_search_form',
+                'attempts' => $attempts,
+                'error' => '条件選択ページからsearch.php用フォームを抽出できなかった。',
+            ];
+        }
+
+        foreach ($formPayloads as $index => $formPayload) {
+            $label = 'condition_form_' . ($index + 1);
+            $fetched = $this->postHtml($searchEndpoint, $formPayload, $conditionEndpoint);
+            $attempt = $this->summarizeAttempt($label, $fetched, $prefCode, $prefLabel);
+            $attempts[] = $attempt;
+
+            if (!empty($attempt['row_count'])) {
+                $fetched['attempt_label'] = $label;
+                $fetched['attempts'] = $attempts;
+                $fetched['payload'] = $formPayload;
+                return $fetched;
+            }
+        }
+
+        return [
+            'ok' => false,
+            'html' => $condition['html'],
+            'http_status' => $condition['http_status'] ?? null,
+            'payload' => $conditionPayload,
+            'attempt_label' => 'condition_forms_no_rows',
+            'attempts' => $attempts,
+            'error' => '条件選択ページ経由でも商工会結果行を抽出できなかった。',
+        ];
+    }
+
+    private function summarizeAttempt(string $label, array $fetched, string $prefCode, string $prefLabel): array
+    {
+        $html = is_string($fetched['html'] ?? null) ? (string) $fetched['html'] : '';
+        $parsed = $html !== '' ? $this->parseSearchResult($html, $prefCode, $prefLabel, 1) : ['rows' => [], 'excluded' => []];
+
+        return [
+            'label' => $label,
+            'ok' => !empty($fetched['ok']),
+            'http_status' => $fetched['http_status'] ?? null,
+            'row_count' => count($parsed['rows']),
+            'excluded_count' => count($parsed['excluded']),
+            'has_next_form' => $html !== '' && $this->extractNextPayload($html, $prefCode, 50, '') !== null,
+            'error' => $fetched['error'] ?? null,
+            'payload' => $fetched['payload'] ?? null,
+        ];
+    }
+
+    private function initialDirectPayloads(string $prefCode, int $kensu, string $keyword): array
+    {
+        return [
+            'direct_plus_start0' => $this->initialPayload($prefCode, $kensu, $keyword, '0', 'Plus'),
+            'direct_blank_start1' => $this->initialPayload($prefCode, $kensu, $keyword, '1', ''),
+            'direct_blank_start0' => $this->initialPayload($prefCode, $kensu, $keyword, '0', ''),
+            'direct_minimal' => [
+                'zyoken' => "'{$prefCode}'",
+                'shokokai' => $keyword,
+                'kensu' => (string) $kensu,
+                'kencdTbl' => $prefCode,
+            ],
+        ];
+    }
+
+    private function initialPayload(string $prefCode, int $kensu, string $keyword, string $startNo, string $pageMode): array
     {
         return [
             'zyoken' => "'{$prefCode}'",
             'shokokai' => $keyword,
             'kensu' => (string) $kensu,
-            'startNo' => '1',
-            'pageMode' => '',
+            'startNo' => $startNo,
+            'pageMode' => $pageMode,
             'kencdTbl' => $prefCode,
             'loadtype' => '1',
         ];
+    }
+
+    private function postHtml(string $url, array $payload, string $referer): array
+    {
+        try {
+            $response = Http::asForm()
+                ->withHeaders([
+                    'User-Agent' => (string) config('discovery.shokokai_web_search_user_agent', 'TRUSTEPS-CMS-Lab-ShokokaiWebSearch/0.18.8.1'),
+                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Referer' => $referer,
+                ])
+                ->timeout((int) config('discovery.shokokai_web_search_timeout', 12))
+                ->connectTimeout((int) config('discovery.shokokai_web_search_connect_timeout', 6))
+                ->withOptions([
+                    'allow_redirects' => [
+                        'max' => 5,
+                        'strict' => false,
+                        'referer' => true,
+                        'track_redirects' => true,
+                    ],
+                ])
+                ->post($url, $payload);
+        } catch (Throwable $e) {
+            return [
+                'ok' => false,
+                'html' => null,
+                'http_status' => null,
+                'payload' => $payload,
+                'error' => 'HTTP取得に失敗: ' . $e->getMessage(),
+            ];
+        }
+
+        if (!$response->successful()) {
+            return [
+                'ok' => false,
+                'html' => null,
+                'http_status' => $response->status(),
+                'payload' => $payload,
+                'error' => 'HTTPステータスが正常ではない: ' . $response->status(),
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'html' => $this->responseToUtf8($response),
+            'http_status' => $response->status(),
+            'payload' => $payload,
+            'error' => null,
+        ];
+    }
+
+    private function responseToUtf8(Response $response): string
+    {
+        $contentType = strtolower((string) $response->header('Content-Type', ''));
+        $bodyLimit = (int) config('discovery.shokokai_web_search_body_limit', 1600000);
+        return $this->toUtf8(substr($response->body(), 0, $bodyLimit), $contentType);
+    }
+
+    private function extractSearchFormPayloads(string $html, string $prefCode, int $kensu, string $keyword): array
+    {
+        $previous = libxml_use_internal_errors(true);
+        $dom = new DOMDocument();
+        $dom->loadHTML('<?xml encoding="UTF-8">' . $html, LIBXML_NOWARNING | LIBXML_NOERROR | LIBXML_NONET);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        $xpath = new DOMXPath($dom);
+        $payloads = [];
+
+        foreach ($xpath->query('//form') as $form) {
+            if (!$form instanceof DOMElement) {
+                continue;
+            }
+
+            $name = strtoupper((string) $form->getAttribute('name'));
+            $action = strtolower((string) $form->getAttribute('action'));
+            if ($name === 'MAEPAGE' || $name === 'ATOPAGE' || $name === 'MINAOSI') {
+                continue;
+            }
+            if ($action !== '' && !str_contains($action, 'search.php')) {
+                continue;
+            }
+
+            $payload = [];
+            foreach ($xpath->query('.//input[@name]', $form) as $input) {
+                if (!$input instanceof DOMElement) {
+                    continue;
+                }
+                $type = strtolower((string) $input->getAttribute('type'));
+                if (in_array($type, ['submit', 'button', 'image', 'reset'], true)) {
+                    continue;
+                }
+                $payload[(string) $input->getAttribute('name')] = (string) $input->getAttribute('value');
+            }
+
+            foreach ($xpath->query('.//select[@name]', $form) as $select) {
+                if (!$select instanceof DOMElement) {
+                    continue;
+                }
+                $selectName = (string) $select->getAttribute('name');
+                $selected = $xpath->query('.//option[@selected]', $select)->item(0);
+                if ($selected instanceof DOMElement) {
+                    $payload[$selectName] = (string) $selected->getAttribute('value');
+                }
+            }
+
+            $payload['zyoken'] = $payload['zyoken'] ?? "'{$prefCode}'";
+            $payload['shokokai'] = $keyword;
+            $payload['kensu'] = (string) $kensu;
+            $payload['startNo'] = $payload['startNo'] ?? '0';
+            $payload['pageMode'] = $payload['pageMode'] ?? 'Plus';
+            $payload['kencdTbl'] = $payload['kencdTbl'] ?? $prefCode;
+            $payload['loadtype'] = $payload['loadtype'] ?? '1';
+
+            $payloads[] = $payload;
+        }
+
+        if (empty($payloads)) {
+            $payloads[] = $this->initialPayload($prefCode, $kensu, $keyword, '0', 'Plus');
+        }
+
+        return $payloads;
     }
 
     private function parseSearchResult(string $html, string $prefCode, string $prefLabel, int $page): array
@@ -216,6 +462,7 @@ class ShokokaiWebSearchService
             $fax = $this->extractLabeledValue($text, 'FAX');
             $shokokaiCode = $mapInfo['shokokai_code'] ?? null;
             $rawIndex = $this->extractRawIndex($text);
+
             if ($name !== '' && !str_contains($name, '商工会') && empty($mapInfo['shokokai_code'])) {
                 $excluded[] = [
                     'organization_name' => $name,
@@ -340,6 +587,7 @@ class ShokokaiWebSearchService
             return null;
         }
 
+        $url = preg_replace('/\s+/u', '', $url) ?: $url;
         if (!preg_match('#^https?://#i', $url)) {
             return null;
         }

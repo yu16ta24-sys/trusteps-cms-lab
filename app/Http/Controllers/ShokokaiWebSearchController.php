@@ -35,13 +35,13 @@ class ShokokaiWebSearchController extends Controller
 
         $validator = Validator::make($request->all(), [
             'pref_code' => ['required', 'string', 'in:' . $prefCodes],
-            'kensu' => ['required', 'integer', 'in:10,20,50'],
+            'kensu' => ['required', 'integer', 'in:10,50,100'],
             'max_pages' => ['required', 'integer', 'min:1', 'max:' . (int) config('discovery.shokokai_web_search_page_hard_limit', 20)],
             'shokokai' => ['nullable', 'string', 'max:100'],
         ], [
             'pref_code.required' => '都道府県を選んでから検索して。',
             'pref_code.in' => '対応している都道府県コードではない。',
-            'kensu.in' => '表示件数は10・20・50のいずれかにして。',
+            'kensu.in' => '表示件数は10・50・100のいずれかにして。',
             'max_pages.max' => '最大ページ数が大きすぎる。件数を分けて実行して。',
         ]);
 
@@ -122,7 +122,7 @@ class ShokokaiWebSearchController extends Controller
                     'source_type' => 'directory_source_candidate',
                     'source_url' => $row['url'] ?? null,
                     'raw_json' => [
-                        'collector_version' => '0.18.8',
+                        'collector_version' => '0.18.8.1',
                         'collector_type' => 'shokokai_web_search',
                         'source_name' => '全国商工会WEBサーチ',
                         'source_url' => config('discovery.shokokai_web_search_endpoint'),

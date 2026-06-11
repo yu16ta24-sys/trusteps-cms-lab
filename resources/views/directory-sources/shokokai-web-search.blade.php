@@ -22,7 +22,7 @@
             <p class="page-kicker">Directory Source Collector</p>
             <h1 class="page-title">全国商工会WEBサーチ収集</h1>
             <p class="page-subtitle">
-                全国商工会連合会のWEBサーチに都道府県条件をPOSTし、地域商工会HPを名簿元候補として集める。
+                全国商工会連合会のWEBサーチに都道府県条件をPOSTし、地域商工会HPを名簿元候補として集める。search.php直叩きで結果が出ない場合は、条件選択ページ経由も試す。
                 ここでは営業先companyは作らず、source_recordsに「名簿元」として保存する。
             </p>
 
@@ -64,7 +64,7 @@
                     <div>
                         <label for="kensu">1ページ表示件数</label>
                         <select id="kensu" name="kensu" required>
-                            @foreach ([10, 20, 50] as $option)
+                            @foreach ([10, 50, 100] as $option)
                                 <option value="{{ $option }}" @selected((int) old('kensu', $meta['kensu'] ?? 50) === $option)>{{ $option }}件</option>
                             @endforeach
                         </select>
@@ -130,6 +130,20 @@
                                     <span class="muted">HTTP: {{ $page['http_status'] ?? '-' }} / 新規: {{ $page['new_row_count'] ?? 0 }} / 抽出: {{ $page['row_count'] ?? 0 }}</span>
                                     @if (!empty($page['error']))
                                         <div style="color:var(--danger); margin-top:4px;">{{ $page['error'] }}</div>
+                                    @endif
+
+                                    @if (!empty($page['attempts']))
+                                        <div style="margin-top:8px; padding:8px; background:#f8fafc; border:1px solid #e4e7ec; border-radius:10px;">
+                                            <div class="muted" style="font-weight:900; margin-bottom:6px;">初回POST試行ログ</div>
+                                            @foreach ($page['attempts'] as $attempt)
+                                                <div class="muted" style="font-size:12px; margin-top:4px;">
+                                                    {{ $attempt['label'] ?? '-' }} / HTTP: {{ $attempt['http_status'] ?? '-' }} / 抽出: {{ $attempt['row_count'] ?? 0 }} / 除外: {{ $attempt['excluded_count'] ?? 0 }}
+                                                    @if (!empty($attempt['error']))
+                                                        / {{ $attempt['error'] }}
+                                                    @endif
+                                                </div>
+                                            @endforeach
+                                        </div>
                                     @endif
                                 </div>
                             @endforeach

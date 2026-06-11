@@ -114,10 +114,11 @@ return [
     ],
 
     'shokokai_web_search_endpoint' => 'https://www12.shokokai.or.jp/hpsearch/top/php/search.php',
+    'shokokai_web_search_condition_endpoint' => 'https://www12.shokokai.or.jp/hpsearch/top/php/zyokensentaku.php',
     'shokokai_web_search_timeout' => 12,
     'shokokai_web_search_connect_timeout' => 6,
     'shokokai_web_search_body_limit' => 1600000,
-    'shokokai_web_search_user_agent' => 'TRUSTEPS-CMS-Lab-ShokokaiWebSearch/0.18.8',
+    'shokokai_web_search_user_agent' => 'TRUSTEPS-CMS-Lab-ShokokaiWebSearch/0.18.8.1',
     'shokokai_web_search_page_hard_limit' => 20,
     'shokokai_web_search_result_limit' => 500,
     'shokokai_web_search_prefectures' => [
