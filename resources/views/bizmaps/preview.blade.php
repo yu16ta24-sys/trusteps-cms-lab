@@ -88,7 +88,7 @@
     </div>
   </details>
 
-  @if(empty($results))
+  @if(empty($mainResults) && empty($excludedResults))
     <div class="card" style="text-align:center;padding:48px;">
       <div class="empty-icon" style="margin:0 auto 16px;">0</div>
       <h2 class="empty-title">取得できませんでした</h2>
@@ -101,7 +101,7 @@
 
   {{-- サマリーバー --}}
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
-    <div class="badge blue" style="font-size:14px;padding:8px 14px;">{{ count($results) }}件取得</div>
+    <div class="badge blue" style="font-size:14px;padding:8px 14px;">{{ count($mainResults) }}件取得</div>
     <div id="hpFoundBadge" style="display:none;" class="badge green">HP取得済 <span id="hpFoundCount">0</span>件</div>
     <div style="flex:1;"></div>
     <button type="button" class="button secondary" id="fetchHpBtn" style="gap:8px;">
@@ -128,10 +128,11 @@
           <th>HP URL</th>
           <th class="tight">詳細</th>
           <th class="tight">状態</th>
+          <th class="tight">除外</th>
         </tr>
       </thead>
       <tbody>
-        @foreach($results as $i => $row)
+        @foreach($mainResults as $i => $row)
         <tr id="row-{{ $i }}">
           <td class="tight">
             @if($row['is_duplicate'])
@@ -170,6 +171,11 @@
               <span class="badge amber">HPなし</span>
             @endif
           </td>
+          <td class="tight">
+            <button type="button" class="button small light exclude-btn"
+              data-index="{{ $i }}"
+              style="font-size:11px;padding:5px 10px;color:var(--danger);">除外</button>
+          </td>
         </tr>
         @endforeach
       </tbody>
@@ -185,6 +191,53 @@
     <div id="saveResult"></div>
   </div>
 
+  {{-- 除外リストアコーディオン --}}
+  @if(!empty($excludedResults))
+  <details style="margin-top:20px;" id="excludedPanel">
+    <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:12px 16px;border:1px solid #fecaca;border-radius:14px;background:#fef2f2;">
+      <span style="font-weight:900;font-size:14px;">除外リスト</span>
+      <span class="badge red" style="font-size:11px;">{{ count($excludedResults) }}件</span>
+      <span style="font-size:12px;color:var(--muted);margin-left:4px;">▼ クリックで展開 / 復活できます</span>
+    </summary>
+    <div style="margin-top:8px;">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>会社名</th>
+              <th>都道府県</th>
+              <th>市区町村</th>
+              <th>業種</th>
+              <th class="tight">詳細</th>
+              <th class="tight">復活</th>
+            </tr>
+          </thead>
+          <tbody id="excludedTbody">
+            @foreach($excludedResults as $row)
+            <tr id="excluded-row-{{ $loop->index }}">
+              <td style="font-weight:800;opacity:0.6;">{{ $row['name'] ?? '-' }}</td>
+              <td style="opacity:0.6;">{{ $row['pref'] ?? '-' }}</td>
+              <td style="opacity:0.6;">{{ $row['city'] ?? '-' }}</td>
+              <td style="opacity:0.6;"><span style="font-size:12px;color:var(--muted);">{{ Str::limit($row['industry'] ?? '-', 25) }}</span></td>
+              <td class="tight">
+                <a href="{{ $row['detail_url'] }}" target="_blank" class="button small light"
+                  style="font-size:11px;padding:5px 10px;">BIZMAPS</a>
+              </td>
+              <td class="tight">
+                <button type="button" class="button small light unexclude-btn"
+                  data-detail-url="{{ $row['detail_url'] }}"
+                  data-row-id="excluded-row-{{ $loop->index }}"
+                  style="font-size:11px;padding:5px 10px;color:var(--success);">復活</button>
+              </td>
+            </tr>
+            @endforeach
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+  @endif
+
   @endif
 
 </div>
@@ -193,7 +246,7 @@
 {{-- Blade変数をJSに渡す（verbatim外） --}}
 @push('scripts')
 <script>
-const PREVIEW_DATA     = @json($results);
+const PREVIEW_DATA     = @json($mainResults);
 const SAVED_CITY_CODES = @json($sc['city_codes'] ?? []);
 const SAVED_PREF_ID    = @json($sc['prefecture_id'] ?? null);
 </script>
@@ -279,6 +332,72 @@ document.addEventListener('DOMContentLoaded', function () {
     const saveBtn = document.getElementById('saveBtn');
     if (saveBtn) saveBtn.disabled = count === 0;
   }
+
+  // ---- 除外ボタン ----
+  document.querySelectorAll('.exclude-btn').forEach(btn => {
+    btn.addEventListener('click', function () {
+      const idx  = parseInt(this.dataset.index);
+      const item = PREVIEW_DATA[idx];
+      if (!item) return;
+
+      if (!confirm(`「${item.name}」を除外リストに追加しますか？`)) return;
+
+      fetch('/bizmaps/exclude', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+        },
+        body: JSON.stringify({ item }),
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          const row = document.getElementById('row-' + idx);
+          if (row) {
+            row.style.transition = 'opacity 0.3s';
+            row.style.opacity = '0';
+            setTimeout(() => row.remove(), 300);
+          }
+          // 除外パネルがあれば件数バッジを更新
+          const panel = document.getElementById('excludedPanel');
+          if (!panel) {
+            // パネルがない場合はページリロードで反映
+          }
+        }
+      })
+      .catch(err => alert('除外失敗: ' + err.message));
+    });
+  });
+
+  // ---- 復活ボタン ----
+  document.querySelectorAll('.unexclude-btn').forEach(btn => {
+    btn.addEventListener('click', function () {
+      const detailUrl = this.dataset.detailUrl;
+      const rowId     = this.dataset.rowId;
+
+      fetch('/bizmaps/unexclude', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+        },
+        body: JSON.stringify({ detail_url: detailUrl }),
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          const row = document.getElementById(rowId);
+          if (row) {
+            row.style.transition = 'opacity 0.3s';
+            row.style.opacity = '0';
+            setTimeout(() => row.remove(), 300);
+          }
+        }
+      })
+      .catch(err => alert('復活失敗: ' + err.message));
+    });
+  });
 
   // ---- SSE: HP URL リアルタイム取得 ----
   let hpFoundCount = 0;

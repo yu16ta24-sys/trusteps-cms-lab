@@ -86,8 +86,22 @@ class BizmapsImportController extends Controller
             ->pluck('source_url')
             ->toArray();
 
+        // 除外リストチェック
+        $excludedUrls = DB::table('bizmaps_excluded_companies')
+            ->whereIn('detail_url', $detailUrls)
+            ->pluck('detail_url')
+            ->toArray();
+
+        $mainResults     = [];
+        $excludedResults = [];
+
         foreach ($results as &$r) {
             $r['is_duplicate'] = in_array($r['detail_url'], $existingUrls);
+            if (in_array($r['detail_url'], $excludedUrls)) {
+                $excludedResults[] = $r;
+            } else {
+                $mainResults[] = $r;
+            }
         }
         unset($r);
 
@@ -108,7 +122,9 @@ class BizmapsImportController extends Controller
         ];
         session(['bizmaps_search_condition' => $searchCondition]);
 
-        return view('bizmaps.preview', compact('results', 'prefecture', 'limit', 'searchCondition'));
+        $industries = $this->getIndustries();
+        $results = $mainResults; // 後方互換用
+        return view('bizmaps.preview', compact('mainResults', 'excludedResults', 'results', 'prefecture', 'limit', 'searchCondition', 'industries'));
     }
 
     /**
@@ -171,6 +187,43 @@ class BizmapsImportController extends Controller
     private function sseEmit(array $data): void
     {
         echo "data: " . json_encode($data) . "\n\n";
+    }
+
+    /**
+     * 除外リストに追加
+     */
+    public function exclude(Request $request)
+    {
+        $item = $request->input('item', []);
+        $detailUrl = $item['detail_url'] ?? null;
+        if (!$detailUrl) return response()->json(['error' => 'no detail_url'], 400);
+
+        DB::table('bizmaps_excluded_companies')->updateOrInsert(
+            ['detail_url' => $detailUrl],
+            [
+                'name'        => $item['name']  ?? null,
+                'pref'        => $item['pref']  ?? null,
+                'city'        => $item['city']  ?? null,
+                'excluded_at' => now(),
+                'updated_at'  => now(),
+                'created_at'  => now(),
+            ]
+        );
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * 除外リストから復活
+     */
+    public function unexclude(Request $request)
+    {
+        $detailUrl = $request->input('detail_url');
+        if (!$detailUrl) return response()->json(['error' => 'no detail_url'], 400);
+
+        DB::table('bizmaps_excluded_companies')->where('detail_url', $detailUrl)->delete();
+
+        return response()->json(['ok' => true]);
     }
 
     public function store(Request $request)
