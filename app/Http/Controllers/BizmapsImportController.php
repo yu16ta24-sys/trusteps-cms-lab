@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\BizmapsScraperService;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BizmapsImportController extends Controller
 {
@@ -56,7 +57,6 @@ class BizmapsImportController extends Controller
         $industryType = $request->input('industry_type');
         $industryId   = $request->input('industry_id');
         $limit        = (int) $request->input('limit', 50);
-        $fetchHp      = $request->boolean('fetch_hp');
 
         $prefecture = DB::table('prefectures')->find($prefectureId);
         $urls       = $this->buildUrls($prefectureId, $cityCodes, $industryType, $industryId);
@@ -66,14 +66,13 @@ class BizmapsImportController extends Controller
             'industry_type' => $industryType,
             'prefecture_id' => $prefectureId,
             'city_codes'    => $cityCodes,
-            'fetch_hp'      => $fetchHp,
         ]);
 
         $scraper = new BizmapsScraperService();
         $results = [];
 
         foreach ($urls as $url) {
-            $fetched = $scraper->fetchList($url, $limit - count($results), $fetchHp);
+            $fetched = $scraper->fetchList($url, $limit - count($results), false);
             $results = array_merge($results, $fetched);
             if (count($results) >= $limit) break;
         }
@@ -81,7 +80,7 @@ class BizmapsImportController extends Controller
         $results = array_slice($results, 0, $limit);
 
         // 重複チェック
-        $detailUrls = array_filter(array_column($results, 'detail_url'));
+        $detailUrls   = array_filter(array_column($results, 'detail_url'));
         $existingUrls = DB::table('source_records')
             ->whereIn('source_url', $detailUrls)
             ->pluck('source_url')
@@ -92,15 +91,78 @@ class BizmapsImportController extends Controller
         }
         unset($r);
 
+        // SSE用にdetail_urlリストをセッションに保存
+        $detailUrlsForSse = array_map(fn($r) => $r['detail_url'], $results);
+        session(['bizmaps_detail_urls' => $detailUrlsForSse]);
+
         return view('bizmaps.preview', compact('results', 'prefecture', 'limit'));
+    }
+
+    /**
+     * SSEエンドポイント：1件ずつHP URLを取得してストリームで返す
+     */
+    public function fetchHpStream(Request $request): StreamedResponse
+    {
+        $detailUrls = session('bizmaps_detail_urls', []);
+
+        return new StreamedResponse(function () use ($detailUrls) {
+            $scraper = new BizmapsScraperService();
+
+            foreach ($detailUrls as $index => $detailUrl) {
+                if (!$detailUrl) {
+                    $this->sseEmit([
+                        'index'  => $index,
+                        'hp_url' => null,
+                        'status' => 'skip',
+                    ]);
+                    continue;
+                }
+
+                try {
+                    $hpUrl = $scraper->fetchDetailHpUrl($detailUrl);
+                    $this->sseEmit([
+                        'index'      => $index,
+                        'hp_url'     => $hpUrl,
+                        'detail_url' => $detailUrl,
+                        'status'     => $hpUrl ? 'found' : 'not_found',
+                    ]);
+                } catch (\Throwable $e) {
+                    $this->sseEmit([
+                        'index'  => $index,
+                        'hp_url' => null,
+                        'status' => 'error',
+                    ]);
+                }
+
+                if (ob_get_level() > 0) ob_flush();
+                flush();
+            }
+
+            // 完了イベント
+            echo "event: done\n";
+            echo "data: " . json_encode(['total' => count($detailUrls)]) . "\n\n";
+            if (ob_get_level() > 0) ob_flush();
+            flush();
+
+        }, 200, [
+            'Content-Type'      => 'text/event-stream',
+            'Cache-Control'     => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+            'Connection'        => 'keep-alive',
+        ]);
+    }
+
+    private function sseEmit(array $data): void
+    {
+        echo "data: " . json_encode($data) . "\n\n";
     }
 
     public function store(Request $request)
     {
-        $items  = $request->input('items', []);
-        $saved  = 0;
+        $items   = $request->input('items', []);
+        $saved   = 0;
         $skipped = 0;
-        $now    = now();
+        $now     = now();
 
         foreach ($items as $item) {
             $hpUrl     = $item['hp_url']     ?? null;
@@ -115,7 +177,7 @@ class BizmapsImportController extends Controller
 
             $normalizedDomain = null;
             if ($hpUrl) {
-                $host = parse_url($hpUrl, PHP_URL_HOST);
+                $host             = parse_url($hpUrl, PHP_URL_HOST);
                 $normalizedDomain = $host ? preg_replace('/^www\./', '', $host) : null;
             }
 
