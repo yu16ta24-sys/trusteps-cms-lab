@@ -1,257 +1,220 @@
-@extends('layouts.app', ['title' => 'ダッシュボード | TRUSTEPS CMS Lab'])
+@extends('layouts.app', ['title' => 'Dashboard | TRUSTEPS CMS Lab'])
 
 @section('content')
-    <main class="content">
-        <section class="card">
-            <div class="row" style="gap:18px; align-items:flex-start;">
-                <div>
-                    <p class="page-kicker">Phase1 / Research MVP</p>
-                    <h1 class="page-title">ダッシュボード</h1>
-                    <p class="page-subtitle">今日やる作業と、データ投入・採点・候補抽出の進捗を見る。</p>
-                    <details class="help-panel">
-                        <summary>この画面の見方</summary>
-                        <div class="help-body">source_recordsのcompany化、4軸採点、営業候補確認を1画面で追う。迷ったら「次に処理するもの」→「今日さばくリスト」の順で見る。</div>
-                    </details>
-                </div>
-                <div class="actions">
-                    <a class="button" href="{{ route('source-records.index') }}">source_records</a>
-                    <a class="button light" href="{{ route('companies.index') }}">companies</a>
-                    <a class="button light" href="{{ route('companies.candidates') }}">営業候補</a>
-                </div>
-            </div>
-        </section>
+<main class="content db">
+<style>
+.db { display:grid; gap:20px; }
+.db-topbar { display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px; }
+.db-kicker { font-size:11px; font-weight:900; color:var(--muted); letter-spacing:.1em; text-transform:uppercase; margin-bottom:6px; }
+.db-title { margin:0; font-size:28px; font-weight:950; letter-spacing:-.03em; color:var(--text); }
+.db-sub { margin:5px 0 0; font-size:13px; color:var(--muted); }
+.db-btn-row { display:flex; gap:8px; flex-wrap:wrap; }
+.db-sec-label { font-size:10px; font-weight:900; color:var(--muted); letter-spacing:.1em; text-transform:uppercase; margin-bottom:14px; }
+.db-next-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+.db-next-card { border:1px solid var(--line); border-radius:18px; padding:18px; background:#fff; display:flex; flex-direction:column; }
+.db-step { font-size:10px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; padding:3px 9px; border-radius:999px; display:inline-block; width:fit-content; margin-bottom:10px; }
+.db-step-blue { background:#dbeafe; color:#1d4ed8; }
+.db-step-gray { background:#f2f4f7; color:#475467; }
+.db-step-amber { background:#fef3c7; color:#92400e; }
+.db-step-green { background:#dcfce7; color:#166534; }
+.db-next-num { font-size:38px; font-weight:950; color:var(--text); letter-spacing:-.04em; line-height:1; margin:6px 0 4px; }
+.db-next-desc { font-size:12px; color:var(--muted); line-height:1.5; flex:1; }
+.db-next-action { margin-top:14px; }
+.db-work-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+.db-work-card { border:1px solid var(--line); border-radius:18px; padding:18px; background:#fff; }
+.db-work-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+.db-work-title { font-size:13px; font-weight:900; color:var(--text); }
+.db-work-desc { font-size:11px; color:var(--muted); margin-bottom:10px; line-height:1.5; }
+.db-item { padding:9px 0; border-top:1px solid var(--line); }
+.db-item-name { font-size:12px; font-weight:900; color:var(--text); margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.db-item-sub { font-size:11px; color:var(--muted); }
+.db-item-btn { margin-top:6px; }
+.db-cand-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+.db-cand-stat { background:#f8fafc; border:1px solid var(--line); border-radius:16px; padding:14px 16px; }
+.db-cand-label { font-size:11px; color:var(--muted); font-weight:900; margin-bottom:6px; }
+.db-cand-num { font-size:28px; font-weight:950; color:var(--text); letter-spacing:-.03em; line-height:1; }
+.db-cand-sub { font-size:11px; color:var(--muted); margin-top:4px; }
+.db-card-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+@media(max-width:900px){
+    .db-next-grid { grid-template-columns:repeat(2,1fr); }
+    .db-work-grid { grid-template-columns:1fr; }
+    .db-cand-grid { grid-template-columns:repeat(2,1fr); }
+}
+@media(max-width:600px){
+    .db-next-grid { grid-template-columns:1fr; }
+    .db-cand-grid { grid-template-columns:1fr; }
+}
+</style>
 
-        <section class="card" style="margin-top:18px; border-left:4px solid #2563eb;">
-            <div class="row" style="align-items:flex-end;">
-                <div>
-                    <h2 style="margin:0;">次に処理するもの</h2>
-                    <details class="help-panel"><summary>処理順の考え方</summary><div class="help-body">未リンクsource_recordsをcompany化し、未採点companyを4軸採点し、最後に高機会・低リスク候補を確認する。</div></details>
-                </div>
-            </div>
+<div class="db-topbar">
+    <div>
+        <div class="db-kicker">TRUSTEPS CMS Lab</div>
+        <h1 class="db-title">Dashboard</h1>
+        <p class="db-sub">データ投入・採点・候補抽出の進捗</p>
+    </div>
+    <div class="db-btn-row">
+        <a class="button light small" href="{{ route('source-records.index') }}">source_records</a>
+        <a class="button light small" href="{{ route('companies.index') }}">companies</a>
+        <a class="button small" href="{{ route('companies.candidates') }}">営業候補 →</a>
+    </div>
+</div>
 
-            <div class="grid" style="margin-top:18px;">
-                <div class="mini-card">
-                    <span class="badge blue">1. company化待ち</span>
-                    <div style="font-size:32px; font-weight:900; margin-top:10px;">{{ number_format($summary['source_records']['unlinked']) }}</div>
-                    <p class="muted">未リンクsource_records</p>
-                    <div class="actions" style="justify-content:flex-start;">
-                        <a class="button small" href="{{ route('source-records.index', ['link_status' => 'unlinked']) }}">処理する</a>
+@if (session('status'))
+    <div class="status">{{ session('status') }}</div>
+@endif
+
+{{-- Next action --}}
+<section class="card">
+    <div class="db-sec-label">Next action</div>
+    <div class="db-next-grid">
+        <div class="db-next-card">
+            <span class="db-step db-step-blue">1 · company化待ち</span>
+            <div class="db-next-num">{{ number_format($summary['source_records']['unlinked']) }}</div>
+            <div class="db-next-desc">未リンク source_records</div>
+            <div class="db-next-action">
+                <a class="button small" href="{{ route('source-records.index', ['link_status' => 'unlinked']) }}">処理する →</a>
+            </div>
+        </div>
+        <div class="db-next-card">
+            <span class="db-step db-step-gray">2 · 未採点</span>
+            <div class="db-next-num">{{ number_format($summary['scores']['unscored']) }}</div>
+            <div class="db-next-desc">4軸スコア未入力</div>
+            <div class="db-next-action">
+                <a class="button light small" href="{{ route('companies.index', ['score_state' => 'unscored']) }}">見る →</a>
+            </div>
+        </div>
+        <div class="db-next-card">
+            <span class="db-step db-step-amber">3 · 採点待ち候補</span>
+            <div class="db-next-num">{{ number_format($summary['candidates']['needs_scoring']) }}</div>
+            <div class="db-next-desc">候補一覧で4軸不足</div>
+            <div class="db-next-action">
+                <a class="button light small" href="{{ route('companies.candidates', ['preset' => 'needs_scoring']) }}">見る →</a>
+            </div>
+        </div>
+        <div class="db-next-card">
+            <span class="db-step db-step-green">4 · 推奨候補</span>
+            <div class="db-next-num">{{ number_format($summary['candidates']['recommended']) }}</div>
+            <div class="db-next-desc">高機会・低リスク</div>
+            <div class="db-next-action">
+                <a class="button small" href="{{ route('companies.candidates', ['preset' => 'recommended']) }}">確認する →</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+{{-- Today's board --}}
+<section class="card">
+    <div class="db-card-head">
+        <div class="db-sec-label" style="margin:0">Today's board</div>
+        <span style="font-size:11px;color:var(--muted)">各最大5件</span>
+    </div>
+    <div class="db-work-grid">
+
+        {{-- 次の source_records --}}
+        <div class="db-work-card">
+            <div class="db-work-head">
+                <div class="db-work-title">次の source_records</div>
+                <span class="db-step db-step-blue" style="margin:0">未リンク</span>
+            </div>
+            <div class="db-work-desc">まずcompany化する候補。IDが古い順。</div>
+            @forelse ($workBoard['next_source_records'] as $record)
+                @php
+                    $rawName = data_get($record->raw_json, 'canonical.raw_name')
+                        ?? data_get($record->raw_json, 'company_name')
+                        ?? $record->name_norm
+                        ?? ('source_record #' . $record->id);
+                    $region = trim(($record->pref ?? '') . ' ' . ($record->city ?? ''));
+                @endphp
+                <div class="db-item">
+                    <div class="db-item-name">#{{ $record->id }} {{ $rawName }}</div>
+                    <div class="db-item-sub">{{ $region !== '' ? $region : '地域未設定' }} · {{ $record->normalized_domain ?: 'domainなし' }}</div>
+                    <div class="db-item-btn">
+                        <a class="button light small" href="{{ route('source-records.show', $record) }}">開く</a>
                     </div>
                 </div>
-                <div class="mini-card">
-                    <span class="badge gray">2. 未採点</span>
-                    <div style="font-size:32px; font-weight:900; margin-top:10px;">{{ number_format($summary['scores']['unscored']) }}</div>
-                    <p class="muted">まだ4軸未入力</p>
-                    <div class="actions" style="justify-content:flex-start;">
-                        <a class="button small light" href="{{ route('companies.index', ['score_state' => 'unscored']) }}">見る</a>
+            @empty
+                <div class="db-item" style="text-align:center;padding:18px 0;color:var(--muted);font-size:13px;">
+                    未リンクのsource_recordはありません
+                </div>
+            @endforelse
+        </div>
+
+        {{-- 次の採点対象 --}}
+        <div class="db-work-card">
+            <div class="db-work-head">
+                <div class="db-work-title">次の採点対象</div>
+                <span class="db-step db-step-gray" style="margin:0">4軸不足</span>
+            </div>
+            <div class="db-work-desc">スコアが足りないcompany。未採点に近い順。</div>
+            @forelse ($workBoard['scoring_queue'] as $company)
+                <div class="db-item">
+                    <div class="db-item-name">#{{ $company->id }} {{ $company->display_name ?? $company->legal_name ?? '名称未設定' }}</div>
+                    <div class="db-item-sub">採点 {{ $company->dashboard_scored_axes_count }} / 4</div>
+                    <div class="db-item-btn">
+                        <a class="button light small" href="{{ route('companies.show', $company) }}">採点する</a>
                     </div>
                 </div>
-                <div class="mini-card">
-                    <span class="badge blue">3. 採点待ち候補</span>
-                    <div style="font-size:32px; font-weight:900; margin-top:10px;">{{ number_format($summary['candidates']['needs_scoring']) }}</div>
-                    <p class="muted">候補一覧で4軸不足</p>
-                    <div class="actions" style="justify-content:flex-start;">
-                        <a class="button small light" href="{{ route('companies.candidates', ['preset' => 'needs_scoring']) }}">見る</a>
+            @empty
+                <div class="db-item" style="text-align:center;padding:18px 0;color:var(--muted);font-size:13px;">
+                    採点待ちはありません
+                </div>
+            @endforelse
+        </div>
+
+        {{-- 推奨候補 TOP --}}
+        <div class="db-work-card">
+            <div class="db-work-head">
+                <div class="db-work-title">推奨候補 TOP</div>
+                <span class="db-step db-step-green" style="margin:0">高機会・低リスク</span>
+            </div>
+            <div class="db-work-desc">4軸採点済みの中で優先確認したい候補。</div>
+            @forelse ($workBoard['recommended_queue'] as $company)
+                <div class="db-item">
+                    <div class="db-item-name">#{{ $company->id }} {{ $company->display_name ?? $company->legal_name ?? '名称未設定' }}</div>
+                    <div class="db-item-sub">機会 {{ $company->dashboard_opportunity_score }} · リスク {{ $company->dashboard_risk_score }}</div>
+                    <div class="db-item-btn">
+                        <a class="button small" href="{{ route('companies.show', $company) }}">詳細</a>
                     </div>
                 </div>
-                <div class="mini-card">
-                    <span class="badge green">4. 推奨候補</span>
-                    <div style="font-size:32px; font-weight:900; margin-top:10px;">{{ number_format($summary['candidates']['recommended']) }}</div>
-                    <p class="muted">高機会・低リスク</p>
-                    <div class="actions" style="justify-content:flex-start;">
-                        <a class="button small" href="{{ route('companies.candidates', ['preset' => 'recommended']) }}">確認する</a>
-                    </div>
+            @empty
+                <div class="db-item" style="text-align:center;padding:18px 0;color:var(--muted);font-size:13px;">
+                    推奨候補はまだありません
                 </div>
-            </div>
-        </section>
+            @endforelse
+        </div>
 
+    </div>
+</section>
 
-        <section class="card" style="margin-top:18px; border-left:4px solid #16a34a;">
-            <div class="row" style="align-items:flex-end;">
-                <div>
-                    <p class="muted" style="margin:0; font-weight:800;">v0.16 / 作業ボード</p>
-                    <h2 style="margin:6px 0 0;">今日さばくリスト</h2>
-                    <details class="help-panel"><summary>作業ボードの使い方</summary><div class="help-body">実際に開くべきsource_record、採点対象、推奨候補を最大5件ずつ表示する。数値サマリーより先に作業したい時はここを使う。</div></details>
-                </div>
-            </div>
+{{-- 営業候補の状態 --}}
+<section class="card">
+    <div class="db-card-head">
+        <div class="db-sec-label" style="margin:0">営業候補の状態</div>
+        <div class="db-btn-row">
+            <a class="button small" href="{{ route('companies.candidates', ['preset' => 'recommended']) }}">推奨候補 →</a>
+            <a class="button light small" href="{{ route('companies.candidates', ['preset' => 'needs_scoring']) }}">採点待ち</a>
+        </div>
+    </div>
+    <div class="db-cand-grid">
+        <div class="db-cand-stat">
+            <div class="db-cand-label">active候補</div>
+            <div class="db-cand-num">{{ number_format($summary['candidates']['total']) }}</div>
+        </div>
+        <div class="db-cand-stat">
+            <div class="db-cand-label">推奨</div>
+            <div class="db-cand-num">{{ number_format($summary['candidates']['recommended']) }}</div>
+            <div class="db-cand-sub">高機会・低リスク</div>
+        </div>
+        <div class="db-cand-stat">
+            <div class="db-cand-label">高機会</div>
+            <div class="db-cand-num">{{ number_format($summary['candidates']['high_opportunity']) }}</div>
+        </div>
+        <div class="db-cand-stat">
+            <div class="db-cand-label">採点待ち</div>
+            <div class="db-cand-num">{{ number_format($summary['candidates']['needs_scoring']) }}</div>
+        </div>
+    </div>
+</section>
 
-            <div class="grid" style="margin-top:18px; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));">
-                <div class="mini-card" style="background:#f0f9ff; border-color:#bae6fd;">
-                    <div class="row" style="align-items:center;">
-                        <strong>次のsource_records</strong>
-                        <span class="badge blue">未リンク</span>
-                    </div>
-                    <p class="muted" style="margin:8px 0 12px;">まずcompany化する候補。IDが古い順に5件。</p>
-                    @forelse ($workBoard['next_source_records'] as $record)
-                        @php
-                            $rawName = data_get($record->raw_json, 'canonical.raw_name')
-                                ?? data_get($record->raw_json, 'company_name')
-                                ?? $record->name_norm
-                                ?? ('source_record #' . $record->id);
-                            $region = trim(($record->pref ?? '') . ' ' . ($record->city ?? ''));
-                        @endphp
-                        <div style="padding:10px 0; border-top:1px solid rgba(2,132,199,.18);">
-                            <div style="font-weight:900;">#{{ $record->id }} {{ $rawName }}</div>
-                            <div class="muted" style="font-size:13px; margin-top:2px;">
-                                {{ $region !== '' ? $region : '地域未設定' }} / {{ $record->normalized_domain ?: 'domainなし' }}
-                            </div>
-                            <div class="actions" style="justify-content:flex-start; margin-top:8px;">
-                                <a class="button small" href="{{ route('source-records.show', $record) }}">開く</a>
-                            </div>
-                        </div>
-                    @empty
-                        <div class="empty-state-box" style="padding:18px; margin-top:12px;">
-                            <div class="empty-icon">✓</div>
-                            <p class="empty-title">未リンクsourceはなし</p>
-                            <p class="empty-copy">CSV投入後に未リンクが出たら、ここに次の処理対象が表示される。</p>
-                        </div>
-                    @endforelse
-                </div>
-
-                <div class="mini-card" style="background:#fff7ed; border-color:#fed7aa;">
-                    <div class="row" style="align-items:center;">
-                        <strong>次の採点対象</strong>
-                        <span class="badge gray">4軸不足</span>
-                    </div>
-                    <p class="muted" style="margin:8px 0 12px;">スコアが足りないcompany。未採点に近い順に5件。</p>
-                    @forelse ($workBoard['scoring_queue'] as $company)
-                        <div style="padding:10px 0; border-top:1px solid rgba(249,115,22,.18);">
-                            <div style="font-weight:900;">#{{ $company->id }} {{ $company->display_name ?? $company->legal_name ?? '名称未設定' }}</div>
-                            <div class="muted" style="font-size:13px; margin-top:2px;">採点 {{ $company->dashboard_scored_axes_count }} / 4</div>
-                            <div class="actions" style="justify-content:flex-start; margin-top:8px;">
-                                <a class="button small light" href="{{ route('companies.show', $company) }}">採点する</a>
-                            </div>
-                        </div>
-                    @empty
-                        <div class="empty-state-box" style="padding:18px; margin-top:12px;">
-                            <div class="empty-icon">✓</div>
-                            <p class="empty-title">採点待ちはなし</p>
-                            <p class="empty-copy">4軸スコアが不足しているcompanyが出ると、ここに表示される。</p>
-                        </div>
-                    @endforelse
-                </div>
-
-                <div class="mini-card" style="background:#f0fdf4; border-color:#bbf7d0;">
-                    <div class="row" style="align-items:center;">
-                        <strong>推奨候補TOP</strong>
-                        <span class="badge green">高機会・低リスク</span>
-                    </div>
-                    <p class="muted" style="margin:8px 0 12px;">4軸採点済みの中で、優先確認したい候補。</p>
-                    @forelse ($workBoard['recommended_queue'] as $company)
-                        <div style="padding:10px 0; border-top:1px solid rgba(22,163,74,.18);">
-                            <div style="font-weight:900;">#{{ $company->id }} {{ $company->display_name ?? $company->legal_name ?? '名称未設定' }}</div>
-                            <div class="muted" style="font-size:13px; margin-top:2px;">
-                                機会 {{ $company->dashboard_opportunity_score }} / リスク {{ $company->dashboard_risk_score }}
-                            </div>
-                            <div class="actions" style="justify-content:flex-start; margin-top:8px;">
-                                <a class="button small" href="{{ route('companies.show', $company) }}">詳細</a>
-                            </div>
-                        </div>
-                    @empty
-                        <div class="empty-state-box" style="padding:18px; margin-top:12px;">
-                            <div class="empty-icon">候</div>
-                            <p class="empty-title">推奨候補はまだなし</p>
-                            <p class="empty-copy">採点済みcompanyが増えると、高機会・低リスク候補がここに出る。</p>
-                        </div>
-                    @endforelse
-                </div>
-            </div>
-        </section>
-
-        <section class="card" style="margin-top:18px;">
-            <div class="row" style="align-items:flex-end;">
-                <div>
-                    <h2 style="margin:0;">投入・整理状況</h2>
-                    <details class="help-panel"><summary>投入・整理状況とは</summary><div class="help-body">CSVや手動で投入したsource_recordsが、どれだけcompany化されたかを見る。未リンクが多い場合は先にcompany化を進める。</div></details>
-                </div>
-            </div>
-
-            <div class="grid" style="margin-top:18px;">
-                <div class="mini-card">
-                    <div class="muted" style="font-weight:800;">source_records</div>
-                    <div style="font-size:34px; font-weight:900; margin-top:8px;">{{ number_format($summary['source_records']['total']) }}</div>
-                    <div class="muted">全投入データ</div>
-                </div>
-                <div class="mini-card">
-                    <div class="muted" style="font-weight:800;">未リンク</div>
-                    <div style="font-size:34px; font-weight:900; margin-top:8px;">{{ number_format($summary['source_records']['unlinked']) }}</div>
-                    <div class="actions" style="justify-content:flex-start; margin-top:12px;">
-                        <a class="button small light" href="{{ route('source-records.index', ['link_status' => 'unlinked']) }}">未リンクを見る</a>
-                    </div>
-                </div>
-                <div class="mini-card">
-                    <div class="muted" style="font-weight:800;">company</div>
-                    <div style="font-size:34px; font-weight:900; margin-top:8px;">{{ number_format($summary['companies']['total']) }}</div>
-                    <div class="muted">active {{ number_format($summary['companies']['active']) }} / killed {{ number_format($summary['companies']['killed']) }} / merged {{ number_format($summary['companies']['merged']) }}</div>
-                </div>
-            </div>
-        </section>
-
-        <section class="card" style="margin-top:18px;">
-            <div class="row" style="align-items:flex-end;">
-                <div>
-                    <h2 style="margin:0;">4軸採点の進捗</h2>
-                    <details class="help-panel"><summary>4軸採点の見方</summary><div class="help-body">未採点・一部採点・4軸採点済みの割合を見る。auto提案と手動補正の差分は、今後のスコアロジック改善に使う。</div></details>
-                </div>
-                <div class="actions">
-                    <a class="button small light" href="{{ route('companies.index', ['score_state' => 'unscored']) }}">未採点</a>
-                    <a class="button small light" href="{{ route('companies.index', ['score_state' => 'partial']) }}">一部採点</a>
-                    <a class="button small light" href="{{ route('companies.index', ['score_state' => 'manual_adjusted']) }}">手動補正あり</a>
-                </div>
-            </div>
-
-            <div class="grid" style="margin-top:18px;">
-                <div class="mini-card">
-                    <span class="badge gray">未採点</span>
-                    <div style="font-size:32px; font-weight:900; margin-top:10px;">{{ number_format($summary['scores']['unscored']) }}</div>
-                </div>
-                <div class="mini-card">
-                    <span class="badge blue">一部採点</span>
-                    <div style="font-size:32px; font-weight:900; margin-top:10px;">{{ number_format($summary['scores']['partial']) }}</div>
-                </div>
-                <div class="mini-card">
-                    <span class="badge green">4軸採点済み</span>
-                    <div style="font-size:32px; font-weight:900; margin-top:10px;">{{ number_format($summary['scores']['fully_scored']) }}</div>
-                </div>
-                <div class="mini-card">
-                    <span class="badge blue">auto提案あり</span>
-                    <div style="font-size:32px; font-weight:900; margin-top:10px;">{{ number_format($summary['scores']['has_auto_suggestion']) }}</div>
-                    <p class="muted" style="margin-bottom:0;">提案どおり {{ number_format($summary['scores']['suggestion_as_is']) }} / 補正 {{ number_format($summary['scores']['manual_adjusted']) }}</p>
-                </div>
-            </div>
-        </section>
-
-        <section class="card" style="margin-top:18px;">
-            <div class="row" style="align-items:flex-end;">
-                <div>
-                    <h2 style="margin:0;">営業候補の状態</h2>
-                    <details class="help-panel"><summary>営業候補の見方</summary><div class="help-body">未kill・未mergedのcompanyを母集団にして、推奨候補・高機会・採点待ちを確認する。まだ営業送信管理ではなく、候補抽出用のビュー。</div></details>
-                </div>
-                <div class="actions">
-                    <a class="button small" href="{{ route('companies.candidates', ['preset' => 'recommended']) }}">推奨候補</a>
-                    <a class="button small light" href="{{ route('companies.candidates', ['preset' => 'needs_scoring']) }}">採点待ち</a>
-                </div>
-            </div>
-
-            <div class="grid" style="margin-top:18px;">
-                <div class="mini-card">
-                    <div class="muted" style="font-weight:800;">active候補</div>
-                    <div style="font-size:34px; font-weight:900; margin-top:8px;">{{ number_format($summary['candidates']['total']) }}</div>
-                </div>
-                <div class="mini-card">
-                    <div class="muted" style="font-weight:800;">推奨</div>
-                    <div style="font-size:34px; font-weight:900; margin-top:8px;">{{ number_format($summary['candidates']['recommended']) }}</div>
-                    <div class="muted">高機会・低リスク</div>
-                </div>
-                <div class="mini-card">
-                    <div class="muted" style="font-weight:800;">高機会</div>
-                    <div style="font-size:34px; font-weight:900; margin-top:8px;">{{ number_format($summary['candidates']['high_opportunity']) }}</div>
-                </div>
-                <div class="mini-card">
-                    <div class="muted" style="font-weight:800;">採点待ち</div>
-                    <div style="font-size:34px; font-weight:900; margin-top:8px;">{{ number_format($summary['candidates']['needs_scoring']) }}</div>
-                </div>
-            </div>
-        </section>
-    </main>
+</main>
 @endsection
