@@ -3,74 +3,109 @@
 @section('title', 'BIZMAPSインポート - プレビュー')
 
 @section('content')
-<div class="container-fluid py-4">
+<div class="content">
 
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="h4 mb-0">BIZMAPSインポート - プレビュー</h1>
-    <a href="{{ route('bizmaps.import') }}" class="btn btn-outline-secondary btn-sm">← 条件に戻る</a>
-  </div>
-
-  <div class="mb-3 d-flex gap-3 align-items-center">
-    <span class="text-muted">取得件数: <strong>{{ count($results) }}</strong>件</span>
-    <button type="button" class="btn btn-sm btn-outline-primary" id="selectAll">全選択</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" id="selectNone">全解除</button>
-    <button type="button" class="btn btn-sm btn-outline-success" id="selectHpOnly">HP URLありのみ選択</button>
+  {{-- ヘッダー --}}
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+    <div>
+      <p class="page-kicker">データ収集 / プレビュー</p>
+      <h1 class="page-title" style="font-size:clamp(24px,3vw,36px);">取得結果</h1>
+    </div>
+    <a href="{{ route('bizmaps.import') }}" class="button light small" style="align-self:center;">
+      ← 条件に戻る
+    </a>
   </div>
 
   @if(empty($results))
-    <div class="alert alert-warning">
-      該当する企業が取得できませんでした。条件を変えて再度お試しください。
+    <div class="card" style="text-align:center;padding:48px;">
+      <div class="empty-icon" style="margin:0 auto 16px;">0</div>
+      <h2 class="empty-title">取得できませんでした</h2>
+      <p class="empty-copy">条件を変えて再度お試しください。</p>
+      <div style="margin-top:20px;">
+        <a href="{{ route('bizmaps.import') }}" class="button">条件に戻る</a>
+      </div>
     </div>
   @else
 
-  <div class="table-responsive">
-    <table class="table table-sm table-hover align-middle" id="previewTable">
-      <thead class="table-light">
+  {{-- サマリーバー --}}
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+    <div class="badge blue" style="font-size:14px;padding:8px 14px;">{{ count($results) }}件取得</div>
+    @php
+      $hpCount = collect($results)->filter(fn($r) => !empty($r['hp_url']))->count();
+      $noHpCount = count($results) - $hpCount;
+    @endphp
+    @if($hpCount > 0)
+      <div class="badge green">HP取得済 {{ $hpCount }}件</div>
+    @endif
+    @if($noHpCount > 0)
+      <div class="badge gray">HPなし {{ $noHpCount }}件</div>
+    @endif
+    <div style="flex:1;"></div>
+    <button type="button" class="button small light" id="selectAll">全選択</button>
+    <button type="button" class="button small light" id="selectNone">全解除</button>
+    @if($hpCount > 0)
+      <button type="button" class="button small light" id="selectHpOnly">HP URLありのみ</button>
+    @endif
+  </div>
+
+  {{-- テーブル --}}
+  <div class="table-wrap" style="margin-bottom:20px;">
+    <table>
+      <thead>
         <tr>
-          <th width="40"><input type="checkbox" id="checkAll"></th>
+          <th class="tight">
+            <input type="checkbox" id="checkAll" style="accent-color:var(--primary);width:15px;height:15px;">
+          </th>
           <th>会社名</th>
           <th>都道府県</th>
           <th>市区町村</th>
           <th>業種</th>
           <th>HP URL</th>
-          <th>詳細ページ</th>
-          <th>状態</th>
+          <th class="tight">詳細</th>
+          <th class="tight">状態</th>
         </tr>
       </thead>
       <tbody>
         @foreach($results as $i => $row)
-        <tr class="{{ $row['is_duplicate'] ? 'table-secondary' : '' }}">
-          <td>
+        <tr id="row-{{ $i }}" class="{{ $row['is_duplicate'] ? '' : '' }}">
+          <td class="tight">
             @if($row['is_duplicate'])
-              <span class="badge bg-secondary">保存済</span>
+              <span class="badge gray" style="font-size:11px;">保存済</span>
             @else
               <input type="checkbox" class="row-check" value="{{ $i }}"
-                {{ $row['hp_url'] ? 'checked' : '' }}>
+                {{ !empty($row['hp_url']) ? 'checked' : '' }}
+                style="accent-color:var(--primary);width:15px;height:15px;cursor:pointer;">
             @endif
           </td>
-          <td class="fw-semibold">{{ $row['name'] ?? '-' }}</td>
-          <td>{{ $row['pref'] ?? '-' }}</td>
-          <td>{{ $row['city'] ?? '-' }}</td>
-          <td><small class="text-muted">{{ Str::limit($row['industry'] ?? '-', 30) }}</small></td>
-          <td>
-            @if($row['hp_url'])
-              <a href="{{ $row['hp_url'] }}" target="_blank" class="text-break small">
-                {{ Str::limit($row['hp_url'], 40) }}
+          <td style="font-weight:800;max-width:260px;">
+            {{ $row['name'] ?? '-' }}
+          </td>
+          <td style="white-space:nowrap;">{{ $row['pref'] ?? '-' }}</td>
+          <td style="white-space:nowrap;">{{ $row['city'] ?? '-' }}</td>
+          <td style="max-width:140px;">
+            <span style="font-size:12px;color:var(--muted);">{{ Str::limit($row['industry'] ?? '-', 25) }}</span>
+          </td>
+          <td style="max-width:220px;">
+            @if(!empty($row['hp_url']))
+              <a href="{{ $row['hp_url'] }}" target="_blank"
+                style="font-size:12px;color:var(--primary);word-break:break-all;text-decoration:none;font-weight:700;">
+                {{ Str::limit($row['hp_url'], 35) }}
               </a>
             @else
-              <span class="text-muted small">-</span>
+              <span style="font-size:12px;color:var(--muted);">-</span>
             @endif
           </td>
-          <td>
-            <a href="{{ $row['detail_url'] }}" target="_blank" class="small">BIZMAPS</a>
+          <td class="tight">
+            <a href="{{ $row['detail_url'] }}" target="_blank" class="button small light"
+              style="font-size:11px;padding:5px 10px;">BIZMAPS</a>
           </td>
-          <td>
+          <td class="tight">
             @if($row['is_duplicate'])
-              <span class="badge bg-secondary">重複</span>
-            @elseif($row['hp_url'])
-              <span class="badge bg-success">HP取得済</span>
+              <span class="badge gray">重複</span>
+            @elseif(!empty($row['hp_url']))
+              <span class="badge green">HP✓</span>
             @else
-              <span class="badge bg-warning text-dark">HPなし</span>
+              <span class="badge amber">HPなし</span>
             @endif
           </td>
         </tr>
@@ -79,19 +114,19 @@
     </table>
   </div>
 
-  <div class="mt-3 d-flex gap-3 align-items-center">
-    <span id="selectedCount" class="text-muted">0件選択中</span>
-    <button type="button" class="btn btn-primary px-5" id="saveBtn">
+  {{-- 保存バー --}}
+  <div class="form-section compact" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+    <span id="selectedCount" style="font-weight:800;font-size:14px;color:var(--muted);">0件選択中</span>
+    <button type="button" class="button" id="saveBtn" style="min-width:220px;">
       選択した企業をsource_recordsに保存
     </button>
-    <div id="saveResult" class="ms-3"></div>
+    <div id="saveResult"></div>
   </div>
 
   @endif
 
 </div>
 
-{{-- 結果データをJSに渡す --}}
 <script>
 const PREVIEW_DATA = @json($results);
 </script>
@@ -101,87 +136,85 @@ const PREVIEW_DATA = @json($results);
 @verbatim
 document.addEventListener('DOMContentLoaded', function () {
 
-  // 全選択チェックボックス
-  document.getElementById('checkAll').addEventListener('change', function () {
-    document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
-    updateCount();
-  });
+  const checkAll  = document.getElementById('checkAll');
+  const saveBtn   = document.getElementById('saveBtn');
+  const saveResult = document.getElementById('saveResult');
 
-  document.getElementById('selectAll').addEventListener('click', function () {
-    document.querySelectorAll('.row-check').forEach(cb => cb.checked = true);
-    updateCount();
-  });
+  if (checkAll) {
+    checkAll.addEventListener('change', function () {
+      document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
+      updateCount();
+    });
+  }
 
-  document.getElementById('selectNone').addEventListener('click', function () {
-    document.querySelectorAll('.row-check').forEach(cb => cb.checked = false);
-    updateCount();
-  });
+  const selectAll = document.getElementById('selectAll');
+  const selectNone = document.getElementById('selectNone');
+  const selectHpOnly = document.getElementById('selectHpOnly');
 
-  document.getElementById('selectHpOnly').addEventListener('click', function () {
-    document.querySelectorAll('.row-check').forEach((cb, i) => {
+  if (selectAll) selectAll.addEventListener('click', () => { document.querySelectorAll('.row-check').forEach(cb => cb.checked = true); updateCount(); });
+  if (selectNone) selectNone.addEventListener('click', () => { document.querySelectorAll('.row-check').forEach(cb => cb.checked = false); updateCount(); });
+  if (selectHpOnly) selectHpOnly.addEventListener('click', () => {
+    document.querySelectorAll('.row-check').forEach(cb => {
       cb.checked = !!PREVIEW_DATA[parseInt(cb.value)]?.hp_url;
     });
     updateCount();
   });
 
-  document.querySelectorAll('.row-check').forEach(cb => {
-    cb.addEventListener('change', updateCount);
-  });
+  document.querySelectorAll('.row-check').forEach(cb => cb.addEventListener('change', updateCount));
+  updateCount();
 
   function updateCount() {
     const count = document.querySelectorAll('.row-check:checked').length;
     document.getElementById('selectedCount').textContent = count + '件選択中';
+    if (saveBtn) saveBtn.disabled = count === 0;
   }
 
-  // 初期カウント
-  updateCount();
+  if (saveBtn) {
+    saveBtn.addEventListener('click', function () {
+      const checked = document.querySelectorAll('.row-check:checked');
+      if (checked.length === 0) return;
 
-  // 保存ボタン
-  document.getElementById('saveBtn').addEventListener('click', function () {
-    const checked = document.querySelectorAll('.row-check:checked');
-    if (checked.length === 0) {
-      alert('保存する企業を選択してください');
-      return;
-    }
+      const items = Array.from(checked).map(cb => PREVIEW_DATA[parseInt(cb.value)]);
 
-    const items = Array.from(checked).map(cb => {
-      return PREVIEW_DATA[parseInt(cb.value)];
-    });
+      saveBtn.disabled = true;
+      saveBtn.textContent = '保存中...';
+      saveResult.innerHTML = '';
 
-    this.disabled = true;
-    this.textContent = '保存中...';
+      fetch('/bizmaps/store', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+        },
+        body: JSON.stringify({ items }),
+      })
+      .then(r => r.json())
+      .then(data => {
+        saveResult.innerHTML = `<span class="badge green" style="font-size:13px;padding:8px 14px;">保存完了 ${data.saved}件</span>` +
+          (data.skipped > 0 ? ` <span class="badge gray" style="font-size:12px;">スキップ ${data.skipped}件</span>` : '');
 
-    fetch('{{ route("bizmaps.store") }}', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-      },
-      body: JSON.stringify({ items }),
-    })
-    .then(r => r.json())
-    .then(data => {
-      document.getElementById('saveResult').innerHTML =
-        `<span class="text-success fw-bold">保存完了: ${data.saved}件</span>` +
-        (data.skipped > 0 ? ` <span class="text-muted">（スキップ: ${data.skipped}件）</span>` : '');
+        // 保存済み行を更新
+        checked.forEach(cb => {
+          const row = document.getElementById('row-' + cb.value);
+          if (row) {
+            row.style.opacity = '0.5';
+            cb.replaceWith(Object.assign(document.createElement('span'), {
+              className: 'badge gray', textContent: '保存済', style: 'font-size:11px;'
+            }));
+          }
+        });
 
-      // 保存済み行をグレーアウト
-      checked.forEach(cb => {
-        cb.closest('tr').classList.add('table-secondary');
-        cb.replaceWith(document.createTextNode('✓'));
+        saveBtn.disabled = false;
+        saveBtn.textContent = '選択した企業をsource_recordsに保存';
+        updateCount();
+      })
+      .catch(err => {
+        saveResult.innerHTML = `<span class="badge red">保存失敗: ${err.message}</span>`;
+        saveBtn.disabled = false;
+        saveBtn.textContent = '選択した企業をsource_recordsに保存';
       });
-
-      this.disabled = false;
-      this.textContent = '選択した企業をsource_recordsに保存';
-      updateCount();
-    })
-    .catch(err => {
-      document.getElementById('saveResult').innerHTML =
-        '<span class="text-danger">保存失敗: ' + err.message + '</span>';
-      this.disabled = false;
-      this.textContent = '選択した企業をsource_recordsに保存';
     });
-  });
+  }
 
 });
 @endverbatim

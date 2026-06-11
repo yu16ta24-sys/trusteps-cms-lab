@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use App\Services\BizmapsScraperService;
 
 class BizmapsImportController extends Controller
@@ -11,18 +12,14 @@ class BizmapsImportController extends Controller
     public function index()
     {
         $prefectures = DB::table('prefectures')->orderBy('id')->get();
-
-        $industries = $this->getIndustries();
-
+        $industries  = $this->getIndustries();
         return view('bizmaps.import', compact('prefectures', 'industries'));
     }
 
     public function getMunicipalities(Request $request)
     {
         $prefectureId = $request->input('prefecture_id');
-        if (!$prefectureId) {
-            return response()->json([]);
-        }
+        if (!$prefectureId) return response()->json([]);
 
         $municipalities = DB::table('municipalities')
             ->where('prefecture_id', $prefectureId)
@@ -35,57 +32,58 @@ class BizmapsImportController extends Controller
     public function getSubIndustries(Request $request)
     {
         $bigIndId = $request->input('big_ind_id');
-        if (!$bigIndId) {
-            return response()->json([]);
-        }
+        if (!$bigIndId) return response()->json([]);
 
         $industries = $this->getIndustries();
-        $subs = [];
         foreach ($industries as $ind) {
-            if ($ind['big_id'] == $bigIndId) {
-                $subs = $ind['sub'];
-                break;
-            }
+            if ($ind['big_id'] == $bigIndId) return response()->json($ind['sub']);
         }
-
-        return response()->json($subs);
+        return response()->json([]);
     }
 
     public function preview(Request $request)
     {
         $request->validate([
-            'prefecture_id'    => 'required|integer',
-            'city_codes'       => 'nullable|array',
-            'industry_type'    => 'required|in:pref,city,big_ind,m_ind',
-            'industry_id'      => 'nullable|integer',
-            'limit'            => 'required|integer|min:1|max:500',
+            'prefecture_id' => 'required|integer',
+            'city_codes'    => 'nullable|array',
+            'industry_type' => 'required|in:pref,city,big_ind,m_ind',
+            'industry_id'   => 'nullable|integer',
+            'limit'         => 'required|integer|min:1|max:500',
         ]);
 
-        $prefectureId  = $request->input('prefecture_id');
-        $cityCodes     = $request->input('city_codes', []);
-        $industryType  = $request->input('industry_type');
-        $industryId    = $request->input('industry_id');
-        $limit         = $request->input('limit', 50);
+        $prefectureId = $request->input('prefecture_id');
+        $cityCodes    = $request->input('city_codes', []);
+        $industryType = $request->input('industry_type');
+        $industryId   = $request->input('industry_id');
+        $limit        = (int) $request->input('limit', 50);
+        $fetchHp      = $request->boolean('fetch_hp');
 
         $prefecture = DB::table('prefectures')->find($prefectureId);
+        $urls       = $this->buildUrls($prefectureId, $cityCodes, $industryType, $industryId);
 
-        // BIZMAPSのURLを組み立て
-        $urls = $this->buildUrls($prefectureId, $cityCodes, $industryType, $industryId);
+        Log::info('BIZMAPS preview', [
+            'urls'          => $urls,
+            'industry_type' => $industryType,
+            'prefecture_id' => $prefectureId,
+            'city_codes'    => $cityCodes,
+            'fetch_hp'      => $fetchHp,
+        ]);
 
         $scraper = new BizmapsScraperService();
         $results = [];
 
         foreach ($urls as $url) {
-            $fetched = $scraper->fetchList($url, $limit - count($results));
+            $fetched = $scraper->fetchList($url, $limit - count($results), $fetchHp);
             $results = array_merge($results, $fetched);
             if (count($results) >= $limit) break;
         }
 
         $results = array_slice($results, 0, $limit);
 
-        // 既存source_recordsとの重複チェック
+        // 重複チェック
+        $detailUrls = array_filter(array_column($results, 'detail_url'));
         $existingUrls = DB::table('source_records')
-            ->whereIn('source_url', array_column($results, 'detail_url'))
+            ->whereIn('source_url', $detailUrls)
             ->pluck('source_url')
             ->toArray();
 
@@ -99,30 +97,17 @@ class BizmapsImportController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
-            'items' => 'required|array',
-            'items.*.name'       => 'nullable|string',
-            'items.*.hp_url'     => 'nullable|url',
-            'items.*.pref'       => 'nullable|string',
-            'items.*.city'       => 'nullable|string',
-            'items.*.industry'   => 'nullable|string',
-            'items.*.detail_url' => 'nullable|string',
-        ]);
-
-        $items = $request->input('items', []);
-        $saved = 0;
+        $items  = $request->input('items', []);
+        $saved  = 0;
         $skipped = 0;
-        $now = now();
+        $now    = now();
 
         foreach ($items as $item) {
-            $hpUrl = $item['hp_url'] ?? null;
+            $hpUrl     = $item['hp_url']     ?? null;
             $detailUrl = $item['detail_url'] ?? null;
-
-            // HP URLが空の場合は詳細ページURLで代替
             $sourceUrl = $hpUrl ?: $detailUrl;
             if (!$sourceUrl) { $skipped++; continue; }
 
-            // 重複チェック
             if (DB::table('source_records')->where('source_url', $sourceUrl)->exists()) {
                 $skipped++;
                 continue;
@@ -138,9 +123,9 @@ class BizmapsImportController extends Controller
                 'source_type'       => 'bizmaps',
                 'source_url'        => $sourceUrl,
                 'normalized_domain' => $normalizedDomain,
-                'name_norm'         => $item['name'] ?? null,
-                'pref'              => $item['pref'] ?? null,
-                'city'              => $item['city'] ?? null,
+                'name_norm'         => $item['name']     ?? null,
+                'pref'              => $item['pref']     ?? null,
+                'city'              => $item['city']     ?? null,
                 'raw_json'          => json_encode([
                     'hp_url'     => $hpUrl,
                     'detail_url' => $detailUrl,
@@ -154,10 +139,7 @@ class BizmapsImportController extends Controller
             $saved++;
         }
 
-        return response()->json([
-            'saved'   => $saved,
-            'skipped' => $skipped,
-        ]);
+        return response()->json(['saved' => $saved, 'skipped' => $skipped]);
     }
 
     private function buildUrls(int $prefectureId, array $cityCodes, string $industryType, ?int $industryId): array

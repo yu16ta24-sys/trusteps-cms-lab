@@ -6,13 +6,13 @@ use Illuminate\Support\Facades\Log;
 
 class BizmapsScraperService
 {
-    private const USER_AGENT = 'Mozilla/5.0 (compatible; TRUSTEPS-CrawlerBot/1.0)';
+    private const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
     private const SLEEP_SEC  = 1;
 
     /**
      * BIZMAPSの一覧ページから企業情報を取得する
      */
-    public function fetchList(string $startUrl, int $limit = 50): array
+    public function fetchList(string $startUrl, int $limit = 50, bool $fetchHp = false): array
     {
         $results = [];
         $page    = 1;
@@ -29,7 +29,6 @@ class BizmapsScraperService
                     if (count($results) >= $limit) break;
                 }
 
-                // 次ページのURL取得
                 $nextUrl = $this->getNextPageUrl($html, $nextUrl, $page);
                 $page++;
 
@@ -39,6 +38,20 @@ class BizmapsScraperService
                 Log::warning('BizmapsScraper error: ' . $e->getMessage(), ['url' => $nextUrl]);
                 break;
             }
+        }
+
+        // 詳細ページからHP URL取得
+        if ($fetchHp && count($results) > 0) {
+            foreach ($results as &$item) {
+                if (empty($item['detail_url'])) continue;
+                try {
+                    $hp = $this->fetchDetailHpUrl($item['detail_url']);
+                    if ($hp) $item['hp_url'] = $hp;
+                } catch (\Throwable $e) {
+                    Log::warning('BizmapsScraper detail error: ' . $e->getMessage(), ['url' => $item['detail_url']]);
+                }
+            }
+            unset($item);
         }
 
         return $results;
@@ -55,10 +68,8 @@ class BizmapsScraperService
         @$doc->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
         $xpath = new \DOMXPath($doc);
 
-        // BIZMAPSの一覧：各企業はliタグ内にdlテーブル形式で入っている
         $listItems = $xpath->query('//ul[contains(@class,"list")]/li | //div[contains(@class,"list")]//li');
 
-        // フォールバック：リンクから詳細ページURLを収集
         if ($listItems->length === 0) {
             $listItems = $xpath->query('//a[contains(@href,"/item/")]');
         }
@@ -68,7 +79,7 @@ class BizmapsScraperService
             if ($item) $items[] = $item;
         }
 
-        // さらにフォールバック：/item/ リンクを直接取得
+        // フォールバック：/item/ リンクを直接取得
         if (empty($items)) {
             $links = $xpath->query('//a[contains(@href,"/item/")]');
             $seen  = [];
@@ -81,7 +92,9 @@ class BizmapsScraperService
                     ? $href
                     : 'https://biz-maps.com' . $href;
 
-                $name = trim($link->textContent);
+                $rawName   = $link->textContent;
+                $nameLines = array_filter(array_map('trim', explode("\n", $rawName)));
+                $name      = reset($nameLines) ?: '';
                 if (mb_strlen($name) < 2) continue;
 
                 $items[] = [
@@ -104,11 +117,12 @@ class BizmapsScraperService
      */
     private function parseListItem(\DOMNode $node, \DOMXPath $xpath): ?array
     {
-        // 企業名（リンクテキスト）
         $nameNode = $xpath->query('.//a[contains(@href,"/item/")]', $node)->item(0);
         if (!$nameNode) return null;
 
-        $name     = trim($nameNode->textContent);
+        $rawName   = $nameNode->textContent;
+        $nameLines = array_filter(array_map('trim', explode("\n", $rawName)));
+        $name      = reset($nameLines) ?: '';
         $detailHref = $nameNode->getAttribute('href');
         if (mb_strlen($name) < 2) return null;
 
@@ -116,26 +130,22 @@ class BizmapsScraperService
             ? $detailHref
             : 'https://biz-maps.com' . $detailHref;
 
-        // テーブル行から情報を取得
         $address  = null;
         $pref     = null;
         $city     = null;
         $industry = null;
 
-        $rows = $xpath->query('.//tr | .//dd', $node);
         $allText = $node->textContent;
 
-        // 住所を正規表現で抽出
-        if (preg_match('/〒\s*(\d{3}-\d{4})\s+([^\s]+[都道府県])([^\s]+?(?:市|区|町|村))/u', $allText, $m)) {
-            $pref    = $m[2];
-            $city    = $m[3];
-            $address = $m[0];
+        if (preg_match('/〒\s*\d{3}-\d{4}\s+([^\s]+[都道府県])([^\s]+?(?:市|区|町|村))/u', $allText, $m)) {
+            $pref    = $m[1];
+            $city    = $m[2];
+            $address = trim($m[0]);
         } elseif (preg_match('/([^\s]+[都道府県])([^\s]+?(?:市|区|町|村))/u', $allText, $m)) {
             $pref = $m[1];
             $city = $m[2];
         }
 
-        // 業種テキスト（tdの中から「業種」ラベルの次のtd）
         $tds = $xpath->query('.//td | .//dd', $node);
         $prevLabel = '';
         foreach ($tds as $td) {
@@ -153,7 +163,7 @@ class BizmapsScraperService
             'pref'       => $pref,
             'city'       => $city,
             'industry'   => $industry,
-            'hp_url'     => null,     // 詳細ページで取得
+            'hp_url'     => null,
             'detail_url' => $detailUrl,
         ];
     }
@@ -163,46 +173,54 @@ class BizmapsScraperService
      */
     public function fetchDetailHpUrl(string $detailUrl): ?string
     {
-        try {
-            sleep(self::SLEEP_SEC);
-            $html = $this->fetch($detailUrl);
-            if (!$html) return null;
+        sleep(self::SLEEP_SEC);
+        $html = $this->fetch($detailUrl);
+        if (!$html) return null;
 
-            $doc = new \DOMDocument();
-            @$doc->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
-            $xpath = new \DOMXPath($doc);
+        $doc = new \DOMDocument();
+        @$doc->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
+        $xpath = new \DOMXPath($doc);
 
-            // URLフィールドを探す
-            $links = $xpath->query('//td[contains(text(),"URL") or contains(text(),"ホームページ")]/following-sibling::td[1]//a[@href] | //tr[.//th[contains(text(),"URL")]]/td//a[@href]');
-            foreach ($links as $link) {
-                $href = $link->getAttribute('href');
-                if ($href && strpos($href, 'http') === 0 && strpos($href, 'biz-maps.com') === false) {
+        // URLラベルの隣のリンクを探す
+        $rows = $xpath->query('//tr');
+        foreach ($rows as $row) {
+            $th = $xpath->query('.//th', $row)->item(0);
+            if (!$th) continue;
+            $label = trim($th->textContent);
+            if (!str_contains($label, 'URL') && !str_contains($label, 'ホームページ')) continue;
+
+            $aTag = $xpath->query('.//td//a[@href]', $row)->item(0);
+            if ($aTag) {
+                $href = $aTag->getAttribute('href');
+                if ($href && strpos($href, 'http') === 0 && !str_contains($href, 'biz-maps.com')) {
                     return $href;
                 }
             }
 
-            // テーブル行でURLを直接探す
-            $rows = $xpath->query('//tr');
-            foreach ($rows as $row) {
-                $ths = $xpath->query('.//th | .//td[1]', $row);
-                $label = $ths->item(0) ? trim($ths->item(0)->textContent) : '';
-                if (str_contains($label, 'URL') || str_contains($label, 'ホームページ')) {
-                    $aTag = $xpath->query('.//td[last()]//a[@href]', $row)->item(0);
-                    if ($aTag) {
-                        $href = $aTag->getAttribute('href');
-                        if ($href && strpos($href, 'http') === 0) {
-                            return $href;
-                        }
-                    }
-                    // リンクがない場合はテキストを確認
-                    $tdText = trim($xpath->query('.//td[last()]', $row)->item(0)?->textContent ?? '');
-                    if (str_starts_with($tdText, 'http')) {
-                        return $tdText;
-                    }
-                }
+            $tdText = trim($xpath->query('.//td', $row)->item(0)?->textContent ?? '');
+            if (str_starts_with($tdText, 'http')) {
+                return $tdText;
             }
-        } catch (\Throwable $e) {
-            Log::warning('BizmapsScraper detail error: ' . $e->getMessage(), ['url' => $detailUrl]);
+        }
+
+        // お問い合わせURLフィールド以外のリンクを探す
+        $links = $xpath->query('//a[@href]');
+        foreach ($links as $link) {
+            $href     = $link->getAttribute('href');
+            $linkText = trim($link->textContent);
+            if (!$href || !str_starts_with($href, 'http')) continue;
+            if (str_contains($href, 'biz-maps.com')) continue;
+            if (str_contains($href, 'facebook.com')) continue;
+            if (str_contains($href, 'instagram.com')) continue;
+            if (str_contains($href, 'twitter.com') || str_contains($href, 'x.com')) continue;
+            if (str_contains($href, 'google.com')) continue;
+            if (str_contains($href, 'youtube.com')) continue;
+            if (preg_match('/\.(jpg|jpeg|png|gif|pdf)$/i', $href)) continue;
+
+            // HPリンクテキストなら優先
+            if (preg_match('/HP|ホームページ|WEB|Web|サイト|公式/u', $linkText)) {
+                return $href;
+            }
         }
 
         return null;
@@ -213,14 +231,11 @@ class BizmapsScraperService
      */
     private function getNextPageUrl(string $html, string $currentUrl, int $currentPage): ?string
     {
-        // ページネーションから次ページのphトークン付きURLを取得
         $doc = new \DOMDocument();
         @$doc->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
         $xpath = new \DOMXPath($doc);
 
         $nextPage = $currentPage + 1;
-
-        // "›"リンクまたはpage=N+1のリンクを探す
         $links = $xpath->query('//a[contains(@href,"page=' . $nextPage . '")]');
         if ($links->length > 0) {
             $href = $links->item(0)->getAttribute('href');
@@ -241,14 +256,15 @@ class BizmapsScraperService
     {
         $context = stream_context_create([
             'http' => [
-                'method'     => 'GET',
-                'header'     => implode("\r\n", [
+                'method'  => 'GET',
+                'header'  => implode("\r\n", [
                     'User-Agent: ' . self::USER_AGENT,
-                    'Accept: text/html,application/xhtml+xml',
-                    'Accept-Language: ja,en-US;q=0.9',
+                    'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language: ja,en-US;q=0.9,en;q=0.8',
+                    'Accept-Encoding: identity',
                     'Connection: close',
                 ]),
-                'timeout'    => 15,
+                'timeout'       => 15,
                 'ignore_errors' => true,
             ],
             'ssl' => [
