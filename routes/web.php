@@ -9,6 +9,7 @@ use App\Http\Controllers\IndustryScoreController;
 use App\Http\Controllers\MvpResetController;
 use App\Http\Controllers\OfficialSiteResolverController;
 use App\Http\Controllers\SourceRecordController;
+use App\Http\Controllers\ShokokaiWebSearchController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -27,6 +28,13 @@ Route::post('/logout', [LoginController::class, 'logout'])
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
+
+
+    Route::get('/directory-sources/shokokai-web-search', [ShokokaiWebSearchController::class, 'show'])->name('directory-sources.shokokai-web-search');
+    Route::post('/directory-sources/shokokai-web-search/preview', [ShokokaiWebSearchController::class, 'preview'])->name('directory-sources.shokokai-web-search.preview');
+    Route::post('/directory-sources/shokokai-web-search/store', [ShokokaiWebSearchController::class, 'store'])->name('directory-sources.shokokai-web-search.store');
+    Route::get('/directory-sources/shokokai-web-search/preview', fn () => redirect()->route('directory-sources.shokokai-web-search'));
+    Route::get('/directory-sources/shokokai-web-search/store', fn () => redirect()->route('directory-sources.shokokai-web-search'));
 
     Route::get('/directory-sources/lab', [DirectorySourceLabController::class, 'show'])->name('directory-sources.lab');
     Route::post('/directory-sources/lab/preview', [DirectorySourceLabController::class, 'preview'])->name('directory-sources.lab.preview');
