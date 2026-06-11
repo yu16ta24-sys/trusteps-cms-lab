@@ -10,6 +10,7 @@ use App\Models\Domain;
 use App\Models\Industry;
 use App\Models\Municipality;
 use App\Models\SourceRecord;
+use App\Services\HpAnalyzerService;
 use App\Services\ScoreSuggester;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -253,8 +254,6 @@ class CompanyController extends Controller
         $selectedPref = trim((string) $request->input('pref', ''));
         $selectedCity = trim((string) $request->input('city', ''));
 
-        // 地域プルダウンは全国マスタではなく、現在の候補母集団に実在する値だけを出す。
-        // ここではキーワード/業種/状態/プリセット適用後、都道府県・市区町村フィルター適用前の候補から生成する。
         $prefOptions = $companies
             ->map(fn (Company $company) => $this->companyPrefLabel($company))
             ->filter()
@@ -284,20 +283,10 @@ class CompanyController extends Controller
         $sort = (string) $request->input('sort', 'priority');
         $direction = $request->input('direction') === 'asc' ? 'asc' : 'desc';
         $allowedSorts = [
-            'priority',
-            'id',
-            'display_name',
-            'industry',
-            'region',
-            'opportunity_score',
-            'risk_score',
-            'scored_axes_count',
-            'source_links_count',
-            'domains_count',
-            'kill_flags_count',
-            'domain',
-            'auto_suggestion_count',
-            'manual_adjusted_count',
+            'priority', 'id', 'display_name', 'industry', 'region',
+            'opportunity_score', 'risk_score', 'scored_axes_count',
+            'source_links_count', 'domains_count', 'kill_flags_count',
+            'domain', 'auto_suggestion_count', 'manual_adjusted_count',
         ];
 
         if (!in_array($sort, $allowedSorts, true)) {
@@ -437,6 +426,133 @@ class CompanyController extends Controller
             'previousScoringCompany',
             'nextScoringCompany'
         ));
+    }
+
+    public function edit(Company $company): View|RedirectResponse
+    {
+        if ($company->status === 'merged') {
+            return redirect()
+                ->route('companies.show', $company)
+                ->with('status', '統合済みcompanyは編集できない。');
+        }
+
+        $industries = Industry::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        $municipalities = Municipality::query()
+            ->with('prefecture')
+            ->orderBy('code')
+            ->get();
+
+        return view('companies.edit', compact('company', 'industries', 'municipalities'));
+    }
+
+    public function update(Request $request, Company $company): RedirectResponse
+    {
+        if ($company->status === 'merged') {
+            return redirect()
+                ->route('companies.show', $company)
+                ->with('status', '統合済みcompanyは編集できない。');
+        }
+
+        $validated = $request->validate([
+            'display_name'     => ['required', 'string', 'max:255'],
+            'legal_name'       => ['nullable', 'string', 'max:255'],
+            'corporate_number' => ['nullable', 'string', 'max:13'],
+            'status'           => ['required', 'in:candidate,confirmed'],
+            'industry_id'      => ['nullable', 'exists:industries,id'],
+            'municipality_id'  => ['nullable', 'exists:municipalities,id'],
+            'pref'             => ['nullable', 'string', 'max:50'],
+            'city'             => ['nullable', 'string', 'max:100'],
+            'primary_url'      => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $company->update([
+            'display_name'     => $validated['display_name'],
+            'legal_name'       => $validated['legal_name'] ?? null,
+            'name_norm'        => $this->normalizeName($validated['display_name']),
+            'corporate_number' => $this->normalizeCorporateNumber($validated['corporate_number'] ?? null),
+            'status'           => $validated['status'],
+            'industry_id'      => $validated['industry_id'] ?? null,
+            'municipality_id'  => $validated['municipality_id'] ?? null,
+            'pref'             => empty($validated['municipality_id']) ? ($validated['pref'] ?? null) : null,
+            'city'             => empty($validated['municipality_id']) ? ($validated['city'] ?? null) : null,
+        ]);
+
+        $newUrl = trim((string) ($validated['primary_url'] ?? ''));
+        $currentUrl = $company->primaryDomain?->url ?? '';
+
+        if ($newUrl !== '' && $newUrl !== $currentUrl) {
+            $domain = Domain::create([
+                'company_id'        => $company->id,
+                'url'               => $newUrl,
+                'normalized_domain' => $this->normalizeDomain($newUrl),
+                'role'              => 'official',
+                'is_primary'        => true,
+                'is_portal'         => false,
+            ]);
+
+            if ($company->primary_domain_id) {
+                Domain::where('id', $company->primary_domain_id)->update(['is_primary' => false]);
+            }
+
+            $company->update(['primary_domain_id' => $domain->id]);
+        }
+
+        return redirect()
+            ->route('companies.show', $company)
+            ->with('status', 'company情報を更新した。');
+    }
+
+    public function analyze(Request $request, Company $company): RedirectResponse
+    {
+        if (!$company->primaryDomain) {
+            return redirect()->route('companies.show', $company)->with('status', 'primary_domainが未設定のため解析できません。');
+        }
+        try {
+            $analyzer = app(HpAnalyzerService::class);
+            $result   = $analyzer->analyze($company);
+            if (!$result['success']) {
+                return redirect()->route('companies.show', $company)->with('status', 'HP解析失敗：' . $result['message']);
+            }
+            $company->load(['industry', 'domains', 'primaryDomain', 'scores']);
+            $suggestions = app(\App\Services\ScoreSuggester::class)->suggest($company);
+            $axisKeys    = array_keys($this->scoreAxisOptions());
+            $savedCount  = 0;
+            foreach ($axisKeys as $axis) {
+                $suggestion = $suggestions[$axis] ?? null;
+                if (!$suggestion || $suggestion['value'] === null) {
+                    continue;
+                }
+                $value      = (int) $suggestion['value'];
+                $confidence = in_array($suggestion['confidence'], ['0.3', '0.6', '0.9']) ? $suggestion['confidence'] : '0.3';
+                $reasonJson = [
+                    'basis'   => 'hp_analysis_auto',
+                    'drivers' => $suggestion['drivers'] ?? [],
+                    'note'    => $suggestion['note'] ?? null,
+                    'auto_suggestion' => [
+                        'algo_version' => \App\Services\ScoreSuggester::ALGO,
+                        'value'        => $value,
+                        'confidence'   => $confidence,
+                        'basis'        => $suggestion['basis'] ?? 'auto',
+                        'drivers'      => $suggestion['drivers'] ?? [],
+                        'note'         => $suggestion['note'] ?? null,
+                    ],
+                ];
+                CompanyScore::updateOrCreate(
+                    ['company_id' => $company->id, 'axis' => $axis, 'algo_version' => 'v1'],
+                    ['value' => $value, 'confidence' => $confidence, 'auto_suggested_value' => $value, 'reason_json' => $reasonJson, 'scored_by' => 'hp_analysis_auto', 'scored_at' => now()]
+                );
+                $savedCount++;
+            }
+            return redirect()->route('companies.show', $company)->with('status', "HP解析完了。{$savedCount}軸のスコアを自動保存しました。");
+        } catch (\Throwable $e) {
+            report($e);
+            return redirect()->route('companies.show', $company)->with('status', 'HP解析中にエラーが発生しました。');
+        }
     }
 
     public function createFromSource(SourceRecord $sourceRecord): View|RedirectResponse
@@ -769,8 +885,6 @@ class CompanyController extends Controller
             ->with('status', "company #{$company->id} の統合をUndoした。");
     }
 
-
-
     public function storeScores(Request $request, Company $company): RedirectResponse
     {
         $axisKeys = array_keys($this->scoreAxisOptions());
@@ -885,9 +999,6 @@ class CompanyController extends Controller
             ->with('status', $emptyMessage);
     }
 
-    /**
-     * @return array{value:int|null, confidence:string|null, basis:string, drivers:array<int, string>, note:string|null, algo_version:string}
-     */
     private function normalizeScoreSuggestion($input): array
     {
         $default = [
@@ -960,7 +1071,6 @@ class CompanyController extends Controller
             'algo_version' => mb_substr($algoVersion, 0, 80),
         ];
     }
-
 
     private function scoreJudgment(int $opportunityScore, int $riskScore, int $scoredAxesCount): array
     {
@@ -1190,10 +1300,8 @@ class CompanyController extends Controller
         return $name !== '' ? $name : null;
     }
 
-
     private function isDirectorySourceRecord(SourceRecord $sourceRecord): bool
     {
         return in_array($sourceRecord->source_type, self::DIRECTORY_SOURCE_TYPES, true);
     }
-
 }

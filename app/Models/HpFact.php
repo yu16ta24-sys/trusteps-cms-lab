@@ -1,14 +1,10 @@
 <?php
-
 namespace App\Models;
-
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-
 class HpFact extends Model
 {
     use HasFactory;
-
     protected $fillable = [
         'hp_snapshot_id',
         'has_ec',
@@ -31,8 +27,23 @@ class HpFact extends Model
         'portal_dependency_level',
         'extractor_version',
         'extracted_at',
+        'hp_title',
+        'hp_description',
+        'hp_last_modified',
+        'hp_has_news',
+        'hp_latest_post_date',
+        'hp_update_staleness_days',
+        'hp_page_count',
+        'hp_has_map',
+        'hp_image_count',
+        'hp_word_count',
+        'hp_has_tabelog',
+        'hp_has_hotpepper',
+        'hp_has_jalan',
+        'hp_has_suumo',
+        'hp_portal_links',
+        'hp_improvement_score',
     ];
-
     protected $casts = [
         'has_ec' => 'boolean',
         'has_reservation' => 'boolean',
@@ -48,7 +59,6 @@ class HpFact extends Model
         'ssl_enabled' => 'boolean',
         'extracted_at' => 'datetime',
     ];
-
     public function snapshot()
     {
         return $this->belongsTo(HpSnapshot::class, 'hp_snapshot_id');
