@@ -51,6 +51,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/directory-sources/crawl-selected', [DirectorySourceController::class, 'crawlSelected'])->name('directory-sources.crawl-selected');
     Route::post('/directory-sources/crawl-queue', [DirectorySourceController::class, 'crawlQueue'])->name('directory-sources.crawl-queue');
     Route::post('/directory-sources/{directorySource}/crawl', [DirectorySourceController::class, 'crawlOne'])->whereNumber('directorySource')->name('directory-sources.crawl-one');
+    Route::post('/directory-sources/{directorySource}/pages/store-source-records', [DirectorySourceController::class, 'storePagesAsSourceRecords'])->whereNumber('directorySource')->name('directory-sources.pages.store-source-records');
     Route::get('/directory-sources/{directorySource}', [DirectorySourceController::class, 'show'])->whereNumber('directorySource')->name('directory-sources.show');
 
     Route::get('/directory-sources/lab', [DirectorySourceLabController::class, 'show'])->name('directory-sources.lab');

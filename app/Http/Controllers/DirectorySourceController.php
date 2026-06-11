@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\DirectorySource;
+use App\Models\DirectorySourcePage;
 use App\Models\SourceRecord;
 use App\Services\Discovery\DirectorySourceCrawlerService;
 use Illuminate\Http\RedirectResponse;
@@ -154,6 +155,109 @@ class DirectorySourceController extends Controller
         return redirect()
             ->route('directory-sources.index')
             ->with('status', "未登録の名簿元source_recordsから directory_sources を {$created} 件作成した。URLなし {$skippedNoUrl} 件は探索不可として保持。");
+    }
+
+
+    public function storePagesAsSourceRecords(Request $request, DirectorySource $directorySource): RedirectResponse
+    {
+        if (! $this->hasDirectorySourceTables()) {
+            return redirect()->route('directory-sources.index')->withErrors(['setup' => 'directory_sources テーブルが未作成。SSHで php artisan migrate --force を実行して。']);
+        }
+
+        $ids = array_values(array_filter(array_map('intval', (array) $request->input('directory_source_page_ids', []))));
+        if (empty($ids)) {
+            return redirect()
+                ->route('directory-sources.show', $directorySource)
+                ->withErrors(['directory_source_page_ids' => 'source_recordsへ保存する事業者HP候補を1件以上選んで。']);
+        }
+
+        $pages = DirectorySourcePage::query()
+            ->where('directory_source_id', $directorySource->id)
+            ->whereIn('id', $ids)
+            ->where('page_type', 'member_site_candidate')
+            ->whereNotNull('url')
+            ->get();
+
+        if ($pages->isEmpty()) {
+            return redirect()
+                ->route('directory-sources.show', $directorySource)
+                ->withErrors(['directory_source_page_ids' => '保存可能な外部ドメインの事業者HP候補がない。内部ページ候補はsource_recordsへは移動しない。']);
+        }
+
+        $created = 0;
+        $skipped = 0;
+
+        DB::transaction(function () use ($pages, $directorySource, &$created, &$skipped): void {
+            foreach ($pages as $page) {
+                $url = trim((string) $page->url);
+                $domain = trim((string) $page->normalized_domain);
+
+                if ($url === '' || $domain === '') {
+                    $skipped++;
+                    continue;
+                }
+
+                $alreadyExists = SourceRecord::query()
+                    ->where(function ($query) use ($url, $domain) {
+                        $query->where('source_url', $url)
+                            ->orWhere(function ($inner) use ($domain) {
+                                $inner->where('normalized_domain', $domain)
+                                    ->where('source_type', '!=', 'directory_source_candidate');
+                            });
+                    })
+                    ->exists();
+
+                if ($alreadyExists) {
+                    $skipped++;
+                    continue;
+                }
+
+                $raw = is_array($page->raw_json) ? $page->raw_json : [];
+                $name = trim((string) ($page->link_text ?: $page->title ?: $domain));
+
+                $record = SourceRecord::create([
+                    'source_type' => 'directory_member_site_candidate',
+                    'source_url' => $url,
+                    'raw_json' => [
+                        'origin' => 'directory_source_page_export',
+                        'created_version' => '0.19.1',
+                        'directory_source_id' => $directorySource->id,
+                        'directory_source_name' => $directorySource->name,
+                        'directory_source_url' => $directorySource->url,
+                        'directory_source_pref_code' => $directorySource->pref_code,
+                        'directory_source_pref_name' => $directorySource->pref_name,
+                        'directory_source_page_id' => $page->id,
+                        'candidate_page_url' => $page->url,
+                        'candidate_page_title' => $page->title,
+                        'candidate_link_text' => $page->link_text,
+                        'candidate_score' => $page->score,
+                        'candidate_confidence' => $page->confidence,
+                        'candidate_discovered_from' => $page->discovered_from,
+                        'candidate_raw' => $raw,
+                    ],
+                    'normalized_domain' => $domain,
+                    'name_norm' => Str::limit($name, 255, ''),
+                    'pref' => $directorySource->pref_name,
+                    'city' => $directorySource->city,
+                    'fetched_at' => now(),
+                ]);
+
+                $pageRaw = $raw;
+                $pageRaw['exported_to_source_record_id'] = $record->id;
+                $pageRaw['exported_at'] = now()->toDateTimeString();
+
+                $page->forceFill([
+                    'status' => 'exported_to_source_record',
+                    'raw_json' => $pageRaw,
+                ])->save();
+
+                $created++;
+            }
+        });
+
+        return redirect()
+            ->route('directory-sources.show', $directorySource)
+            ->with('status', "事業者HP候補から source_records を {$created} 件作成した。重複/不正URLスキップ {$skipped} 件。次は source_records 側でcompany化・HP解析へ進める。");
     }
 
     public function crawlOne(Request $request, DirectorySource $directorySource): RedirectResponse
