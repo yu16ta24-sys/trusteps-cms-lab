@@ -16,6 +16,16 @@ return [
     'official_site_resolver_body_limit' => 1200000,
     'official_site_resolver_user_agent' => 'TRUSTEPS-CMS-Lab-OfficialSiteResolver/0.18.6',
 
+    'directory_source_entry_url_limit' => 10,
+    'directory_source_candidate_limit' => 200,
+    'directory_source_excluded_limit' => 200,
+    'directory_source_link_scan_limit' => 800,
+    'directory_source_min_score' => 2,
+    'directory_source_timeout' => 10,
+    'directory_source_connect_timeout' => 5,
+    'directory_source_body_limit' => 1200000,
+    'directory_source_user_agent' => 'TRUSTEPS-CMS-Lab-DirectorySourceCollector/0.18.7',
+
     'directory_detail_positive_keywords' => [
         '株式会社', '有限会社', '合同会社', '工務店', '建設', '塗装', '設備', '電気', '商店', '会社',
         '事務所', '製作所', '製造', '介護', '福祉', '医院', 'クリニック', '旅館', 'ホテル', '農園',

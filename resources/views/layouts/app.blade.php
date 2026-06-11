@@ -837,6 +837,9 @@
                 <a class="nav-link {{ request()->routeIs('discovery.*') ? 'active' : '' }}" href="{{ route('discovery.lab') }}">
                     候補収集ラボ
                 </a>
+                <a class="nav-link {{ request()->routeIs('directory-sources.*') ? 'active' : '' }}" href="{{ route('directory-sources.lab') }}">
+                    名簿元収集
+                </a>
                 <a class="nav-link {{ request()->routeIs('resolver.official-sites.*') ? 'active' : '' }}" href="{{ route('resolver.official-sites.index') }}">
                     公式HP取得
                 </a>
