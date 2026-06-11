@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\BizmapsScraperService;
+use App\Services\BizmapsIndustryMapper;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BizmapsImportController extends Controller
@@ -273,7 +274,101 @@ class BizmapsImportController extends Controller
         return response()->json(['saved' => $saved, 'skipped' => $skipped]);
     }
 
-    private function buildUrls(int $prefectureId, array $cityCodes, string $industryType, ?int $industryId): array
+    /**
+     * BIZMAPSデータを直接companiesに保存
+     */
+    public function storeCompanies(Request $request)
+    {
+        $items   = $request->input('items', []);
+        $saved   = 0;
+        $skipped = 0;
+        $now     = now();
+        $mapper  = new BizmapsIndustryMapper();
+
+        foreach ($items as $item) {
+            $hpUrl     = $item['hp_url']     ?? null;
+            $detailUrl = $item['detail_url'] ?? null;
+            $name      = $item['name']       ?? null;
+            if (!$name) { $skipped++; continue; }
+
+            // HP URLまたはdetail_urlで重複チェック
+            $checkUrl = $hpUrl ?: $detailUrl;
+            if ($checkUrl && DB::table('domains')->where('url', $checkUrl)->exists()) {
+                $skipped++;
+                continue;
+            }
+
+            // 業種マッピング
+            $industryText = $item['industry'] ?? null;
+            $industryId   = null;
+            if ($industryText) {
+                // "大分類, 中分類" の形式をパース
+                $parts = array_map('trim', explode(',', $industryText));
+                $bigCat = $parts[0] ?? '';
+                $subCat = $parts[1] ?? null;
+                $industryId = $mapper->resolveId($bigCat, $subCat);
+            }
+
+            // municipality_idをpref+cityから検索
+            $municipalityId = null;
+            if (!empty($item['pref']) && !empty($item['city'])) {
+                $municipality = DB::table('municipalities')
+                    ->where('name', $item['city'])
+                    ->first();
+                $municipalityId = $municipality?->id;
+            }
+
+            // 正規化ドメイン
+            $normalizedDomain = null;
+            if ($hpUrl) {
+                $host = parse_url($hpUrl, PHP_URL_HOST);
+                $normalizedDomain = $host ? preg_replace('/^www\./', '', $host) : null;
+            }
+
+            DB::transaction(function () use (
+                $item, $hpUrl, $detailUrl, $name, $industryId,
+                $municipalityId, $normalizedDomain, $now, &$saved
+            ) {
+                // company作成
+                $companyId = DB::table('companies')->insertGetId([
+                    'status'          => 'candidate',
+                    'municipality_id' => $municipalityId,
+                    'industry_id'     => $industryId,
+                    'primary_domain_id' => null,
+                    'legal_name'      => null,
+                    'display_name'    => $name,
+                    'name_norm'       => mb_strtolower(preg_replace('/[\s　]+/u', '', $name)),
+                    'alias_names_json' => null,
+                    'corporate_number' => null,
+                    'pref'            => $municipalityId ? null : ($item['pref'] ?? null),
+                    'city'            => $municipalityId ? null : ($item['city'] ?? null),
+                    'is_killed'       => false,
+                    'created_at'      => $now,
+                    'updated_at'      => $now,
+                ]);
+
+                // HP URLがあればdomainsに追加
+                if ($hpUrl) {
+                    $domainId = DB::table('domains')->insertGetId([
+                        'company_id'        => $companyId,
+                        'url'               => $hpUrl,
+                        'normalized_domain' => $normalizedDomain,
+                        'role'              => 'official',
+                        'is_primary'        => true,
+                        'is_portal'         => false,
+                        'created_at'        => $now,
+                        'updated_at'        => $now,
+                    ]);
+                    DB::table('companies')->where('id', $companyId)
+                        ->update(['primary_domain_id' => $domainId]);
+                }
+
+                $saved++;
+            });
+        }
+
+        return response()->json(['saved' => $saved, 'skipped' => $skipped]);
+    }
     {
         $urls = [];
 

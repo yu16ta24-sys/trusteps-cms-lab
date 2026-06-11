@@ -132,6 +132,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/bizmaps/preview', [BizmapsImportController::class, 'preview'])->name('bizmaps.preview');
     Route::get('/bizmaps/preview', fn () => redirect()->route('bizmaps.import'));
     Route::post('/bizmaps/store', [BizmapsImportController::class, 'store'])->name('bizmaps.store');
+    Route::post('/bizmaps/store-companies', [BizmapsImportController::class, 'storeCompanies'])->name('bizmaps.store-companies');
     Route::get('/bizmaps/fetch-hp-stream', [BizmapsImportController::class, 'fetchHpStream'])->name('bizmaps.fetch-hp-stream');
     Route::post('/bizmaps/exclude', [BizmapsImportController::class, 'exclude'])->name('bizmaps.exclude');
     Route::post('/bizmaps/unexclude', [BizmapsImportController::class, 'unexclude'])->name('bizmaps.unexclude');

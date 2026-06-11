@@ -183,10 +183,13 @@
   </div>
 
   {{-- 保存バー --}}
-  <div class="form-section compact" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+  <div class="form-section compact" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
     <span id="selectedCount" style="font-weight:800;font-size:14px;color:var(--muted);">0件選択中</span>
-    <button type="button" class="button" id="saveBtn" disabled style="min-width:220px;">
-      選択した企業をsource_recordsに保存
+    <button type="button" class="button light" id="saveBtn" disabled style="min-width:200px;">
+      source_recordsに保存
+    </button>
+    <button type="button" class="button" id="saveCompaniesBtn" disabled style="min-width:200px;">
+      companiesに直接保存
     </button>
     <div id="saveResult"></div>
   </div>
@@ -331,6 +334,8 @@ document.addEventListener('DOMContentLoaded', function () {
     if (el) el.textContent = count + '件選択中';
     const saveBtn = document.getElementById('saveBtn');
     if (saveBtn) saveBtn.disabled = count === 0;
+    const saveCompaniesBtn = document.getElementById('saveCompaniesBtn');
+    if (saveCompaniesBtn) saveCompaniesBtn.disabled = count === 0;
   }
 
   // ---- 除外ボタン ----
@@ -480,53 +485,64 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   // ---- 保存 ----
-  const saveBtn    = document.getElementById('saveBtn');
-  const saveResult = document.getElementById('saveResult');
+  const saveBtn          = document.getElementById('saveBtn');
+  const saveCompaniesBtn = document.getElementById('saveCompaniesBtn');
+  const saveResult       = document.getElementById('saveResult');
+
+  function doSave(url, btnEl, labelText) {
+    const checked = document.querySelectorAll('.row-check:checked');
+    if (checked.length === 0) return;
+
+    const items = Array.from(checked).map(cb => PREVIEW_DATA[parseInt(cb.value)]);
+
+    btnEl.disabled = true;
+    btnEl.textContent = '保存中...';
+    saveResult.innerHTML = '';
+
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+      },
+      body: JSON.stringify({ items }),
+    })
+    .then(r => r.json())
+    .then(data => {
+      saveResult.innerHTML =
+        `<span class="badge green" style="font-size:13px;padding:8px 14px;">${labelText} ${data.saved}件</span>` +
+        (data.skipped > 0 ? ` <span class="badge gray" style="font-size:12px;">スキップ ${data.skipped}件</span>` : '');
+
+      checked.forEach(cb => {
+        const row = document.getElementById('row-' + cb.value);
+        if (row) row.style.opacity = '0.45';
+        const span = document.createElement('span');
+        span.className = 'badge gray';
+        span.style.fontSize = '11px';
+        span.textContent = '保存済';
+        cb.replaceWith(span);
+      });
+
+      btnEl.disabled = false;
+      btnEl.textContent = labelText.replace('保存完了', '').trim() + 'に保存';
+      updateCount();
+    })
+    .catch(err => {
+      saveResult.innerHTML = `<span class="badge red">保存失敗: ${err.message}</span>`;
+      btnEl.disabled = false;
+      btnEl.textContent = labelText.replace('保存完了', '').trim() + 'に保存';
+    });
+  }
 
   if (saveBtn) {
     saveBtn.addEventListener('click', function () {
-      const checked = document.querySelectorAll('.row-check:checked');
-      if (checked.length === 0) return;
+      doSave('/bizmaps/store', saveBtn, 'source_records保存完了');
+    });
+  }
 
-      const items = Array.from(checked).map(cb => PREVIEW_DATA[parseInt(cb.value)]);
-
-      saveBtn.disabled = true;
-      saveBtn.textContent = '保存中...';
-      saveResult.innerHTML = '';
-
-      fetch('/bizmaps/store', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-        },
-        body: JSON.stringify({ items }),
-      })
-      .then(r => r.json())
-      .then(data => {
-        saveResult.innerHTML =
-          `<span class="badge green" style="font-size:13px;padding:8px 14px;">保存完了 ${data.saved}件</span>` +
-          (data.skipped > 0 ? ` <span class="badge gray" style="font-size:12px;">スキップ ${data.skipped}件</span>` : '');
-
-        checked.forEach(cb => {
-          const row = document.getElementById('row-' + cb.value);
-          if (row) row.style.opacity = '0.45';
-          const span = document.createElement('span');
-          span.className = 'badge gray';
-          span.style.fontSize = '11px';
-          span.textContent = '保存済';
-          cb.replaceWith(span);
-        });
-
-        saveBtn.disabled = false;
-        saveBtn.textContent = '選択した企業をsource_recordsに保存';
-        updateCount();
-      })
-      .catch(err => {
-        saveResult.innerHTML = `<span class="badge red">保存失敗: ${err.message}</span>`;
-        saveBtn.disabled = false;
-        saveBtn.textContent = '選択した企業をsource_recordsに保存';
-      });
+  if (saveCompaniesBtn) {
+    saveCompaniesBtn.addEventListener('click', function () {
+      doSave('/bizmaps/store-companies', saveCompaniesBtn, 'companies保存完了');
     });
   }
 
