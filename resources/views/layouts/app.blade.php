@@ -840,6 +840,9 @@
                 <a class="nav-link {{ request()->routeIs('directory-sources.lab') || request()->routeIs('directory-sources.lab.*') ? 'active' : '' }}" href="{{ route('directory-sources.lab') }}">
                     名簿元収集
                 </a>
+                <a class="nav-link {{ request()->routeIs('directory-sources.shokokai-bulk-html*') ? 'active' : '' }}" href="{{ route('directory-sources.shokokai-bulk-html') }}">
+                    商工会HTML取込
+                </a>
                 <a class="nav-link {{ request()->routeIs('directory-sources.shokokai-web-search*') ? 'active' : '' }}" href="{{ route('directory-sources.shokokai-web-search') }}">
                     商工会WEBサーチ
                 </a>
