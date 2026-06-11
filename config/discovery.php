@@ -10,6 +10,11 @@ return [
     'directory_detail_page_limit' => 50,
     'directory_detail_page_hard_limit' => 50,
 
+    'official_site_resolver_url_limit' => 30,
+    'official_site_resolver_timeout' => 10,
+    'official_site_resolver_connect_timeout' => 5,
+    'official_site_resolver_body_limit' => 1200000,
+    'official_site_resolver_user_agent' => 'TRUSTEPS-CMS-Lab-OfficialSiteResolver/0.18.6',
 
     'directory_detail_positive_keywords' => [
         '株式会社', '有限会社', '合同会社', '工務店', '建設', '塗装', '設備', '電気', '商店', '会社',

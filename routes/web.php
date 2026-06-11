@@ -6,6 +6,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DiscoveryLabController;
 use App\Http\Controllers\IndustryScoreController;
 use App\Http\Controllers\MvpResetController;
+use App\Http\Controllers\OfficialSiteResolverController;
 use App\Http\Controllers\SourceRecordController;
 use Illuminate\Support\Facades\Route;
 
@@ -24,6 +25,12 @@ Route::post('/logout', [LoginController::class, 'logout'])
 
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+    Route::get('/resolver/official-sites', [OfficialSiteResolverController::class, 'show'])->name('resolver.official-sites.index');
+    Route::post('/resolver/official-sites/preview', [OfficialSiteResolverController::class, 'preview'])->name('resolver.official-sites.preview');
+    Route::post('/resolver/official-sites/store', [OfficialSiteResolverController::class, 'store'])->name('resolver.official-sites.store');
+    Route::get('/resolver/official-sites/preview', fn () => redirect()->route('resolver.official-sites.index'));
+    Route::get('/resolver/official-sites/store', fn () => redirect()->route('resolver.official-sites.index'));
 
     Route::get('/discovery/lab', [DiscoveryLabController::class, 'show'])->name('discovery.lab');
     Route::post('/discovery/lab/preview', [DiscoveryLabController::class, 'preview'])->name('discovery.lab.preview');
