@@ -23,14 +23,12 @@ class IndustryScoreController extends Controller
 
     public function index(): View
     {
-        // 大分類（parent_id = null）
         $parents = Industry::query()
             ->whereNull('parent_id')
             ->where('is_active', true)
             ->orderBy('sort_order')
             ->get();
 
-        // 中分類（parent_id != null）
         $children = Industry::query()
             ->whereNotNull('parent_id')
             ->where('is_active', true)
@@ -38,7 +36,6 @@ class IndustryScoreController extends Controller
             ->get()
             ->groupBy('parent_id');
 
-        // 全スラグ収集
         $allSlugs = Industry::query()
             ->whereNotNull('parent_id')
             ->where('is_active', true)
@@ -63,6 +60,7 @@ class IndustryScoreController extends Controller
                 'filled_count' => $industryScores->filter(fn($s) => $s->value !== null)->count(),
                 'updated_at'   => $latestUpdatedAt ? $latestUpdatedAt->format('Y-m-d') : null,
                 'categories'   => [],
+                'scores'       => $industryScores,
             ];
 
             foreach ($categoryKeys as $category) {
@@ -164,6 +162,75 @@ class IndustryScoreController extends Controller
         return redirect()
             ->route('industries.scores.edit', $industryModel->slug)
             ->with('status', '業界スコアを保存しました。');
+    }
+
+    /**
+     * 大分類単位の一括保存（インライン編集UIから呼ばれる）
+     * POST /industries/scores/bulk-update/{parent}
+     */
+    public function bulkUpdateByParent(Request $request, string $parent): RedirectResponse
+    {
+        $parentModel = Industry::query()
+            ->whereNull('parent_id')
+            ->where('slug', $parent)
+            ->firstOrFail();
+
+        $childSlugs = Industry::query()
+            ->where('parent_id', $parentModel->id)
+            ->where('is_active', true)
+            ->pluck('slug')
+            ->filter()
+            ->values();
+
+        $axes = $this->activeAxes();
+
+        $request->validate([
+            'scores'                      => ['nullable', 'array'],
+            'scores.*'                    => ['nullable', 'array'],
+            'scores.*.*.value'            => ['nullable', 'integer', 'min:0', 'max:5'],
+        ]);
+
+        $inputScores = collect($request->input('scores', []));
+
+        DB::transaction(function () use ($childSlugs, $axes, $inputScores) {
+            foreach ($childSlugs as $slug) {
+                $slugScores = (array) $inputScores->get($slug, []);
+
+                foreach ($axes as $axis) {
+                    $payload = (array) ($slugScores[$axis->key] ?? []);
+                    $rawValue = $payload['value'] ?? null;
+
+                    if ($rawValue === null || $rawValue === '') {
+                        // 空欄は既存レコードを削除
+                        IndustryScore::query()
+                            ->where('industry_key', $slug)
+                            ->where('axis_key', $axis->key)
+                            ->delete();
+                        continue;
+                    }
+
+                    $value = (int) $rawValue;
+                    if ($value < 0 || $value > 5) {
+                        continue;
+                    }
+
+                    IndustryScore::query()->updateOrCreate(
+                        ['industry_key' => $slug, 'axis_key' => $axis->key],
+                        [
+                            'value'      => $value,
+                            'confidence' => 'low',
+                            'score_type' => 'hypothesis',
+                            'note'       => null,
+                            'updated_by' => auth()->id(),
+                        ]
+                    );
+                }
+            }
+        });
+
+        return redirect()
+            ->route('industries.scores.index')
+            ->with('status', "{$parentModel->name} の業界スコアを保存しました。");
     }
 
     private function activeAxes(): Collection
