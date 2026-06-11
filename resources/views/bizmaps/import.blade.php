@@ -9,7 +9,7 @@
   <div style="margin-bottom:28px;">
     <p class="page-kicker">データ収集</p>
     <h1 class="page-title">BIZMAPS インポート</h1>
-    <p class="page-subtitle">BIZMAPSから企業情報を収集してsource_recordsに保存します。都道府県・市区町村・業種で絞り込みができます。</p>
+    <p class="page-subtitle">BIZMAPSから企業情報を収集してsource_recordsに保存します。都道府県・市区町村で絞り込みができます。</p>
   </div>
 
   <form method="POST" action="{{ route('bizmaps.preview') }}" id="importForm">
@@ -52,61 +52,29 @@
         </div>
       </div>
 
-      {{-- 業種選択 --}}
-      <div class="form-section">
-        <div class="form-section-head">
-          <div>
-            <p class="section-label">Step 2</p>
-            <h2 class="form-section-title">業種選択 <span style="font-size:14px;font-weight:600;color:var(--muted);">任意</span></h2>
-            <p class="form-section-copy">業種を指定しない場合は全業種が対象になります。</p>
-          </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;align-items:start;">
-          <div class="field">
-            <label>大業種</label>
-            <select name="big_ind_id" id="bigIndSelect">
-              <option value="">全業種（絞り込まない）</option>
-              @foreach($industries as $ind)
-                <option value="{{ $ind['big_id'] }}">{{ $ind['big_name'] }}</option>
-              @endforeach
-            </select>
-          </div>
-
-          <div class="field">
-            <label>中業種</label>
-            <select name="m_ind_id" id="mIndSelect">
-              <option value="">大業種を先に選択</option>
-            </select>
-          </div>
-
-          <div class="field">
-            <label>検索軸</label>
-            <div id="industryTypeDisplay" style="padding:12px 0;font-size:13px;color:var(--muted);font-weight:700;">
-              都道府県全体で検索
-            </div>
-            <input type="hidden" name="industry_type" id="industryTypeInput" value="pref">
-            <input type="hidden" name="industry_id"   id="industryIdInput"   value="">
-            <input type="hidden" name="big_ind_name"  id="bigIndNameInput"   value="">
-            <input type="hidden" name="m_ind_name"    id="mIndNameInput"     value="">
-          </div>
-        </div>
-      </div>
-
       {{-- 取得設定 --}}
       <div class="form-section">
         <div class="form-section-head">
           <div>
-            <p class="section-label">Step 3</p>
+            <p class="section-label">Step 2</p>
             <h2 class="form-section-title">取得設定</h2>
           </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:200px 1fr auto;gap:20px;align-items:end;">
+        <div style="display:grid;grid-template-columns:180px 1fr auto;gap:20px;align-items:end;">
           <div class="field">
-            <label for="limitInput">取得上限件数</label>
-            <input type="number" name="limit" id="limitInput" value="50" min="1" max="500">
-            <p class="field-hint">最大500件まで</p>
+            <label for="limitSelect">取得上限件数</label>
+            <select name="limit" id="limitSelect">
+              <option value="10">10件</option>
+              <option value="25">25件</option>
+              <option value="50" selected>50件</option>
+              <option value="75">75件</option>
+              <option value="100">100件</option>
+              <option value="150">150件</option>
+              <option value="200">200件</option>
+              <option value="300">300件</option>
+              <option value="500">500件</option>
+            </select>
           </div>
 
           <div class="field">
@@ -116,7 +84,7 @@
               <span>詳細ページからHP URLを取得する</span>
               <span class="badge amber">低速</span>
             </label>
-            <p class="field-hint">ONにすると1件あたり約1秒かかります。50件で約50秒。</p>
+            <p class="field-hint">ONにすると1件あたり約1秒かかります。</p>
           </div>
 
           <div style="padding-bottom:2px;">
@@ -128,24 +96,24 @@
       </div>
 
     </div>
+
+    <input type="hidden" name="industry_type" value="pref">
+    <input type="hidden" name="industry_id"   value="">
+    <input type="hidden" name="big_ind_name"  value="">
+    <input type="hidden" name="m_ind_name"    value="">
   </form>
 
 </div>
 
 @push('scripts')
-<script>
 @verbatim
+<script>
 document.addEventListener('DOMContentLoaded', function () {
 
-  const prefSelect   = document.getElementById('prefectureSelect');
-  const cityBox      = document.getElementById('cityCheckboxes');
-  const cityCount    = document.getElementById('citySelectedCount');
-  const bigIndSelect = document.getElementById('bigIndSelect');
-  const mIndSelect   = document.getElementById('mIndSelect');
-  const indTypeInput = document.getElementById('industryTypeInput');
-  const indIdInput   = document.getElementById('industryIdInput');
-  const indTypeDisp  = document.getElementById('industryTypeDisplay');
-  const submitBtn    = document.getElementById('submitBtn');
+  const prefSelect  = document.getElementById('prefectureSelect');
+  const cityBox     = document.getElementById('cityCheckboxes');
+  const cityCount   = document.getElementById('citySelectedCount');
+  const submitBtn   = document.getElementById('submitBtn');
 
   prefSelect.addEventListener('change', function () {
     const prefId = this.value;
@@ -154,7 +122,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (!prefId) {
       cityBox.innerHTML = '<span style="color:var(--muted);font-size:13px;">都道府県を選択してください</span>';
-      updateIndustryType();
       return;
     }
 
@@ -173,8 +140,7 @@ document.addEventListener('DOMContentLoaded', function () {
           </label>
         `).join('');
         updateCityCount();
-        updateIndustryType();
-        cityBox.querySelectorAll('.city-check').forEach(cb => cb.addEventListener('change', () => { updateCityCount(); updateIndustryType(); }));
+        cityBox.querySelectorAll('.city-check').forEach(cb => cb.addEventListener('change', updateCityCount));
       })
       .catch(() => {
         cityBox.innerHTML = '<span style="color:var(--danger);font-size:13px;">取得失敗</span>';
@@ -183,11 +149,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
   document.getElementById('selectAllCities').addEventListener('click', function () {
     cityBox.querySelectorAll('.city-check').forEach(cb => cb.checked = true);
-    updateCityCount(); updateIndustryType();
+    updateCityCount();
   });
   document.getElementById('clearCities').addEventListener('click', function () {
     cityBox.querySelectorAll('.city-check').forEach(cb => cb.checked = false);
-    updateCityCount(); updateIndustryType();
+    updateCityCount();
   });
 
   function updateCityCount() {
@@ -200,69 +166,13 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  const bigIndNameInput = document.getElementById('bigIndNameInput');
-  const mIndNameInput   = document.getElementById('mIndNameInput');
-
-  bigIndSelect.addEventListener('change', function () {
-    const bigId = this.value;
-    mIndSelect.innerHTML = '<option value="">読み込み中...</option>';
-    if (!bigId) {
-      mIndSelect.innerHTML = '<option value="">大業種を先に選択</option>';
-      updateIndustryType();
-      return;
-    }
-    fetch(`/bizmaps/sub-industries?big_ind_id=${bigId}`)
-      .then(r => r.json())
-      .then(subs => {
-        mIndSelect.innerHTML = '<option value="">全て（大業種のみ）</option>';
-        subs.forEach(s => { mIndSelect.innerHTML += `<option value="${s.id}">${s.name}</option>`; });
-        updateIndustryType();
-      });
-  });
-
-  mIndSelect.addEventListener('change', updateIndustryType);
-
-  function updateIndustryType() {
-    const prefId  = prefSelect.value;
-    const checked = cityBox.querySelectorAll('.city-check:checked').length;
-    const bigId   = bigIndSelect.value;
-    const mIndId  = mIndSelect.value;
-    const bigOpt  = bigIndSelect.selectedOptions[0];
-    const mOpt    = mIndSelect.selectedOptions[0];
-
-    if (mIndId) {
-      indTypeInput.value = 'm_ind'; indIdInput.value = mIndId;
-      if (bigIndNameInput) bigIndNameInput.value = bigOpt?.text || '';
-      if (mIndNameInput)   mIndNameInput.value   = mOpt?.text  || '';
-      indTypeDisp.textContent = '中業種で絞り込み';
-    } else if (bigId) {
-      indTypeInput.value = 'big_ind'; indIdInput.value = bigId;
-      if (bigIndNameInput) bigIndNameInput.value = bigOpt?.text || '';
-      if (mIndNameInput)   mIndNameInput.value   = '';
-      indTypeDisp.textContent = '大業種で絞り込み';
-    } else if (checked > 0) {
-      indTypeInput.value = 'city'; indIdInput.value = '';
-      if (bigIndNameInput) bigIndNameInput.value = '';
-      if (mIndNameInput)   mIndNameInput.value   = '';
-      indTypeDisp.textContent = `市区町村 ${checked}件で検索`;
-    } else if (prefId) {
-      indTypeInput.value = 'pref'; indIdInput.value = '';
-      if (bigIndNameInput) bigIndNameInput.value = '';
-      if (mIndNameInput)   mIndNameInput.value   = '';
-      indTypeDisp.textContent = '都道府県全体で検索';
-    } else {
-      indTypeInput.value = 'pref'; indIdInput.value = '';
-      indTypeDisp.textContent = '都道府県を選択してください';
-    }
-  }
-
   document.getElementById('importForm').addEventListener('submit', function () {
     submitBtn.disabled = true;
     submitBtn.textContent = '取得中...';
   });
 
 });
-@endverbatim
 </script>
+@endverbatim
 @endpush
 @endsection

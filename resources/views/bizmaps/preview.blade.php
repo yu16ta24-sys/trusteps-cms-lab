@@ -21,13 +21,13 @@
     $sc = $searchCondition ?? session('bizmaps_search_condition', []);
     $condParts = [];
     if (!empty($sc['prefecture_name'])) $condParts[] = $sc['prefecture_name'];
-    if (!empty($sc['m_ind_name']))      $condParts[] = $sc['m_ind_name'];
+    if (!empty($sc['m_ind_name']))       $condParts[] = $sc['m_ind_name'];
     elseif (!empty($sc['big_ind_name'])) $condParts[] = $sc['big_ind_name'];
-    if (!empty($sc['city_codes']))      $condParts[] = count($sc['city_codes']) . '市区町村指定';
+    if (!empty($sc['city_codes']))       $condParts[] = count($sc['city_codes']) . '市区町村指定';
     $condParts[] = ($sc['limit'] ?? 50) . '件';
   @endphp
 
-  <details class="form-section" style="margin-bottom:20px;" id="conditionPanel">
+  <details class="form-section" style="margin-bottom:20px;">
     <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 0;">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <span style="font-weight:900;font-size:15px;">検索条件</span>
@@ -65,42 +65,25 @@
           </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr 120px auto;gap:16px;align-items:end;">
+        <div style="display:grid;grid-template-columns:120px auto;gap:16px;align-items:end;">
           <div class="field">
-            <label>大業種</label>
-            <select name="big_ind_id" id="reBigIndSelect">
-              <option value="">全業種</option>
-              @foreach($industries as $ind)
-                <option value="{{ $ind['big_id'] }}"
-                  data-name="{{ $ind['big_name'] }}"
-                  {{ ($sc['industry_type'] ?? '') === 'big_ind' && ($sc['industry_id'] ?? '') == $ind['big_id'] ? 'selected' : '' }}>
-                  {{ $ind['big_name'] }}
-                </option>
+            <label>上限件数</label>
+            <select name="limit">
+              @foreach([10,25,50,75,100,150,200,300,500] as $n)
+                <option value="{{ $n }}" {{ ($sc['limit'] ?? 50) == $n ? 'selected' : '' }}>{{ $n }}件</option>
               @endforeach
             </select>
           </div>
 
-          <div class="field">
-            <label>中業種</label>
-            <select name="m_ind_id" id="reMIndSelect">
-              <option value="">大業種を先に選択</option>
-            </select>
-          </div>
-
-          <div class="field">
-            <label>上限件数</label>
-            <input type="number" name="limit" value="{{ $sc['limit'] ?? 50 }}" min="1" max="500">
-          </div>
-
           <div style="padding-bottom:2px;">
-            <button type="submit" class="button" style="min-width:120px;">再取得</button>
+            <button type="submit" class="button" id="reSubmitBtn" style="min-width:120px;">再取得</button>
           </div>
         </div>
 
-        <input type="hidden" name="industry_type" id="reIndustryTypeInput" value="{{ $sc['industry_type'] ?? 'pref' }}">
-        <input type="hidden" name="industry_id"   id="reIndustryIdInput"   value="{{ $sc['industry_id'] ?? '' }}">
-        <input type="hidden" name="big_ind_name"  id="reBigIndNameInput"   value="{{ $sc['big_ind_name'] ?? '' }}">
-        <input type="hidden" name="m_ind_name"    id="reMIndNameInput"     value="{{ $sc['m_ind_name'] ?? '' }}">
+        <input type="hidden" name="industry_type" value="pref">
+        <input type="hidden" name="industry_id"   value="">
+        <input type="hidden" name="big_ind_name"  value="">
+        <input type="hidden" name="m_ind_name"    value="">
       </form>
     </div>
   </details>
@@ -121,13 +104,10 @@
     <div class="badge blue" style="font-size:14px;padding:8px 14px;">{{ count($results) }}件取得</div>
     <div id="hpFoundBadge" style="display:none;" class="badge green">HP取得済 <span id="hpFoundCount">0</span>件</div>
     <div style="flex:1;"></div>
-
-    {{-- HP URL取得ボタン --}}
     <button type="button" class="button secondary" id="fetchHpBtn" style="gap:8px;">
       <span id="fetchHpBtnText">HP URLを取得する</span>
       <span id="fetchHpProgress" style="display:none;font-size:12px;font-weight:600;opacity:0.8;"></span>
     </button>
-
     <button type="button" class="button small light" id="selectAll">全選択</button>
     <button type="button" class="button small light" id="selectNone">全解除</button>
     <button type="button" class="button small light" id="selectHpOnly">HP URLありのみ</button>
@@ -174,7 +154,7 @@
                 {{ Str::limit($row['hp_url'], 35) }}
               </a>
             @else
-              <span style="font-size:12px;color:var(--muted);" class="hp-placeholder">-</span>
+              <span style="font-size:12px;color:var(--muted);">-</span>
             @endif
           </td>
           <td class="tight">
@@ -208,17 +188,66 @@
   @endif
 
 </div>
+@endsection
 
-<script>
-const PREVIEW_DATA = @json($results);
-</script>
-
+{{-- Blade変数をJSに渡す（verbatim外） --}}
 @push('scripts')
 <script>
+const PREVIEW_DATA     = @json($results);
+const SAVED_CITY_CODES = @json($sc['city_codes'] ?? []);
+const SAVED_PREF_ID    = @json($sc['prefecture_id'] ?? null);
+</script>
+@endpush
+
+@push('scripts')
 @verbatim
+<script>
 document.addEventListener('DOMContentLoaded', function () {
 
-  // チェックボックス全選択
+  // ---- 再検索パネル ----
+  const rePrefSelect = document.getElementById('rePrefSelect');
+  const reCityBox    = document.getElementById('reCityCheckboxes');
+
+  function loadReCities(prefId, selectedCodes) {
+    if (!prefId) {
+      reCityBox.innerHTML = '<span style="color:var(--muted);font-size:13px;">都道府県を選択してください</span>';
+      return;
+    }
+    reCityBox.innerHTML = '<span style="color:var(--muted);font-size:13px;">読み込み中...</span>';
+    fetch(`/bizmaps/municipalities?prefecture_id=${prefId}`)
+      .then(r => r.json())
+      .then(cities => {
+        reCityBox.innerHTML = cities.map(c => `
+          <label style="display:inline-flex;align-items:center;gap:5px;margin:3px 8px 3px 0;font-size:13px;cursor:pointer;font-weight:600;">
+            <input class="re-city-check" type="checkbox" name="city_codes[]" value="${c.code}"
+              ${(window.SAVED_CITY_CODES || []).map(String).includes(String(c.code)) ? 'checked' : ''}
+              style="accent-color:var(--primary);width:14px;height:14px;">
+            ${c.name}
+          </label>
+        `).join('');
+      });
+  }
+
+  if (rePrefSelect) {
+    loadReCities(rePrefSelect.value, window.SAVED_CITY_CODES || []);
+    rePrefSelect.addEventListener('change', function () {
+      loadReCities(this.value, []);
+    });
+  }
+
+  document.getElementById('reSelectAllCities')?.addEventListener('click', () => {
+    reCityBox.querySelectorAll('.re-city-check').forEach(cb => cb.checked = true);
+  });
+  document.getElementById('reClearCities')?.addEventListener('click', () => {
+    reCityBox.querySelectorAll('.re-city-check').forEach(cb => cb.checked = false);
+  });
+
+  document.getElementById('reSearchForm')?.addEventListener('submit', function () {
+    const btn = document.getElementById('reSubmitBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '取得中...'; }
+  });
+
+  // ---- チェックボックス ----
   const checkAll = document.getElementById('checkAll');
   if (checkAll) {
     checkAll.addEventListener('change', function () {
@@ -235,8 +264,7 @@ document.addEventListener('DOMContentLoaded', function () {
   });
   document.getElementById('selectHpOnly')?.addEventListener('click', () => {
     document.querySelectorAll('.row-check').forEach(cb => {
-      const idx = parseInt(cb.value);
-      cb.checked = !!(PREVIEW_DATA[idx]?.hp_url);
+      cb.checked = !!(PREVIEW_DATA[parseInt(cb.value)]?.hp_url);
     });
     updateCount();
   });
@@ -246,118 +274,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function updateCount() {
     const count = document.querySelectorAll('.row-check:checked').length;
-    document.getElementById('selectedCount').textContent = count + '件選択中';
+    const el = document.getElementById('selectedCount');
+    if (el) el.textContent = count + '件選択中';
     const saveBtn = document.getElementById('saveBtn');
     if (saveBtn) saveBtn.disabled = count === 0;
   }
 
-  // ---- 再検索パネル ----
-  const rePrefSelect   = document.getElementById('rePrefSelect');
-  const reCityBox      = document.getElementById('reCityCheckboxes');
-  const reBigIndSelect = document.getElementById('reBigIndSelect');
-  const reMIndSelect   = document.getElementById('reMIndSelect');
-  const reIndTypeInput = document.getElementById('reIndustryTypeInput');
-  const reIndIdInput   = document.getElementById('reIndustryIdInput');
-  const reBigIndName   = document.getElementById('reBigIndNameInput');
-  const reMIndName     = document.getElementById('reMIndNameInput');
-
-  const savedCityCodes = @json($sc['city_codes'] ?? []);
-  const savedMIndId    = @json($sc['industry_type'] === 'm_ind' ? ($sc['industry_id'] ?? null) : null);
-
-  function loadReCities(prefId, selectedCodes) {
-    if (!prefId) { reCityBox.innerHTML = '<span style="color:var(--muted);font-size:13px;">都道府県を選択してください</span>'; return; }
-    reCityBox.innerHTML = '<span style="color:var(--muted);font-size:13px;">読み込み中...</span>';
-    fetch(`/bizmaps/municipalities?prefecture_id=${prefId}`)
-      .then(r => r.json())
-      .then(cities => {
-        reCityBox.innerHTML = cities.map(c => `
-          <label style="display:inline-flex;align-items:center;gap:5px;margin:3px 8px 3px 0;font-size:13px;cursor:pointer;font-weight:600;">
-            <input class="re-city-check" type="checkbox" name="city_codes[]" value="${c.code}"
-              ${selectedCodes.includes(c.code) || selectedCodes.includes(String(c.code)) ? 'checked' : ''}
-              style="accent-color:var(--primary);width:14px;height:14px;">
-            ${c.name}
-          </label>
-        `).join('');
-        updateReIndustryType();
-        reCityBox.querySelectorAll('.re-city-check').forEach(cb => cb.addEventListener('change', updateReIndustryType));
-      });
-  }
-
-  if (rePrefSelect) {
-    loadReCities(rePrefSelect.value, savedCityCodes);
-    rePrefSelect.addEventListener('change', function () {
-      loadReCities(this.value, []);
-    });
-  }
-
-  document.getElementById('reSelectAllCities')?.addEventListener('click', () => {
-    reCityBox.querySelectorAll('.re-city-check').forEach(cb => cb.checked = true); updateReIndustryType();
-  });
-  document.getElementById('reClearCities')?.addEventListener('click', () => {
-    reCityBox.querySelectorAll('.re-city-check').forEach(cb => cb.checked = false); updateReIndustryType();
-  });
-
-  if (reBigIndSelect) {
-    reBigIndSelect.addEventListener('change', function () {
-      const bigId = this.value;
-      reMIndSelect.innerHTML = '<option value="">全て</option>';
-      if (!bigId) { updateReIndustryType(); return; }
-      fetch(`/bizmaps/sub-industries?big_ind_id=${bigId}`)
-        .then(r => r.json())
-        .then(subs => {
-          subs.forEach(s => {
-            reMIndSelect.innerHTML += `<option value="${s.id}" ${savedMIndId == s.id ? 'selected' : ''}>${s.name}</option>`;
-          });
-          updateReIndustryType();
-        });
-    });
-    // 初期ロード時に中業種を復元
-    if (reBigIndSelect.value) {
-      reBigIndSelect.dispatchEvent(new Event('change'));
-    }
-  }
-
-  reMIndSelect?.addEventListener('change', updateReIndustryType);
-
-  function updateReIndustryType() {
-    const prefId  = rePrefSelect?.value;
-    const checked = reCityBox.querySelectorAll('.re-city-check:checked').length;
-    const bigId   = reBigIndSelect?.value;
-    const mIndId  = reMIndSelect?.value;
-    const bigOpt  = reBigIndSelect?.selectedOptions[0];
-    const mOpt    = reMIndSelect?.selectedOptions[0];
-
-    if (mIndId) {
-      reIndTypeInput.value = 'm_ind'; reIndIdInput.value = mIndId;
-      reMIndName.value = mOpt?.text || '';
-      reBigIndName.value = bigOpt?.text || '';
-    } else if (bigId) {
-      reIndTypeInput.value = 'big_ind'; reIndIdInput.value = bigId;
-      reBigIndName.value = bigOpt?.text || '';
-      reMIndName.value = '';
-    } else if (checked > 0) {
-      reIndTypeInput.value = 'city'; reIndIdInput.value = '';
-      reBigIndName.value = ''; reMIndName.value = '';
-    } else if (prefId) {
-      reIndTypeInput.value = 'pref'; reIndIdInput.value = '';
-      reBigIndName.value = ''; reMIndName.value = '';
-    }
-  }
-
-  // 再取得フォームのsubmit
-  document.getElementById('reSearchForm')?.addEventListener('submit', function (e) {
-    const btn = this.querySelector('button[type="submit"]');
-    if (btn) { btn.disabled = true; btn.textContent = '取得中...'; }
-  });
+  // ---- SSE: HP URL リアルタイム取得 ----
   let hpFoundCount = 0;
-  let sseActive = false;
+  let sseActive    = false;
+  const totalRows  = PREVIEW_DATA.length;
 
   const fetchHpBtn      = document.getElementById('fetchHpBtn');
   const fetchHpBtnText  = document.getElementById('fetchHpBtnText');
   const fetchHpProgress = document.getElementById('fetchHpProgress');
   const hpFoundBadge    = document.getElementById('hpFoundBadge');
   const hpFoundCountEl  = document.getElementById('hpFoundCount');
-  const totalRows       = PREVIEW_DATA.length;
 
   if (fetchHpBtn) {
     fetchHpBtn.addEventListener('click', function () {
@@ -369,14 +301,12 @@ document.addEventListener('DOMContentLoaded', function () {
       fetchHpProgress.textContent = '0 / ' + totalRows;
 
       let processed = 0;
-
       const es = new EventSource('/bizmaps/fetch-hp-stream');
 
       es.onmessage = function (e) {
         const data = JSON.parse(e.data);
         const idx  = data.index;
         processed++;
-
         fetchHpProgress.textContent = processed + ' / ' + totalRows;
 
         if (data.hp_url) {
@@ -384,7 +314,6 @@ document.addEventListener('DOMContentLoaded', function () {
           hpFoundBadge.style.display = 'inline-flex';
           hpFoundCountEl.textContent = hpFoundCount;
 
-          // HP URLセルを更新
           const hpCell = document.getElementById('hp-cell-' + idx);
           if (hpCell) {
             hpCell.innerHTML = `<a href="${data.hp_url}" target="_blank"
@@ -393,36 +322,27 @@ document.addEventListener('DOMContentLoaded', function () {
             </a>`;
           }
 
-          // 状態バッジを更新
           const statusCell = document.getElementById('status-cell-' + idx);
-          if (statusCell) {
-            statusCell.innerHTML = '<span class="badge green">HP✓</span>';
-          }
+          if (statusCell) statusCell.innerHTML = '<span class="badge green">HP✓</span>';
 
-          // PREVIEW_DATAも更新（保存時に使う）
-          if (PREVIEW_DATA[idx]) {
-            PREVIEW_DATA[idx].hp_url = data.hp_url;
-          }
-        }
+          if (PREVIEW_DATA[idx]) PREVIEW_DATA[idx].hp_url = data.hp_url;
 
-        // 業種セルを更新（HP取得あり/なし問わず）
-        if (data.industry) {
-          const industryCell = document.getElementById('industry-cell-' + idx);
-          if (industryCell) {
-            industryCell.innerHTML = `<span style="font-size:12px;color:var(--muted);">${data.industry.substring(0, 25)}${data.industry.length > 25 ? '…' : ''}</span>`;
-          }
-          if (PREVIEW_DATA[idx]) {
-            PREVIEW_DATA[idx].industry = data.industry;
-          }
-
-          // チェックボックスをONに
           const cb = document.querySelector(`.row-check[value="${idx}"]`);
           if (cb && !PREVIEW_DATA[idx]?.is_duplicate) cb.checked = true;
           updateCount();
         }
+
+        if (data.industry && PREVIEW_DATA[idx]) {
+          PREVIEW_DATA[idx].industry = data.industry;
+          const indCell = document.getElementById('industry-cell-' + idx);
+          if (indCell) {
+            const t = data.industry;
+            indCell.innerHTML = `<span style="font-size:12px;color:var(--muted);">${t.length > 25 ? t.substring(0,25) + '…' : t}</span>`;
+          }
+        }
       };
 
-      es.addEventListener('done', function (e) {
+      es.addEventListener('done', function () {
         es.close();
         sseActive = false;
         fetchHpBtn.disabled = false;
@@ -472,9 +392,11 @@ document.addEventListener('DOMContentLoaded', function () {
         checked.forEach(cb => {
           const row = document.getElementById('row-' + cb.value);
           if (row) row.style.opacity = '0.45';
-          cb.replaceWith(Object.assign(document.createElement('span'), {
-            className: 'badge gray', style: 'font-size:11px;'
-          })).textContent = '保存済';
+          const span = document.createElement('span');
+          span.className = 'badge gray';
+          span.style.fontSize = '11px';
+          span.textContent = '保存済';
+          cb.replaceWith(span);
         });
 
         saveBtn.disabled = false;
@@ -490,7 +412,6 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
 });
-@endverbatim
 </script>
+@endverbatim
 @endpush
-@endsection
