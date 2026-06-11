@@ -5,6 +5,7 @@ use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DiscoveryLabController;
 use App\Http\Controllers\DirectorySourceLabController;
+use App\Http\Controllers\DirectorySourcePageController;
 use App\Http\Controllers\DirectorySourceController;
 use App\Http\Controllers\IndustryScoreController;
 use App\Http\Controllers\MvpResetController;
@@ -52,6 +53,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/directory-sources/crawl-queue', [DirectorySourceController::class, 'crawlQueue'])->name('directory-sources.crawl-queue');
     Route::post('/directory-sources/{directorySource}/crawl', [DirectorySourceController::class, 'crawlOne'])->whereNumber('directorySource')->name('directory-sources.crawl-one');
     Route::post('/directory-sources/{directorySource}/pages/store-source-records', [DirectorySourceController::class, 'storePagesAsSourceRecords'])->whereNumber('directorySource')->name('directory-sources.pages.store-source-records');
+
+    Route::get('/directory-sources/{directorySource}/pages', [DirectorySourcePageController::class, 'index'])->whereNumber('directorySource')->name('directory-sources.pages');
+    Route::get('/directory-source-pages/{page}/extract', [DirectorySourcePageController::class, 'extract'])->whereNumber('page')->name('directory-source-pages.extract');
+    Route::post('/directory-source-pages/{page}/save-candidates', [DirectorySourcePageController::class, 'saveCandidates'])->whereNumber('page')->name('directory-source-pages.save-candidates');
     Route::get('/directory-sources/{directorySource}', [DirectorySourceController::class, 'show'])->whereNumber('directorySource')->name('directory-sources.show');
 
     Route::get('/directory-sources/lab', [DirectorySourceLabController::class, 'show'])->name('directory-sources.lab');

@@ -7,10 +7,11 @@
                 <div>
                     <p class="page-kicker">Directory Source #{{ $directorySource->id }}</p>
                     <h1 class="page-title">{{ $directorySource->name }}</h1>
-                    <p class="page-subtitle">名簿元HPから会員一覧ページを探し、その先に出てくる外部ドメインの事業者HP候補をsource_recordsへ送る。</p>
+                    <p class="page-subtitle">名簿元HPから会員一覧ページを探し、候補ページを選んで事業者単位に抽出してからsource_recordsへ送る。</p>
                 </div>
                 <div class="actions">
                     <a class="button light" href="{{ route('directory-sources.index') }}">一覧へ</a>
+                    <a class="button light" href="{{ route('directory-sources.pages', $directorySource) }}">候補ページ一覧</a>
                     @if ($directorySource->url)
                         <form method="POST" action="{{ route('directory-sources.crawl-one', $directorySource) }}" onsubmit="return confirm('この名簿元を再探索する？');">
                             @csrf
@@ -152,6 +153,7 @@
                         <th>候補URL</th>
                         <th>リンク文言</th>
                         <th>根拠</th>
+                        <th>抽出</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -178,9 +180,19 @@
                                     <div class="muted">弱め要素：{{ implode(' / ', $negative) }}</div>
                                 @endif
                             </td>
+                            <td>
+                                @if (in_array($page->page_type, ['member_list', 'member_list_candidate', 'member_list_candidate_deep', 'general_candidate', 'member_list_candidate'], true))
+                                    <a class="button small" href="{{ route('directory-source-pages.extract', $page) }}">事業者抽出</a>
+                                    @if ($page->extraction_status ?? null)
+                                        <div class="muted" style="margin-top:6px;">{{ $page->extraction_status }}</div>
+                                    @endif
+                                @else
+                                    <a class="button small light" href="{{ route('directory-source-pages.extract', $page) }}">確認抽出</a>
+                                @endif
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="4" class="empty-state">内部ページ候補はまだない。上の「再探索」を押して。</td></tr>
+                        <tr><td colspan="5" class="empty-state">内部ページ候補はまだない。上の「再探索」を押して。</td></tr>
                     @endforelse
                     </tbody>
                 </table>
