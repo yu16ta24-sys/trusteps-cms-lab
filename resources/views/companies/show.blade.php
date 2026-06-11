@@ -141,6 +141,121 @@
     </div>
 </section>
 
+{{-- HP解析 --}}
+<section class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+        <div class="cs-sec-label" style="margin:0">HP解析（Layer 2）</div>
+        @if ($company->primaryDomain)
+            <form method="POST" action="{{ route('companies.analyze', $company) }}">
+                @csrf
+                <button class="button small" type="submit">HP解析を実行</button>
+            </form>
+        @else
+            <span style="font-size:12px; color:var(--muted);">primary_domain未設定のため解析不可</span>
+        @endif
+    </div>
+
+    @if ($company->primaryDomain)
+        <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">
+            対象URL：<span style="font-family:monospace;">{{ $company->primaryDomain->url }}</span>
+        </div>
+    @endif
+
+    @php
+        $latestFact = null;
+        if ($company->primaryDomain) {
+            $latestFact = \App\Models\HpFact::query()
+                ->join('hp_snapshots', 'hp_facts.hp_snapshot_id', '=', 'hp_snapshots.id')
+                ->where('hp_snapshots.domain_id', $company->primaryDomain->id)
+                ->whereNotNull('hp_facts.extracted_at')
+                ->orderByDesc('hp_facts.extracted_at')
+                ->select('hp_facts.*')
+                ->first();
+        }
+    @endphp
+
+    @if ($latestFact)
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; margin-bottom:14px;">
+            <div class="cs-kv">
+                <div class="cs-kv-k">HP改善余地スコア</div>
+                <div class="cs-kv-v" style="font-size:22px; font-weight:950;">
+                    {{ $latestFact->hp_improvement_score ?? '—' }}<span style="font-size:13px; font-weight:400;"> / 5</span>
+                </div>
+            </div>
+            <div class="cs-kv">
+                <div class="cs-kv-k">SSL</div>
+                <div class="cs-kv-v">
+                    <span class="badge {{ $latestFact->ssl_enabled ? 'green' : 'red' }}">{{ $latestFact->ssl_enabled ? 'あり' : 'なし' }}</span>
+                </div>
+            </div>
+            <div class="cs-kv">
+                <div class="cs-kv-k">スマホ対応</div>
+                <div class="cs-kv-v">
+                    <span class="badge {{ $latestFact->mobile_friendly ? 'green' : 'red' }}">{{ $latestFact->mobile_friendly ? '対応' : '非対応' }}</span>
+                </div>
+            </div>
+            <div class="cs-kv">
+                <div class="cs-kv-k">更新状況</div>
+                <div class="cs-kv-v">
+                    @php
+                        $statusLabels = ['active' => '更新中', 'partial_active' => '一部更新', 'stale_1y' => '1年以上停止', 'stale_2y' => '2年以上停止', 'unknown' => '不明'];
+                        $statusClasses = ['active' => 'green', 'partial_active' => 'blue', 'stale_1y' => 'amber', 'stale_2y' => 'red', 'unknown' => 'gray'];
+                    @endphp
+                    <span class="badge {{ $statusClasses[$latestFact->update_status] ?? 'gray' }}">
+                        {{ $statusLabels[$latestFact->update_status] ?? $latestFact->update_status }}
+                    </span>
+                    @if ($latestFact->hp_update_staleness_days !== null)
+                        <span style="font-size:11px; color:var(--muted); margin-left:4px;">約{{ $latestFact->hp_update_staleness_days }}日前</span>
+                    @endif
+                </div>
+            </div>
+            <div class="cs-kv">
+                <div class="cs-kv-k">CMS</div>
+                <div class="cs-kv-v">{{ $latestFact->cms_type ?? '不明' }}</div>
+            </div>
+            <div class="cs-kv">
+                <div class="cs-kv-k">お知らせ</div>
+                <div class="cs-kv-v">
+                    <span class="badge {{ $latestFact->hp_has_news ? 'green' : 'gray' }}">{{ $latestFact->hp_has_news ? 'あり' : 'なし/不明' }}</span>
+                </div>
+            </div>
+            <div class="cs-kv">
+                <div class="cs-kv-k">問い合わせ</div>
+                <div class="cs-kv-v">{{ $latestFact->contact_method_type ?? '不明' }}</div>
+            </div>
+            <div class="cs-kv">
+                <div class="cs-kv-k">ポータル依存</div>
+                <div class="cs-kv-v">
+                    @php $pLevel = $latestFact->portal_dependency_level ?? 'none'; @endphp
+                    <span class="badge {{ in_array($pLevel, ['medium','high']) ? 'red' : 'green' }}">{{ $pLevel }}</span>
+                    @if ($latestFact->hp_has_tabelog)   <span class="badge gray" style="font-size:10px;">食べログ</span> @endif
+                    @if ($latestFact->hp_has_hotpepper) <span class="badge gray" style="font-size:10px;">ホットペッパー</span> @endif
+                    @if ($latestFact->hp_has_jalan)     <span class="badge gray" style="font-size:10px;">じゃらん/楽天</span> @endif
+                    @if ($latestFact->hp_has_suumo)     <span class="badge gray" style="font-size:10px;">SUUMO</span> @endif
+                </div>
+            </div>
+            <div class="cs-kv">
+                <div class="cs-kv-k">画像数 / 文字数</div>
+                <div class="cs-kv-v">{{ $latestFact->hp_image_count ?? '—' }}枚 / {{ $latestFact->hp_word_count ? number_format($latestFact->hp_word_count) : '—' }}文字</div>
+            </div>
+            <div class="cs-kv">
+                <div class="cs-kv-k">解析日時</div>
+                <div class="cs-kv-v" style="font-size:12px;">{{ optional($latestFact->extracted_at)->format('Y-m-d H:i') ?? '—' }}</div>
+            </div>
+        </div>
+
+        @if ($latestFact->hp_title)
+            <div style="font-size:12px; color:var(--muted); border-top:1px solid var(--line); padding-top:10px;">
+                <strong>タイトル：</strong>{{ $latestFact->hp_title }}
+            </div>
+        @endif
+    @else
+        <div style="font-size:13px; color:var(--muted); padding:12px 0;">
+            未解析。「HP解析を実行」ボタンで解析するとHP弱点度の自動提案精度が上がります。
+        </div>
+    @endif
+</section>
+
 {{-- 4軸スコア --}}
 <section class="card">
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">

@@ -1,128 +1,146 @@
 <?php
 /**
- * post_deploy.php - v0.21.13
- * 1. routes/web.php に companies.edit / companies.update ルート追加
- * 2. CompanyController.php に edit / update メソッド追加
+ * post_deploy.php - v0.21.14
+ * 1. routes/web.php に companies.analyze ルート追加（sedで追加）
+ * 2. CompanyController.php に analyze メソッド追加
+ * 3. HpFact モデルに新カラムを fillable 追加
  */
 
 $base = '/var/www/trusteps-cms-lab';
 
-// ====== 1. routes/web.php ======
+// ====== 1. routes/web.php - sedコマンドで追加 ======
 $routesFile = $base . '/routes/web.php';
 $routesContent = file_get_contents($routesFile);
 
-$oldRoute = "    Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');";
-$newRoute = "    Route::get('/companies/{company}/edit', [CompanyController::class, 'edit'])->name('companies.edit');
-    Route::put('/companies/{company}', [CompanyController::class, 'update'])->name('companies.update');
-    Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');";
-
-if (strpos($routesContent, 'companies.edit') !== false) {
-    echo "[routes] companies.edit already exists, skip\n";
-} elseif (strpos($routesContent, $oldRoute) === false) {
-    echo "[routes] old route pattern not found, SKIP\n";
+if (strpos($routesContent, 'companies.analyze') !== false) {
+    echo "[routes] companies.analyze already exists, skip\n";
 } else {
-    file_put_contents($routesFile, str_replace($oldRoute, $newRoute, $routesContent));
-    echo "[routes] companies.edit/update routes added OK\n";
+    // companies.show の行番号を取得してその前に挿入
+    $lines = explode("\n", $routesContent);
+    $insertLine = null;
+    foreach ($lines as $i => $line) {
+        if (strpos($line, "name('companies.show')") !== false) {
+            $insertLine = $i;
+            break;
+        }
+    }
+
+    if ($insertLine === null) {
+        echo "[routes] companies.show not found, SKIP\n";
+    } else {
+        $newRoute = "    Route::post('/companies/{company}/analyze', [CompanyController::class, 'analyze'])->name('companies.analyze');";
+        array_splice($lines, $insertLine, 0, [$newRoute]);
+        file_put_contents($routesFile, implode("\n", $lines));
+        echo "[routes] companies.analyze route added OK\n";
+    }
 }
 
-// ====== 2. CompanyController.php ======
+// ====== 2. CompanyController.php に analyze メソッド追加 ======
 $controllerFile = $base . '/app/Http/Controllers/CompanyController.php';
 $controllerContent = file_get_contents($controllerFile);
 
-$insertBefore = '    private function isDirectorySourceRecord(SourceRecord $sourceRecord): bool';
+if (strpos($controllerContent, 'public function analyze(') !== false) {
+    echo "[controller] analyze() already exists, skip\n";
+} else {
+    // use文にHpAnalyzerServiceを追加
+    $oldUse = 'use App\Services\ScoreSuggester;';
+    $newUse = 'use App\Services\HpAnalyzerService;
+use App\Services\ScoreSuggester;';
 
-$newMethods = '    public function edit(Company $company): View|RedirectResponse
-    {
-        if ($company->status === \'merged\') {
-            return redirect()
-                ->route(\'companies.show\', $company)
-                ->with(\'status\', \'統合済みcompanyは編集できない。\');
-        }
-
-        $industries = Industry::query()
-            ->where(\'is_active\', true)
-            ->orderBy(\'sort_order\')
-            ->orderBy(\'id\')
-            ->get();
-
-        $municipalities = Municipality::query()
-            ->with(\'prefecture\')
-            ->orderBy(\'code\')
-            ->get();
-
-        return view(\'companies.edit\', compact(\'company\', \'industries\', \'municipalities\'));
+    if (strpos($controllerContent, 'HpAnalyzerService') === false) {
+        $controllerContent = str_replace($oldUse, $newUse, $controllerContent);
+        echo "[controller] HpAnalyzerService use added OK\n";
     }
 
-    public function update(Request $request, Company $company): RedirectResponse
+    // analyzeメソッドをisDirectorySourceRecordの直前に追加
+    $insertBefore = '    private function isDirectorySourceRecord(SourceRecord $sourceRecord): bool';
+
+    $analyzeMethod = '    public function analyze(Request $request, Company $company): RedirectResponse
     {
-        if ($company->status === \'merged\') {
+        if (!$company->primaryDomain) {
             return redirect()
                 ->route(\'companies.show\', $company)
-                ->with(\'status\', \'統合済みcompanyは編集できない。\');
+                ->with(\'status\', \'primary_domainが未設定のため解析できません。\');
         }
 
-        $validated = $request->validate([
-            \'display_name\'     => [\'required\', \'string\', \'max:255\'],
-            \'legal_name\'       => [\'nullable\', \'string\', \'max:255\'],
-            \'corporate_number\' => [\'nullable\', \'string\', \'max:13\'],
-            \'status\'           => [\'required\', \'in:candidate,confirmed\'],
-            \'industry_id\'      => [\'nullable\', \'exists:industries,id\'],
-            \'municipality_id\'  => [\'nullable\', \'exists:municipalities,id\'],
-            \'pref\'             => [\'nullable\', \'string\', \'max:50\'],
-            \'city\'             => [\'nullable\', \'string\', \'max:100\'],
-            \'primary_url\'      => [\'nullable\', \'string\', \'max:2000\'],
-        ]);
+        try {
+            $analyzer = app(HpAnalyzerService::class);
+            $result = $analyzer->analyze($company);
 
-        $company->update([
-            \'display_name\'     => $validated[\'display_name\'],
-            \'legal_name\'       => $validated[\'legal_name\'] ?? null,
-            \'name_norm\'        => $this->normalizeName($validated[\'display_name\']),
-            \'corporate_number\' => $this->normalizeCorporateNumber($validated[\'corporate_number\'] ?? null),
-            \'status\'           => $validated[\'status\'],
-            \'industry_id\'      => $validated[\'industry_id\'] ?? null,
-            \'municipality_id\'  => $validated[\'municipality_id\'] ?? null,
-            \'pref\'             => !empty($validated[\'municipality_id\']) ? null : ($validated[\'pref\'] ?? null),
-            \'city\'             => !empty($validated[\'municipality_id\']) ? null : ($validated[\'city\'] ?? null),
-        ]);
-
-        $newUrl = trim((string) ($validated[\'primary_url\'] ?? \'\'));
-        $currentUrl = $company->primaryDomain?->url ?? \'\';
-
-        if ($newUrl !== \'\' && $newUrl !== $currentUrl) {
-            $domain = Domain::create([
-                \'company_id\'        => $company->id,
-                \'url\'               => $newUrl,
-                \'normalized_domain\' => $this->normalizeDomain($newUrl),
-                \'role\'              => \'official\',
-                \'is_primary\'        => true,
-                \'is_portal\'         => false,
-            ]);
-
-            if ($company->primary_domain_id) {
-                Domain::where(\'id\', $company->primary_domain_id)->update([\'is_primary\' => false]);
+            if ($result[\'success\']) {
+                return redirect()
+                    ->route(\'companies.show\', $company)
+                    ->with(\'status\', \'HP解析完了。スコア自動提案を更新しました。\');
+            } else {
+                return redirect()
+                    ->route(\'companies.show\', $company)
+                    ->with(\'status\', \'HP解析失敗：\' . $result[\'message\']);
             }
-
-            $company->update([\'primary_domain_id\' => $domain->id]);
+        } catch (\Throwable $e) {
+            report($e);
+            return redirect()
+                ->route(\'companies.show\', $company)
+                ->with(\'status\', \'HP解析中にエラーが発生しました。\');
         }
-
-        return redirect()
-            ->route(\'companies.show\', $company)
-            ->with(\'status\', \'company情報を更新した。\');
     }
 
 ';
 
-if (strpos($controllerContent, 'public function edit(Company $company)') !== false) {
-    echo "[controller] edit() already exists, skip\n";
-} elseif (strpos($controllerContent, $insertBefore) === false) {
-    echo "[controller] insert position not found, SKIP\n";
-} else {
-    $newControllerContent = str_replace($insertBefore, $newMethods . $insertBefore, $controllerContent);
-    file_put_contents($controllerFile, $newControllerContent);
-    echo "[controller] edit/update methods added OK\n";
+    if (strpos($controllerContent, $insertBefore) === false) {
+        echo "[controller] insert position not found, SKIP\n";
+    } else {
+        $controllerContent = str_replace($insertBefore, $analyzeMethod . $insertBefore, $controllerContent);
+        file_put_contents($controllerFile, $controllerContent);
+        echo "[controller] analyze() method added OK\n";
+    }
 }
 
-$lintResult = shell_exec("php -l {$controllerFile} 2>&1");
-echo "[lint] " . trim($lintResult) . "\n";
+// ====== 3. HpFact モデルに新カラムを fillable 追加 ======
+$hpFactFile = $base . '/app/Models/HpFact.php';
+$hpFactContent = file_get_contents($hpFactFile);
+
+if (strpos($hpFactContent, 'hp_title') !== false) {
+    echo "[model] HpFact already has hp_title, skip\n";
+} else {
+    $oldFillable = "        'extractor_version',
+        'extracted_at',
+    ];";
+    $newFillable = "        'extractor_version',
+        'extracted_at',
+        'hp_title',
+        'hp_description',
+        'hp_last_modified',
+        'hp_has_news',
+        'hp_latest_post_date',
+        'hp_update_staleness_days',
+        'hp_page_count',
+        'hp_has_map',
+        'hp_image_count',
+        'hp_word_count',
+        'hp_has_tabelog',
+        'hp_has_hotpepper',
+        'hp_has_jalan',
+        'hp_has_suumo',
+        'hp_portal_links',
+        'hp_improvement_score',
+    ];";
+
+    if (strpos($hpFactContent, $oldFillable) === false) {
+        echo "[model] HpFact fillable pattern not found, SKIP\n";
+    } else {
+        file_put_contents($hpFactFile, str_replace($oldFillable, $newFillable, $hpFactContent));
+        echo "[model] HpFact fillable updated OK\n";
+    }
+}
+
+// ====== 4. php -l チェック ======
+$lintCtrl = shell_exec("php -l {$controllerFile} 2>&1");
+echo "[lint controller] " . trim($lintCtrl) . "\n";
+
+$lintAnalyzer = shell_exec("php -l {$base}/app/Services/HpAnalyzerService.php 2>&1");
+echo "[lint analyzer] " . trim($lintAnalyzer) . "\n";
+
+$lintSuggester = shell_exec("php -l {$base}/app/Services/ScoreSuggester.php 2>&1");
+echo "[lint suggester] " . trim($lintSuggester) . "\n";
 
 echo "\n[post_deploy] Done.\n";
