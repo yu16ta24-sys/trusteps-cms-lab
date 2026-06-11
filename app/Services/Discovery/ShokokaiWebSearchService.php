@@ -192,16 +192,24 @@ class ShokokaiWebSearchService
     {
         $conditionEndpoint = (string) config('discovery.shokokai_web_search_condition_endpoint', 'https://www12.shokokai.or.jp/hpsearch/top/php/zyokensentaku.php');
         $searchEndpoint = (string) config('discovery.shokokai_web_search_endpoint');
+        $requestPrefCode = $this->requestPrefCode($prefCode);
         $conditionPayload = [
             'shokokai' => $keyword,
             'kensu' => (string) $kensu,
-            'kencdTbl' => $prefCode,
+            'kencdTbl' => $requestPrefCode,
             'loadtype' => '1',
         ];
 
         $condition = $this->postHtml($conditionEndpoint, $conditionPayload, 'https://www.shokokai.or.jp/?page_id=1754');
         $conditionAttempt = $this->summarizeAttempt('condition_page', $condition, $prefCode, $prefLabel);
         $attempts[] = $conditionAttempt;
+
+        if (!empty($conditionAttempt['row_count']) && is_string($condition['html'] ?? null) && $this->looksLikeSearchResult((string) $condition['html'])) {
+            $condition['attempt_label'] = 'condition_page';
+            $condition['attempts'] = $attempts;
+            $condition['payload'] = $conditionPayload;
+            return $condition;
+        }
 
         if (empty($condition['ok']) || !is_string($condition['html'] ?? null)) {
             $condition['attempt_label'] = 'condition_page';
@@ -267,28 +275,40 @@ class ShokokaiWebSearchService
 
     private function initialDirectPayloads(string $prefCode, int $kensu, string $keyword): array
     {
-        return [
-            'direct_plus_start0' => $this->initialPayload($prefCode, $kensu, $keyword, '0', 'Plus'),
-            'direct_blank_start1' => $this->initialPayload($prefCode, $kensu, $keyword, '1', ''),
-            'direct_blank_start0' => $this->initialPayload($prefCode, $kensu, $keyword, '0', ''),
-            'direct_minimal' => [
-                'zyoken' => "'{$prefCode}'",
+        $payloads = [];
+
+        foreach ($this->prefCodeVariants($prefCode) as $variantLabel => $requestPrefCode) {
+            $payloads['direct_plus_start0_' . $variantLabel] = $this->initialPayload($requestPrefCode, $kensu, $keyword, '0', 'Plus');
+            $payloads['direct_blank_start1_' . $variantLabel] = $this->initialPayload($requestPrefCode, $kensu, $keyword, '1', '');
+            $payloads['direct_blank_start0_' . $variantLabel] = $this->initialPayload($requestPrefCode, $kensu, $keyword, '0', '');
+            $payloads['direct_minimal_quoted_' . $variantLabel] = [
+                'zyoken' => "'{$requestPrefCode}'",
                 'shokokai' => $keyword,
                 'kensu' => (string) $kensu,
-                'kencdTbl' => $prefCode,
-            ],
-        ];
+                'kencdTbl' => $requestPrefCode,
+            ];
+            $payloads['direct_minimal_plain_' . $variantLabel] = [
+                'zyoken' => $requestPrefCode,
+                'shokokai' => $keyword,
+                'kensu' => (string) $kensu,
+                'kencdTbl' => $requestPrefCode,
+            ];
+        }
+
+        return $payloads;
     }
 
     private function initialPayload(string $prefCode, int $kensu, string $keyword, string $startNo, string $pageMode): array
     {
+        $requestPrefCode = $this->requestPrefCode($prefCode);
+
         return [
-            'zyoken' => "'{$prefCode}'",
+            'zyoken' => "'{$requestPrefCode}'",
             'shokokai' => $keyword,
             'kensu' => (string) $kensu,
             'startNo' => $startNo,
             'pageMode' => $pageMode,
-            'kencdTbl' => $prefCode,
+            'kencdTbl' => $requestPrefCode,
             'loadtype' => '1',
         ];
     }
@@ -397,12 +417,13 @@ class ShokokaiWebSearchService
                 }
             }
 
-            $payload['zyoken'] = $payload['zyoken'] ?? "'{$prefCode}'";
+            $requestPrefCode = $this->requestPrefCode($prefCode);
+            $payload['zyoken'] = $this->normalizeZyokenValue($payload['zyoken'] ?? "'{$requestPrefCode}'", $requestPrefCode);
             $payload['shokokai'] = $keyword;
             $payload['kensu'] = (string) $kensu;
             $payload['startNo'] = $payload['startNo'] ?? '0';
             $payload['pageMode'] = $payload['pageMode'] ?? 'Plus';
-            $payload['kencdTbl'] = $payload['kencdTbl'] ?? $prefCode;
+            $payload['kencdTbl'] = $this->requestPrefCode((string) ($payload['kencdTbl'] ?? $requestPrefCode));
             $payload['loadtype'] = $payload['loadtype'] ?? '1';
 
             $payloads[] = $payload;
@@ -555,12 +576,13 @@ class ShokokaiWebSearchService
             return null;
         }
 
-        $payload['zyoken'] = $payload['zyoken'] ?? "'{$prefCode}'";
+        $requestPrefCode = $this->requestPrefCode($prefCode);
+        $payload['zyoken'] = $this->normalizeZyokenValue($payload['zyoken'] ?? "'{$requestPrefCode}'", $requestPrefCode);
         $payload['shokokai'] = $keyword;
         $payload['kensu'] = (string) $kensu;
         $payload['startNo'] = $payload['startNo'] ?? '1';
         $payload['pageMode'] = 'Plus';
-        $payload['kencdTbl'] = $payload['kencdTbl'] ?? $prefCode;
+        $payload['kencdTbl'] = $this->requestPrefCode((string) ($payload['kencdTbl'] ?? $requestPrefCode));
 
         return $payload;
     }
@@ -676,6 +698,53 @@ class ShokokaiWebSearchService
         }
 
         return $signals;
+    }
+
+    private function looksLikeSearchResult(string $html): bool
+    {
+        return str_contains($html, 'mapGo(')
+            || str_contains($html, 'name="ATOPAGE"')
+            || str_contains($html, "name='ATOPAGE'")
+            || preg_match('/<li[^>]*>.*?<a\s+[^>]*href=/isu', $html) === 1;
+    }
+
+    private function prefCodeVariants(string $prefCode): array
+    {
+        $variants = [];
+        $request = $this->requestPrefCode($prefCode);
+        $variants['normalized'] = $request;
+
+        $raw = trim($prefCode);
+        if ($raw !== '' && $raw !== $request) {
+            $variants['raw'] = $raw;
+        }
+
+        return $variants;
+    }
+
+    private function requestPrefCode(string $prefCode): string
+    {
+        $prefCode = trim($prefCode);
+        $normalized = ltrim($prefCode, '0');
+        return $normalized === '' ? $prefCode : $normalized;
+    }
+
+    private function normalizeZyokenValue(string $value, string $fallbackPrefCode): string
+    {
+        $value = trim($value);
+        if ($value === '' || $value === "''") {
+            return "'{$fallbackPrefCode}'";
+        }
+
+        if (preg_match("/^'0*([0-9]+)'$/", $value, $matches)) {
+            return "'" . $this->requestPrefCode($matches[1]) . "'";
+        }
+
+        if (preg_match('/^0*([0-9]+)$/', $value, $matches)) {
+            return "'" . $this->requestPrefCode($matches[1]) . "'";
+        }
+
+        return $value;
     }
 
     private function extractRawIndex(string $text): ?int
