@@ -96,6 +96,7 @@
     <div class="actions">
         <a class="button light small" href="{{ route('companies.index') }}">companies一覧</a>
         @if ($company->status !== 'merged')
+            <a class="button light small" href="{{ route('companies.edit', $company) }}">編集</a>
             <a class="button light small" href="{{ route('companies.merge-form', $company) }}">統合</a>
         @else
             <form method="POST" action="{{ route('companies.undo-merge', $company) }}" onsubmit="return confirm('このcompanyの統合をUndoする？');">
