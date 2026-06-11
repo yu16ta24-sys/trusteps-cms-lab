@@ -27,6 +27,14 @@
                 </div>
             @endif
 
+            @if (! empty($setupRequired))
+                <div class="error" style="margin-top:20px;">
+                    <strong>名簿元管理のDBテーブルが未作成。</strong><br>
+                    先にSSHで <code>php artisan migrate --force</code> を実行してから、このページを再読み込みして。
+                    このガードにより500ではなく、この警告画面で止める。
+                </div>
+            @endif
+
             <div class="grid" style="margin-top:22px;">
                 <div class="card" style="box-shadow:none; padding:16px; background:#f8fafc;"><strong>{{ number_format($stats['total'] ?? 0) }}</strong><div class="muted">directory_sources</div></div>
                 <div class="card" style="box-shadow:none; padding:16px; background:#f8fafc;"><strong>{{ number_format($stats['unregistered_source_records'] ?? 0) }}</strong><div class="muted">未登録source_records</div></div>
@@ -45,13 +53,13 @@
                 <div class="actions">
                     <form method="POST" action="{{ route('directory-sources.import-source-records') }}" onsubmit="return confirm('未登録の名簿元source_recordsをdirectory_sourcesへ登録する？');">
                         @csrf
-                        <button class="button" type="submit">未登録名簿元を一括登録</button>
+                        <button class="button" type="submit" @disabled(! empty($setupRequired))>未登録名簿元を一括登録</button>
                     </form>
                     <form method="POST" action="{{ route('directory-sources.crawl-queue') }}" onsubmit="return confirm('未探索キューの先頭を探索する？外部HPへHTTPアクセスする。');">
                         @csrf
                         <input type="hidden" name="queue_limit" value="10">
                         <input type="hidden" name="limit_per_source" value="50">
-                        <button class="button light" type="submit">未探索10件を探索</button>
+                        <button class="button light" type="submit" @disabled(! empty($setupRequired))>未探索10件を探索</button>
                     </form>
                 </div>
             </div>
@@ -97,7 +105,7 @@
                             <strong>一括探索</strong>
                             <p class="muted" style="margin:6px 0 0;">チェックした名簿元HPトップから、会員一覧・事業者一覧っぽい同一ドメイン内ページを最大50件まで抽出する。</p>
                         </div>
-                        <button class="button" type="submit" onclick="return confirm('選択した名簿元を探索する？');">選択分を探索</button>
+                        <button class="button" type="submit" @disabled(! empty($setupRequired)) onclick="return confirm('選択した名簿元を探索する？');">選択分を探索</button>
                     </div>
                 </div>
 

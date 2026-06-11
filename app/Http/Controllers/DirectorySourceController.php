@@ -7,7 +7,9 @@ use App\Models\SourceRecord;
 use App\Services\Discovery\DirectorySourceCrawlerService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -22,6 +24,27 @@ class DirectorySourceController extends Controller
 
     public function index(Request $request): View
     {
+        if (! $this->hasDirectorySourceTables()) {
+            $directorySources = new LengthAwarePaginator([], 0, 50);
+            $directorySources->setPath($request->url());
+
+            $stats = [
+                'total' => 0,
+                'not_crawled' => 0,
+                'candidate_found' => 0,
+                'no_candidate' => 0,
+                'fetch_error' => 0,
+                'pages' => 0,
+                'unregistered_source_records' => 0,
+            ];
+            $prefOptions = collect();
+            $setupRequired = true;
+
+            return view('directory-sources.index', compact('directorySources', 'stats', 'prefOptions', 'setupRequired'));
+        }
+
+        $setupRequired = false;
+
         $query = DirectorySource::query()
             ->withCount(['pages', 'candidatePages'])
             ->latest('id');
@@ -68,7 +91,7 @@ class DirectorySourceController extends Controller
             ->pluck('pref_name')
             ->values();
 
-        return view('directory-sources.index', compact('directorySources', 'stats', 'prefOptions'));
+        return view('directory-sources.index', compact('directorySources', 'stats', 'prefOptions', 'setupRequired'));
     }
 
     public function show(DirectorySource $directorySource): View
@@ -80,6 +103,10 @@ class DirectorySourceController extends Controller
 
     public function importFromSourceRecords(Request $request): RedirectResponse
     {
+        if (! $this->hasDirectorySourceTables()) {
+            return redirect()->route('directory-sources.index')->withErrors(['setup' => 'directory_sources テーブルが未作成。SSHで php artisan migrate --force を実行して。']);
+        }
+
         $limit = (int) $request->input('limit', 3000);
         $limit = max(1, min(5000, $limit));
 
@@ -141,6 +168,10 @@ class DirectorySourceController extends Controller
 
     public function crawlSelected(Request $request): RedirectResponse
     {
+        if (! $this->hasDirectorySourceTables()) {
+            return redirect()->route('directory-sources.index')->withErrors(['setup' => 'directory_sources テーブルが未作成。SSHで php artisan migrate --force を実行して。']);
+        }
+
         $ids = array_values(array_filter(array_map('intval', (array) $request->input('directory_source_ids', []))));
         if (empty($ids)) {
             return redirect()
@@ -169,6 +200,10 @@ class DirectorySourceController extends Controller
 
     public function crawlQueue(Request $request): RedirectResponse
     {
+        if (! $this->hasDirectorySourceTables()) {
+            return redirect()->route('directory-sources.index')->withErrors(['setup' => 'directory_sources テーブルが未作成。SSHで php artisan migrate --force を実行して。']);
+        }
+
         $queueLimit = (int) $request->input('queue_limit', 10);
         $queueLimit = max(1, min(50, $queueLimit));
         $limitPerSource = (int) $request->input('limit_per_source', 50);
@@ -192,6 +227,11 @@ class DirectorySourceController extends Controller
         return redirect()
             ->route('directory-sources.index')
             ->with('status', "未探索キューから {$crawled} 件を探索し、会員一覧候補を {$found} 件登録/更新した。");
+    }
+
+    private function hasDirectorySourceTables(): bool
+    {
+        return Schema::hasTable('directory_sources') && Schema::hasTable('directory_source_pages');
     }
 
     private function unregisteredSourceRecordsQuery()
