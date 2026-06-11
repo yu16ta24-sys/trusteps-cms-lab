@@ -66,7 +66,7 @@ class ShokokaiBulkHtmlImportService
             'summary' => $summary,
             'pref_groups' => $prefGroups,
             'meta' => [
-                'collector_version' => '0.18.9.3',
+                'collector_version' => '0.18.9.4',
                 'collector_type' => 'shokokai_web_search_bulk_html',
                 'source_name' => '全国商工会WEBサーチ 全件HTML',
                 'created_at' => now()->timestamp,
@@ -353,6 +353,16 @@ class ShokokaiBulkHtmlImportService
                 ->map(fn ($domain) => mb_strtolower((string) $domain))
                 ->flip();
 
+        $codeKeys = collect($rows)
+            ->map(fn ($row) => $this->shokokaiCodeKey($row['pref_code'] ?? null, $row['shokokai_code'] ?? null))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $existingCodeKeys = $codeKeys->isEmpty()
+            ? collect()
+            : $this->existingShokokaiCodeKeys($codeKeys->all());
+
         foreach ($rows as &$row) {
             $signals = $row['duplicate_signals'] ?? [];
             $urlKey = mb_strtolower((string) ($row['url'] ?? ''));
@@ -365,6 +375,15 @@ class ShokokaiBulkHtmlImportService
                 $row['storable'] = false;
                 $row['default_checked'] = false;
             }
+
+            $codeKey = $this->shokokaiCodeKey($row['pref_code'] ?? null, $row['shokokai_code'] ?? null);
+            if ($codeKey !== null && $existingCodeKeys->has($codeKey)) {
+                $signals[] = '既存source_recordsに同一商工会コード登録済み';
+                $row['already_saved'] = true;
+                $row['storable'] = false;
+                $row['default_checked'] = false;
+            }
+
             if ($domainKey !== '' && $existingDomains->has($domainKey) && empty($row['already_saved'])) {
                 $signals[] = '既存source_recordsに同一ドメインあり（URLパス違いなら別商工会ページとして保存可）';
             }
@@ -390,6 +409,63 @@ class ShokokaiBulkHtmlImportService
         unset($row);
 
         return $rows;
+    }
+
+    /**
+     * @param array<int,string> $targetKeys
+     * @return \Illuminate\Support\Collection<string,bool>
+     */
+    private function existingShokokaiCodeKeys(array $targetKeys): Collection
+    {
+        $targetLookup = collect($targetKeys)->filter()->flip();
+        if ($targetLookup->isEmpty()) {
+            return collect();
+        }
+
+        $found = collect();
+
+        SourceRecord::query()
+            ->where('source_type', 'directory_source_candidate')
+            ->whereNotNull('raw_json')
+            ->select('id', 'raw_json')
+            ->chunkById(500, function ($records) use ($targetLookup, $found): void {
+                foreach ($records as $record) {
+                    $raw = $this->decodeRawJson($record->raw_json ?? null);
+                    $key = $this->shokokaiCodeKey(data_get($raw, 'pref_code'), data_get($raw, 'shokokai_code'));
+                    if ($key !== null && $targetLookup->has($key)) {
+                        $found->put($key, true);
+                    }
+                }
+            });
+
+        return $found;
+    }
+
+    /** @return array<string,mixed> */
+    private function decodeRawJson(mixed $raw): array
+    {
+        if (is_array($raw)) {
+            return $raw;
+        }
+
+        if (is_string($raw) && trim($raw) !== '') {
+            $decoded = json_decode($raw, true);
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        return [];
+    }
+
+    private function shokokaiCodeKey(mixed $prefCode, mixed $shokokaiCode): ?string
+    {
+        $prefCode = $this->normalizePrefCode($this->toNullableString($prefCode));
+        $shokokaiCode = $this->cleanText($this->toNullableString($shokokaiCode));
+
+        if ($prefCode === null || $shokokaiCode === null || $shokokaiCode === '') {
+            return null;
+        }
+
+        return $prefCode . ':' . $shokokaiCode;
     }
 
     /**

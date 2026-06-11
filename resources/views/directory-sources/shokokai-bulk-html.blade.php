@@ -41,8 +41,8 @@
             <p class="form-hint">
                 1600件前後のHTMLは送信前にブラウザ内で軽量データへ前処理します。巨大な生HTMLをそのまま送らないため、nginxの413を避けます。
                 グーペ系URLと、同一県内で同一ドメイン・別パスになっている商工会ページは、URLが有効なら初期チェックONにします。
-                既にsource_recordsへ保存済みの完全一致URLはプレビューから除外し、未保存分だけを再確認できます。
-                URLなしの行には、公式HP確認用のGoogle検索リンクを表示します。
+                既にsource_recordsへ保存済みの完全一致URL、または同一商工会コードはプレビューから除外し、未保存分だけを再確認できます。
+                URLなし/URL要確認の行には、Google検索リンクと公式HP URLの手入力欄を表示します。見つけたURLを貼れば、チェックなしでも保存できます。
             </p>
             <div class="muted small-text" id="clientParseStatus"></div>
             <div class="button-row">
@@ -60,7 +60,7 @@
                 <div class="alert success">大容量HTMLをブラウザ側で前処理してからプレビューしました。</div>
             @endif
             @if (($summary['already_saved_excluded'] ?? 0) > 0)
-                <div class="alert info">既にsource_recordsへ保存済みの完全一致URL {{ number_format($summary['already_saved_excluded']) }} 件をプレビューから除外しました。未保存分だけを確認できます。</div>
+                <div class="alert info">既にsource_recordsへ保存済みの完全一致URL/同一商工会コード {{ number_format($summary['already_saved_excluded'] ?? 0) }} 件をプレビューから除外しました。未保存分だけを確認できます。</div>
             @endif
 
             <div class="metric-grid compact">
@@ -174,16 +174,30 @@
                                                         @if (!empty($row['url']))
                                                             <a href="{{ $row['url'] }}" target="_blank" rel="noopener">{{ $row['url'] }}</a>
                                                             <div class="muted small-text">{{ $row['normalized_domain'] ?? '-' }}</div>
-                                                        @elseif (!empty($row['raw_url']))
-                                                            <div class="danger-text">{{ $row['raw_url'] }}</div>
                                                         @else
-                                                            <span class="muted">URLなし</span>
+                                                            @if (!empty($row['raw_url']))
+                                                                <div class="danger-text">{{ $row['raw_url'] }}</div>
+                                                            @else
+                                                                <span class="muted">URLなし</span>
+                                                            @endif
+
                                                             @if (!empty($row['google_search_url']))
                                                                 <div class="small-text">
                                                                     <a href="{{ $row['google_search_url'] }}" target="_blank" rel="noopener">Googleで公式HP候補を確認</a>
                                                                 </div>
                                                                 <div class="muted small-text">{{ $row['search_query'] ?? '' }}</div>
                                                             @endif
+
+                                                            <div class="manual-url-box">
+                                                                <label class="muted small-text" for="manual_url_{{ $row['row_id'] }}">見つけた公式HP URL</label>
+                                                                <input
+                                                                    id="manual_url_{{ $row['row_id'] }}"
+                                                                    type="text"
+                                                                    name="manual_urls[{{ $row['row_id'] }}]"
+                                                                    class="form-input"
+                                                                    placeholder="https://example.jp">
+                                                                <div class="muted small-text">ここにURLを入れた行は、チェックなしでも保存対象になります。</div>
+                                                            </div>
                                                         @endif
                                                     </td>
                                                     <td>
@@ -224,7 +238,7 @@
             </section>
 
             <div class="sticky-action-bar">
-                <button type="submit" class="btn-primary">選択分をsource_recordsへ保存</button>
+                <button type="submit" class="btn-primary">選択分・手入力URLをsource_recordsへ保存</button>
                 <a href="{{ route('directory-sources.shokokai-bulk-html') }}" class="btn-secondary">プレビュー破棄</a>
             </div>
         </form>

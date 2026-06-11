@@ -97,6 +97,7 @@ class ShokokaiBulkHtmlImportController extends Controller
     {
         $token = (string) $request->input('token', '');
         $selectedRows = array_map('intval', (array) $request->input('selected_rows', []));
+        $manualUrls = (array) $request->input('manual_urls', []);
         $preview = session()->get("shokokai_bulk_html_previews.{$token}");
 
         if (!$preview || !is_array($preview)) {
@@ -105,21 +106,73 @@ class ShokokaiBulkHtmlImportController extends Controller
                 ->withErrors(['token' => 'プレビュー情報が見つからない。もう一度HTMLを貼ってプレビューして。']);
         }
 
-        if (empty($selectedRows)) {
+        $manualUrlCount = collect($manualUrls)
+            ->filter(fn ($value) => trim((string) $value) !== '')
+            ->count();
+
+        if (empty($selectedRows) && $manualUrlCount === 0) {
             return redirect()
                 ->route('directory-sources.shokokai-bulk-html')
-                ->withErrors(['selected_rows' => '保存する商工会HPを1件以上選択して。']);
+                ->withErrors(['selected_rows' => '保存する商工会HPを1件以上選択するか、URLなし行に公式HP URLを手入力して。']);
         }
 
+        $invalidManualUrls = [];
         $rows = collect($preview['rows'] ?? [])
-            ->filter(fn ($row) => in_array((int) ($row['row_id'] ?? -1), $selectedRows, true))
-            ->filter(fn ($row) => !empty($row['storable']))
+            ->map(function ($row) use ($selectedRows, $manualUrls, &$invalidManualUrls) {
+                $rowId = (int) ($row['row_id'] ?? -1);
+                $manualUrl = trim((string) ($manualUrls[$rowId] ?? $manualUrls[(string) $rowId] ?? ''));
+                $isSelected = in_array($rowId, $selectedRows, true);
+
+                if ($manualUrl !== '') {
+                    $manualUrlInfo = $this->normalizeManualUrl($manualUrl);
+                    if (empty($manualUrlInfo['valid'])) {
+                        $invalidManualUrls[] = sprintf('%s：%s', (string) ($row['organization_name'] ?? '名称未取得'), $manualUrl);
+                        $row['manual_url_invalid'] = true;
+                        return $row;
+                    }
+
+                    $row['original_status_key'] = $row['status_key'] ?? null;
+                    $row['original_status_label'] = $row['status_label'] ?? null;
+                    $row['manual_url'] = $manualUrlInfo['url'];
+                    $row['url'] = $manualUrlInfo['url'];
+                    $row['raw_url'] = $manualUrl;
+                    $row['normalized_domain'] = $manualUrlInfo['domain'];
+                    $row['url_path_key'] = $manualUrlInfo['path_key'];
+                    $row['url_identity_key'] = $manualUrlInfo['identity_key'];
+                    $row['status_key'] = 'valid_url';
+                    $row['status_label'] = '有効URL（手入力）';
+                    $row['storable'] = true;
+                    $row['default_checked'] = true;
+                    $row['manual_url_provided'] = true;
+                    $row['confidence_label'] = '手動確認';
+                    $row['confidence_reason'] = 'URLなし/URL要確認の行に対して、Google確認後に手入力された公式HP候補。';
+                    $row['recommendation_label'] = '手入力URLを保存';
+                    $row['recommendation_reason'] = '人間が確認して入力したURLのため、名簿元候補として保存する。';
+                    $row['duplicate_signals'] = array_values(array_filter($row['duplicate_signals'] ?? [], fn ($signal) => !in_array($signal, ['URLなし', 'URL要確認'], true)));
+                    $row['duplicate_signals'][] = '手入力URL';
+
+                    return $row;
+                }
+
+                if (!$isSelected) {
+                    $row['storable'] = false;
+                }
+
+                return $row;
+            })
+            ->filter(fn ($row) => !empty($row['storable']) && empty($row['manual_url_invalid']))
             ->values();
+
+        if (!empty($invalidManualUrls)) {
+            return redirect()
+                ->route('directory-sources.shokokai-bulk-html')
+                ->withErrors(['manual_urls' => '手入力URLの形式が不正。http(s)のURL、またはドメイン形式で入力して。対象：' . implode(' / ', array_slice($invalidManualUrls, 0, 5))]);
+        }
 
         if ($rows->isEmpty()) {
             return redirect()
                 ->route('directory-sources.shokokai-bulk-html')
-                ->withErrors(['selected_rows' => '保存可能な候補が選択されていない。URLなし・URL要確認の候補は保存対象外。']);
+                ->withErrors(['selected_rows' => '保存可能な候補がない。URLなし・URL要確認の行は、Google確認後に公式HP URLを入力すると保存できる。']);
         }
 
         $saved = 0;
@@ -130,7 +183,7 @@ class ShokokaiBulkHtmlImportController extends Controller
                     'source_type' => 'directory_source_candidate',
                     'source_url' => $row['url'] ?? null,
                     'raw_json' => [
-                        'collector_version' => '0.18.9.3',
+                        'collector_version' => '0.18.9.4',
                         'collector_type' => 'shokokai_web_search_bulk_html',
                         'origin' => 'shokokai_web_search_bulk_html',
                         'source_name' => '全国商工会WEBサーチ 全件HTML',
@@ -161,6 +214,10 @@ class ShokokaiBulkHtmlImportController extends Controller
                         'selected_by_default' => $row['default_checked'] ?? false,
                         'search_query' => $row['search_query'] ?? null,
                         'google_search_url' => $row['google_search_url'] ?? null,
+                        'manual_url_provided' => $row['manual_url_provided'] ?? false,
+                        'manual_url' => $row['manual_url'] ?? null,
+                        'original_status_key' => $row['original_status_key'] ?? null,
+                        'original_status_label' => $row['original_status_label'] ?? null,
                     ],
                     'normalized_domain' => $row['normalized_domain'] ?? null,
                     'name_norm' => $this->truncate($row['organization_name'] ?? null, 255),
@@ -178,6 +235,46 @@ class ShokokaiBulkHtmlImportController extends Controller
         return redirect()
             ->route('directory-sources.shokokai-bulk-html')
             ->with('status', "商工会HPを {$saved} 件、名簿元候補としてsource_recordsに保存した。営業先companyは自動作成していない。");
+    }
+
+    /**
+     * @return array{url:?string,domain:?string,path_key:?string,identity_key:?string,valid:bool}
+     */
+    private function normalizeManualUrl(string $url): array
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return ['url' => null, 'domain' => null, 'path_key' => null, 'identity_key' => null, 'valid' => false];
+        }
+
+        if (!preg_match('/^https?:\/\//i', $url)) {
+            $url = 'https://' . ltrim($url, '/');
+        }
+
+        $parts = parse_url($url);
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        $host = preg_replace('/^www\./i', '', $host) ?: '';
+
+        if ($host === '' || str_starts_with($host, '.') || str_ends_with($host, '.') || !filter_var($url, FILTER_VALIDATE_URL)) {
+            return ['url' => $url, 'domain' => $host ?: null, 'path_key' => null, 'identity_key' => null, 'valid' => false];
+        }
+
+        $path = (string) ($parts['path'] ?? '/');
+        if ($path === '') {
+            $path = '/';
+        }
+        $path = '/' . ltrim($path, '/');
+        $pathKey = rtrim($path, '/') ?: '/';
+        $query = (string) ($parts['query'] ?? '');
+        $identityKey = $host . $pathKey . ($query !== '' ? '?' . $query : '');
+
+        return [
+            'url' => $url,
+            'domain' => $host,
+            'path_key' => $pathKey,
+            'identity_key' => $identityKey,
+            'valid' => true,
+        ];
     }
 
     private function truncate(?string $value, int $limit): ?string
