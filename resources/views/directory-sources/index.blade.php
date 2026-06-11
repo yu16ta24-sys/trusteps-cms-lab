@@ -7,7 +7,7 @@
                 <div>
                     <p class="page-kicker">Directory Sources</p>
                     <h1 class="page-title">名簿元管理</h1>
-                    <p class="page-subtitle">商工会・団体・組合サイトを営業先ではなく「営業先を生む入口」として管理し、会員一覧候補を浅く探索する。</p>
+                    <p class="page-subtitle">商工会・団体・組合サイトを営業先ではなく「営業先を生む入口」として管理し、会員一覧・事業者一覧候補を2階層まで浅く探索する。</p>
                 </div>
                 <div class="actions">
                     <a class="button light" href="{{ route('source-records.index', ['source_type' => 'directory_source_candidate']) }}">名簿元source_records</a>
@@ -103,7 +103,7 @@
                     <div class="row">
                         <div>
                             <strong>一括探索</strong>
-                            <p class="muted" style="margin:6px 0 0;">チェックした名簿元HPトップから、会員一覧・事業者一覧っぽい同一ドメイン内ページを最大50件まで抽出する。</p>
+                            <p class="muted" style="margin:6px 0 0;">チェックした名簿元HPトップから、会員一覧・事業者一覧っぽい同一ドメイン内ページを2階層まで探索し、最大50件まで抽出する。</p>
                         </div>
                         <button class="button" type="submit" @disabled(! empty($setupRequired)) onclick="return confirm('選択した名簿元を探索する？');">選択分を探索</button>
                     </div>

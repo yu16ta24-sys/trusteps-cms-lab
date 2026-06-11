@@ -10,12 +10,12 @@ use Throwable;
 
 class DirectorySourceCrawlerService
 {
-    /**
-     * @return array<string,mixed>
-     */
+    private const CRAWLER_VERSION = '0.19.0';
+
+    /** @return array<string,mixed> */
     public function crawl(DirectorySource $directorySource, int $limit = 50): array
     {
-        $limit = max(1, min(100, $limit));
+        $limit = max(10, min(200, $limit));
         $url = trim((string) $directorySource->url);
 
         if ($url === '') {
@@ -34,51 +34,148 @@ class DirectorySourceCrawlerService
             ];
         }
 
-        try {
-            $response = Http::timeout(12)
-                ->connectTimeout(6)
-                ->withHeaders([
-                    'User-Agent' => 'TRUSTEPS-CMS-Lab-DirectorySourceCrawler/0.18.9.8',
-                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                ])
-                ->get($url);
-        } catch (Throwable $e) {
-            $message = Str::limit($e->getMessage(), 1000, '');
+        $home = $this->fetchHtml($url);
+        if (! $home['ok']) {
             $directorySource->forceFill([
                 'crawl_status' => 'fetch_error',
                 'last_crawled_at' => now(),
-                'last_error' => $message,
+                'last_error' => $home['message'],
             ])->save();
 
             return [
                 'ok' => false,
                 'created_or_updated' => 0,
                 'candidates' => [],
-                'message' => '取得エラー：' . $message,
+                'message' => $home['message'],
             ];
         }
 
-        $status = $response->status();
-        $html = (string) $response->body();
+        $baseUrl = (string) ($home['final_url'] ?: $url);
+        $baseDomain = $directorySource->normalized_domain ?: $this->normalizeDomain($baseUrl);
+        $scopePrefix = $this->siteScopePrefix($baseUrl, $baseDomain);
+        $homeHtml = (string) $home['html'];
+        $homeSignals = $this->extractPageSignals($homeHtml);
+        $topLinks = $this->extractLinks($homeHtml, $baseUrl, $baseDomain, $scopePrefix);
 
-        if ($status < 200 || $status >= 400 || trim($html) === '') {
-            $directorySource->forceFill([
-                'crawl_status' => 'fetch_error',
-                'last_crawled_at' => now(),
-                'last_error' => 'HTTP ' . $status . ' / HTML空',
-            ])->save();
+        $candidateMap = [];
+        $debug = [
+            'home_http_status' => $home['status'],
+            'home_url' => $baseUrl,
+            'base_domain' => $baseDomain,
+            'scope_prefix' => $scopePrefix,
+            'top_links' => count($topLinks),
+            'probe_pages' => 0,
+            'probe_errors' => 0,
+            'fallback_used' => false,
+        ];
 
-            return [
-                'ok' => false,
-                'created_or_updated' => 0,
-                'candidates' => [],
-                'message' => 'HTTP ' . $status . ' のため探索できなかった。',
-            ];
+        foreach ($topLinks as $link) {
+            $scoreInfo = $this->scoreCandidate(
+                $link['url'],
+                $link['link_text'],
+                $link['context_text'],
+                '',
+                '',
+                'top_link'
+            );
+
+            $this->upsertCandidate($candidateMap, $link, $scoreInfo, [
+                'source_stage' => 'top_link',
+                'page_title' => $homeSignals['title'],
+                'page_headings' => $homeSignals['headings'],
+            ]);
         }
 
-        $candidates = $this->extractCandidateLinks($html, $url, $directorySource->normalized_domain, $limit);
+        $probeLinks = collect($candidateMap)
+            ->filter(fn (array $candidate): bool => (int) $candidate['score'] >= 8)
+            ->sortByDesc('score')
+            ->take(60)
+            ->values()
+            ->all();
+
+        foreach ($probeLinks as $probe) {
+            $probeUrl = (string) $probe['url'];
+            if ($probeUrl === '' || $this->isLikelyFileUrl($probeUrl)) {
+                continue;
+            }
+
+            $probeResponse = $this->fetchHtml($probeUrl);
+            if (! $probeResponse['ok']) {
+                $debug['probe_errors']++;
+                continue;
+            }
+
+            $debug['probe_pages']++;
+            $probeHtml = (string) $probeResponse['html'];
+            $probeSignals = $this->extractPageSignals($probeHtml);
+            $probeText = $this->cleanText($probeSignals['title'] . ' ' . implode(' ', $probeSignals['headings']) . ' ' . $probeSignals['meta_description'] . ' ' . $probeSignals['body_excerpt']);
+
+            $probeScore = $this->scoreCandidate(
+                $probeUrl,
+                (string) $probe['link_text'],
+                $probeText,
+                $probeSignals['title'],
+                implode(' ', $probeSignals['headings']),
+                'probed_page'
+            );
+
+            $this->upsertCandidate($candidateMap, [
+                'url' => $probeUrl,
+                'href' => $probe['href'] ?? $probeUrl,
+                'normalized_domain' => $this->normalizeDomain($probeUrl),
+                'link_text' => (string) ($probe['link_text'] ?? ''),
+                'context_text' => Str::limit($probeText, 1200, ''),
+                'discovered_from' => $baseUrl,
+            ], $probeScore, [
+                'source_stage' => 'probed_page',
+                'http_status' => $probeResponse['status'],
+                'page_title' => $probeSignals['title'],
+                'page_headings' => $probeSignals['headings'],
+            ]);
+
+            $secondaryLinks = $this->extractLinks($probeHtml, $probeUrl, $baseDomain, $scopePrefix);
+            foreach ($secondaryLinks as $secondaryLink) {
+                $secondaryScore = $this->scoreCandidate(
+                    $secondaryLink['url'],
+                    $secondaryLink['link_text'],
+                    $secondaryLink['context_text'] . ' ' . $probeText,
+                    $probeSignals['title'],
+                    implode(' ', $probeSignals['headings']),
+                    'secondary_link'
+                );
+
+                $this->upsertCandidate($candidateMap, $secondaryLink, $secondaryScore, [
+                    'source_stage' => 'secondary_link',
+                    'parent_url' => $probeUrl,
+                    'parent_title' => $probeSignals['title'],
+                ]);
+            }
+        }
+
+        $candidates = collect($candidateMap)
+            ->filter(fn (array $candidate): bool => (int) $candidate['score'] >= 24)
+            ->sortByDesc('score')
+            ->take($limit)
+            ->values()
+            ->all();
+
+        if (empty($candidates)) {
+            $debug['fallback_used'] = true;
+            $candidates = collect($candidateMap)
+                ->filter(fn (array $candidate): bool => (int) $candidate['score'] >= 5)
+                ->sortByDesc('score')
+                ->take(min(15, $limit))
+                ->map(function (array $candidate): array {
+                    $candidate['page_type'] = 'low_confidence_directory_candidate';
+                    $candidate['confidence'] = 'low';
+                    $candidate['raw_json']['fallback_reason'] = '高信頼候補が0件だったため、低信頼候補として残した。';
+                    return $candidate;
+                })
+                ->values()
+                ->all();
+        }
+
         $createdOrUpdated = 0;
-
         foreach ($candidates as $candidate) {
             DirectorySourcePage::updateOrCreate(
                 [
@@ -92,15 +189,10 @@ class DirectorySourceCrawlerService
                     'link_text' => $candidate['link_text'],
                     'page_type' => $candidate['page_type'],
                     'status' => 'candidate',
-                    'score' => $candidate['score'],
+                    'score' => min(100, max(0, (int) $candidate['score'])),
                     'confidence' => $candidate['confidence'],
-                    'discovered_from' => $url,
-                    'raw_json' => [
-                        'crawler_version' => '0.18.9.8',
-                        'matched_keywords' => $candidate['matched_keywords'],
-                        'negative_keywords' => $candidate['negative_keywords'],
-                        'href' => $candidate['href'],
-                    ],
+                    'discovered_from' => $candidate['discovered_from'],
+                    'raw_json' => $candidate['raw_json'],
                     'last_seen_at' => now(),
                 ]
             );
@@ -113,12 +205,11 @@ class DirectorySourceCrawlerService
             'last_crawled_at' => now(),
             'last_error' => null,
             'raw_json' => array_merge($directorySource->raw_json ?? [], [
-                'latest_crawl' => [
-                    'crawler_version' => '0.18.9.8',
-                    'http_status' => $status,
+                'latest_crawl' => array_merge($debug, [
+                    'crawler_version' => self::CRAWLER_VERSION,
                     'candidate_count' => $createdOrUpdated,
                     'crawled_at' => now()->toDateTimeString(),
-                ],
+                ]),
             ]),
         ])->save();
 
@@ -127,118 +218,279 @@ class DirectorySourceCrawlerService
             'created_or_updated' => $createdOrUpdated,
             'candidates' => $candidates,
             'message' => $createdOrUpdated > 0
-                ? "会員一覧候補を {$createdOrUpdated} 件見つけた。"
-                : '会員一覧候補は見つからなかった。',
+                ? "会員一覧候補を {$createdOrUpdated} 件見つけた。探索範囲：トップリンク {$debug['top_links']} 件 / 追加取得 {$debug['probe_pages']} 件。"
+                : "会員一覧候補は見つからなかった。探索範囲：トップリンク {$debug['top_links']} 件 / 追加取得 {$debug['probe_pages']} 件。",
         ];
     }
 
-    /**
-     * @return array<int,array<string,mixed>>
-     */
-    private function extractCandidateLinks(string $html, string $baseUrl, ?string $baseDomain, int $limit): array
+    /** @return array{ok:bool,status:int|null,html:string,final_url:string|null,message:string} */
+    private function fetchHtml(string $url): array
+    {
+        $url = $this->normalizeUrlForStorage($url);
+        if (! preg_match('/^https?:\/\//i', $url)) {
+            $url = 'https://' . ltrim($url, '/');
+        }
+
+        $urlsToTry = [$url];
+        if (str_starts_with(strtolower($url), 'https://')) {
+            $urlsToTry[] = 'http://' . substr($url, 8);
+        }
+
+        $lastMessage = '';
+        foreach (array_values(array_unique($urlsToTry)) as $targetUrl) {
+            try {
+                $response = Http::timeout(12)
+                    ->connectTimeout(6)
+                    ->withHeaders([
+                        'User-Agent' => 'TRUSTEPS-CMS-Lab-DirectorySourceCrawler/' . self::CRAWLER_VERSION,
+                        'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    ])
+                    ->get($targetUrl);
+            } catch (Throwable $e) {
+                $lastMessage = '取得エラー：' . Str::limit($e->getMessage(), 800, '');
+                continue;
+            }
+
+            $status = $response->status();
+            $contentType = strtolower((string) $response->header('Content-Type', ''));
+            $body = (string) $response->body();
+            $effectiveUrl = method_exists($response, 'effectiveUri') && $response->effectiveUri()
+                ? (string) $response->effectiveUri()
+                : $targetUrl;
+
+            if ($status >= 200 && $status < 400 && trim($body) !== '' && ($contentType === '' || str_contains($contentType, 'text/html') || str_contains($contentType, 'application/xhtml'))) {
+                return [
+                    'ok' => true,
+                    'status' => $status,
+                    'html' => $body,
+                    'final_url' => $effectiveUrl,
+                    'message' => 'OK',
+                ];
+            }
+
+            $lastMessage = 'HTTP ' . $status . ' / Content-Type ' . ($contentType ?: '-');
+        }
+
+        return [
+            'ok' => false,
+            'status' => null,
+            'html' => '',
+            'final_url' => null,
+            'message' => $lastMessage ?: 'HTMLを取得できなかった。',
+        ];
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    private function extractLinks(string $html, string $baseUrl, ?string $baseDomain, ?string $scopePrefix): array
     {
         $baseDomain = $baseDomain ?: $this->normalizeDomain($baseUrl);
         $links = [];
 
-        if (!preg_match_all('/<a\s+[^>]*href\s*=\s*(["\'])(.*?)\1[^>]*>(.*?)<\/a>/isu', $html, $matches, PREG_SET_ORDER)) {
+        if (! preg_match_all('/<a\s+[^>]*href\s*=\s*(["\'])(.*?)\1[^>]*>(.*?)<\/a>/isu', $html, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
             return [];
         }
 
         foreach ($matches as $match) {
-            $href = html_entity_decode(trim((string) ($match[2] ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            $linkText = $this->cleanText(strip_tags((string) ($match[3] ?? '')));
+            $href = html_entity_decode(trim((string) ($match[2][0] ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $linkText = $this->cleanText(strip_tags((string) ($match[3][0] ?? '')));
             $absoluteUrl = $this->absoluteUrl($href, $baseUrl);
-
-            if ($absoluteUrl === null) {
+            if ($absoluteUrl === null || $this->isLikelyFileUrl($absoluteUrl)) {
                 continue;
             }
 
             $domain = $this->normalizeDomain($absoluteUrl);
-            if ($baseDomain && $domain !== $baseDomain) {
+            if (! $this->isInsideSameSite($absoluteUrl, $domain, $baseDomain, $scopePrefix)) {
                 continue;
             }
 
-            $scoreInfo = $this->scoreCandidate($absoluteUrl, $linkText);
-            if ($scoreInfo['score'] < 35) {
-                continue;
-            }
+            $offset = (int) ($match[0][1] ?? 0);
+            $contextText = $this->cleanText(strip_tags(substr($html, max(0, $offset - 600), 1400)));
+            $key = $this->urlKey($absoluteUrl);
 
-            $links[$this->urlKey($absoluteUrl)] = [
+            $links[$key] = [
                 'url' => $absoluteUrl,
                 'href' => $href,
                 'normalized_domain' => $domain,
-                'title' => Str::limit($linkText ?: $absoluteUrl, 255, ''),
                 'link_text' => Str::limit($linkText, 255, ''),
-                'page_type' => 'member_list_candidate',
-                'score' => min(100, $scoreInfo['score']),
-                'confidence' => $scoreInfo['score'] >= 70 ? 'high' : ($scoreInfo['score'] >= 50 ? 'medium' : 'low'),
-                'matched_keywords' => $scoreInfo['matched'],
-                'negative_keywords' => $scoreInfo['negative'],
+                'context_text' => Str::limit($contextText, 1200, ''),
+                'discovered_from' => $baseUrl,
             ];
         }
 
-        return collect($links)
-            ->sortByDesc('score')
-            ->take($limit)
-            ->values()
-            ->all();
+        return array_values($links);
     }
 
-    /** @return array{score:int,matched:array<int,string>,negative:array<int,string>} */
-    private function scoreCandidate(string $url, string $linkText): array
+    /** @return array{title:string,meta_description:string,headings:array<int,string>,body_excerpt:string} */
+    private function extractPageSignals(string $html): array
     {
-        $target = mb_strtolower($url . ' ' . $linkText);
+        $title = '';
+        if (preg_match('/<title[^>]*>(.*?)<\/title>/isu', $html, $match)) {
+            $title = $this->cleanText($match[1] ?? '');
+        }
+
+        $metaDescription = '';
+        if (preg_match('/<meta\s+[^>]*name\s*=\s*(["\'])description\1[^>]*content\s*=\s*(["\'])(.*?)\2[^>]*>/isu', $html, $match)
+            || preg_match('/<meta\s+[^>]*content\s*=\s*(["\'])(.*?)\1[^>]*name\s*=\s*(["\'])description\3[^>]*>/isu', $html, $match)) {
+            $metaDescription = $this->cleanText($match[3] ?? $match[2] ?? '');
+        }
+
+        $headings = [];
+        if (preg_match_all('/<h[1-3][^>]*>(.*?)<\/h[1-3]>/isu', $html, $matches)) {
+            foreach ($matches[1] as $headingHtml) {
+                $heading = $this->cleanText(strip_tags((string) $headingHtml));
+                if ($heading !== '') {
+                    $headings[] = Str::limit($heading, 120, '');
+                }
+            }
+        }
+
+        $bodyText = $this->cleanText(strip_tags(preg_replace('/<script\b[^>]*>.*?<\/script>|<style\b[^>]*>.*?<\/style>/isu', ' ', $html) ?: $html));
+
+        return [
+            'title' => Str::limit($title, 255, ''),
+            'meta_description' => Str::limit($metaDescription, 500, ''),
+            'headings' => array_slice(array_values(array_unique($headings)), 0, 12),
+            'body_excerpt' => Str::limit($bodyText, 4000, ''),
+        ];
+    }
+
+    /** @return array{score:int,matched:array<int,string>,negative:array<int,string>,page_type:string,confidence:string} */
+    private function scoreCandidate(string $url, string $linkText, string $contextText = '', string $pageTitle = '', string $headings = '', string $stage = 'link'): array
+    {
+        $urlLower = mb_strtolower($url);
+        $linkLower = mb_strtolower($linkText);
+        $contextLower = mb_strtolower($contextText);
+        $pageLower = mb_strtolower($pageTitle . ' ' . $headings);
+        $all = $urlLower . ' ' . $linkLower . ' ' . $contextLower . ' ' . $pageLower;
+
         $score = 0;
         $matched = [];
         $negative = [];
 
         $strong = [
-            '会員一覧', '会員事業所', '事業所一覧', '事業者一覧', '企業一覧', '店舗一覧',
-            '会員紹介', '事業者紹介', '企業紹介', 'お店紹介', '加盟店一覧', '加盟店紹介',
-            'members', 'member', 'shoplist', 'shops', 'company', 'companies', 'kaiin', 'jigyousho', 'jigyosha',
+            '会員一覧', '会員名簿', '会員紹介', '会員事業所', '会員企業', '会員検索', '会員店舗',
+            '事業所一覧', '事業所検索', '事業者一覧', '事業者紹介', '企業一覧', '企業紹介', '企業検索',
+            '店舗一覧', '店舗紹介', '店舗検索', '加盟店', '加盟店一覧', '加盟店紹介', 'お店紹介', 'お店を探す',
+            '商工会会員', 'member list', 'members', 'member', 'shoplist', 'shops', 'shop', 'company', 'companies',
+            'kaiin', 'jigyousho', 'jigyosha', 'kigyo', 'tenpo', 'kameiten', 'omise', 'list', 'search',
         ];
         foreach ($strong as $keyword) {
-            if (str_contains($target, mb_strtolower($keyword))) {
+            $keywordLower = mb_strtolower($keyword);
+            if (str_contains($urlLower . ' ' . $linkLower . ' ' . $pageLower, $keywordLower)) {
                 $score += 35;
+                $matched[] = $keyword;
+            } elseif (str_contains($contextLower, $keywordLower)) {
+                $score += 18;
                 $matched[] = $keyword;
             }
         }
 
-        $medium = ['会員', '事業所', '事業者', '企業', '店舗', 'お店', '商店', '商業', '工業', '部会', '青年部', '女性部', '地域のお店', 'サービス'];
+        $medium = [
+            'お店', '店舗', '事業所', '事業者', '企業', '商店', '商業', '工業', 'サービス', '地域のお店', 'まちのお店',
+            '買う', '食べる', '暮らす', '泊まる', '観光', '特産品', '逸品', '商品', 'グルメ', 'ショッピング',
+            '部会員', '商業部会', '工業部会', '青年部', '女性部',
+        ];
         foreach ($medium as $keyword) {
-            if (str_contains($target, mb_strtolower($keyword))) {
-                $score += 14;
+            $keywordLower = mb_strtolower($keyword);
+            if (str_contains($all, $keywordLower)) {
+                $score += 12;
                 $matched[] = $keyword;
             }
         }
 
         $negativeKeywords = [
-            '入会', '経営相談', '相談', '補助金', '融資', '共済', '労働保険', 'セミナー', '講習',
-            'アクセス', 'お問い合わせ', '問合せ', 'プライバシー', '個人情報', 'サイトマップ', 'リンク集',
-            'about', 'contact', 'privacy', 'sitemap', 'access', 'news', 'blog', 'event', 'seminar', 'join',
+            '入会案内', '入会', '経営相談', '相談', '補助金', '融資', '共済', '労働保険', 'セミナー', '講習',
+            'アクセス', 'お問い合わせ', '問合せ', 'プライバシー', '個人情報', 'サイトマップ', '採用', '求人',
+            'about', 'contact', 'privacy', 'sitemap', 'access', 'recruit', 'join', 'seminar', 'login', 'admin', 'wp-login',
         ];
         foreach ($negativeKeywords as $keyword) {
-            if (str_contains($target, mb_strtolower($keyword))) {
-                $score -= 18;
+            $keywordLower = mb_strtolower($keyword);
+            if (str_contains($all, $keywordLower)) {
+                $score -= 14;
                 $negative[] = $keyword;
             }
         }
 
+        if (preg_match('/\/(member|members|shop|shops|shoplist|company|companies|kaiin|jigyousho|jigyosha|kigyo|tenpo|kameiten|omise|search|list)(\/|$|\?|\.)/i', $url)) {
+            $score += 24;
+            $matched[] = 'URLパス候補語';
+        }
+
+        if ($stage === 'probed_page') {
+            $score += 8;
+        } elseif ($stage === 'secondary_link') {
+            $score += 5;
+        }
+
         $path = (string) (parse_url($url, PHP_URL_PATH) ?? '');
         if ($path === '' || $path === '/') {
-            $score -= 40;
+            $score -= 35;
             $negative[] = 'トップページ';
         }
 
-        if (preg_match('/\.(jpg|jpeg|png|gif|webp|svg|css|js|pdf|zip|xlsx?|docx?)($|\?)/i', $url)) {
-            $score -= 50;
+        if ($this->isLikelyFileUrl($url)) {
+            $score -= 60;
             $negative[] = 'ファイルリンク';
         }
 
+        $score = max(0, min(100, $score));
+        $pageType = $score >= 45 ? 'member_list_candidate' : 'low_confidence_directory_candidate';
+        $confidence = $score >= 75 ? 'high' : ($score >= 45 ? 'medium' : 'low');
+
         return [
-            'score' => max(0, $score),
+            'score' => $score,
             'matched' => array_values(array_unique($matched)),
             'negative' => array_values(array_unique($negative)),
+            'page_type' => $pageType,
+            'confidence' => $confidence,
+        ];
+    }
+
+    /** @param array<string,array<string,mixed>> $candidateMap @param array<string,mixed> $link @param array<string,mixed> $scoreInfo @param array<string,mixed> $extra */
+    private function upsertCandidate(array &$candidateMap, array $link, array $scoreInfo, array $extra = []): void
+    {
+        $url = (string) ($link['url'] ?? '');
+        if ($url === '') {
+            return;
+        }
+
+        $key = $this->urlKey($url);
+        $score = (int) ($scoreInfo['score'] ?? 0);
+        if (isset($candidateMap[$key]) && (int) $candidateMap[$key]['score'] >= $score) {
+            return;
+        }
+
+        $title = '';
+        if (($extra['source_stage'] ?? null) === 'probed_page') {
+            $title = (string) ($extra['page_title'] ?? '');
+        }
+        if ($title === '') {
+            $title = (string) ($link['link_text'] ?? $url);
+        }
+
+        $candidateMap[$key] = [
+            'url' => $url,
+            'href' => (string) ($link['href'] ?? $url),
+            'normalized_domain' => $link['normalized_domain'] ?? $this->normalizeDomain($url),
+            'title' => Str::limit($title, 255, ''),
+            'link_text' => Str::limit((string) ($link['link_text'] ?? ''), 255, ''),
+            'page_type' => $scoreInfo['page_type'] ?? 'member_list_candidate',
+            'score' => $score,
+            'confidence' => $scoreInfo['confidence'] ?? 'low',
+            'discovered_from' => (string) ($link['discovered_from'] ?? $extra['parent_url'] ?? ''),
+            'raw_json' => [
+                'crawler_version' => self::CRAWLER_VERSION,
+                'source_stage' => $extra['source_stage'] ?? 'unknown',
+                'matched_keywords' => $scoreInfo['matched'] ?? [],
+                'negative_keywords' => $scoreInfo['negative'] ?? [],
+                'href' => (string) ($link['href'] ?? ''),
+                'context_text' => Str::limit((string) ($link['context_text'] ?? ''), 1000, ''),
+                'page_title' => $extra['page_title'] ?? null,
+                'page_headings' => $extra['page_headings'] ?? null,
+                'parent_url' => $extra['parent_url'] ?? null,
+                'parent_title' => $extra['parent_title'] ?? null,
+                'http_status' => $extra['http_status'] ?? null,
+            ],
         ];
     }
 
@@ -248,7 +500,7 @@ class DirectorySourceCrawlerService
         if ($href === '' || str_starts_with($href, '#')) {
             return null;
         }
-        if (preg_match('/^(javascript:|mailto:|tel:)/i', $href)) {
+        if (preg_match('/^(javascript:|mailto:|tel:|data:)/i', $href)) {
             return null;
         }
         if (preg_match('/^https?:\/\//i', $href)) {
@@ -267,9 +519,9 @@ class DirectorySourceCrawlerService
         }
 
         $basePath = (string) ($parts['path'] ?? '/');
-        if (!str_starts_with($href, '/')) {
+        if (! str_starts_with($href, '/')) {
             $baseDir = rtrim(str_replace('\\', '/', dirname($basePath)), '/');
-            $href = ($baseDir === '' ? '' : $baseDir) . '/' . $href;
+            $href = ($baseDir === '' || $baseDir === '.' ? '' : $baseDir) . '/' . $href;
         }
 
         return $this->normalizeUrlForStorage($scheme . '://' . $host . '/' . ltrim($href, '/'));
@@ -279,6 +531,7 @@ class DirectorySourceCrawlerService
     {
         $url = html_entity_decode(trim($url), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $url = preg_replace('/#.*$/', '', $url) ?: $url;
+        $url = preg_replace('/\s+/u', '', $url) ?: $url;
         return $url;
     }
 
@@ -294,9 +547,50 @@ class DirectorySourceCrawlerService
         return $host ?: null;
     }
 
+    private function isInsideSameSite(string $url, ?string $domain, ?string $baseDomain, ?string $scopePrefix): bool
+    {
+        if (! $domain || ! $baseDomain || $domain !== $baseDomain) {
+            return false;
+        }
+
+        if ($scopePrefix === null || $scopePrefix === '') {
+            return true;
+        }
+
+        $path = '/' . ltrim((string) (parse_url($url, PHP_URL_PATH) ?? '/'), '/');
+        return $path === '/' . $scopePrefix || str_starts_with($path, '/' . trim($scopePrefix, '/') . '/');
+    }
+
+    private function siteScopePrefix(string $url, ?string $domain): ?string
+    {
+        $path = trim((string) (parse_url($url, PHP_URL_PATH) ?? ''), '/');
+        if ($path === '') {
+            return null;
+        }
+
+        $first = explode('/', $path)[0] ?? '';
+        if ($first === '' || preg_match('/^(index\.php|index\.html?)$/i', $first)) {
+            return null;
+        }
+
+        $sharedHosts = ['r.goope.jp', 'goope.jp', 'peraichi.com', 'jimdosite.com', 'jimdofree.com', 'wixsite.com'];
+        if (in_array((string) $domain, $sharedHosts, true)) {
+            return $first;
+        }
+
+        // 商工会の共通ドメイン配下に /mihara/ のような個別サイトがある場合も、別商工会に越境しない。
+        return $first;
+    }
+
+    private function isLikelyFileUrl(string $url): bool
+    {
+        return (bool) preg_match('/\.(jpg|jpeg|png|gif|webp|svg|css|js|pdf|zip|xlsx?|docx?|pptx?|mp4|mov|avi|wmv)($|\?)/i', $url);
+    }
+
     private function cleanText(?string $value): string
     {
         $value = html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $value = preg_replace('/\x{00a0}/u', ' ', $value) ?: $value;
         $value = preg_replace('/\s+/u', ' ', $value) ?: '';
         return trim($value);
     }

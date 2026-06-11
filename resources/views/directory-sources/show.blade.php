@@ -7,7 +7,7 @@
                 <div>
                     <p class="page-kicker">Directory Source #{{ $directorySource->id }}</p>
                     <h1 class="page-title">{{ $directorySource->name }}</h1>
-                    <p class="page-subtitle">名簿元HPトップから見つけた会員一覧・事業者一覧候補を確認する。</p>
+                    <p class="page-subtitle">名簿元HPトップから2階層まで浅く探索して見つけた会員一覧・事業者一覧候補を確認する。</p>
                 </div>
                 <div class="actions">
                     <a class="button light" href="{{ route('directory-sources.index') }}">一覧へ</a>
@@ -46,7 +46,7 @@
 
         <section class="card">
             <h2 style="margin-top:0;">会員一覧・事業者一覧候補</h2>
-            <p class="muted">この候補ページを次工程の「名簿URL抽出」に渡す。ここでは営業先companyはまだ作らない。</p>
+            <p class="muted">この候補ページを次工程の「名簿URL抽出」に渡す。ここでは営業先companyはまだ作らない。スコアが低いものも、候補0件を避けるため低信頼候補として残す。</p>
 
             <div class="table-wrap">
                 <table>
@@ -71,6 +71,12 @@
                                 @endphp
                                 @if (!empty($matched))
                                     <div>一致：{{ implode(' / ', $matched) }}</div>
+                                @endif
+                                @if ($stage = data_get($page->raw_json, 'source_stage'))
+                                    <div class="muted">発見段階：{{ $stage }}</div>
+                                @endif
+                                @if ($pageTitle = data_get($page->raw_json, 'page_title'))
+                                    <div class="muted">ページtitle：{{ $pageTitle }}</div>
                                 @endif
                                 @if (!empty($negative))
                                     <div class="muted">弱め要素：{{ implode(' / ', $negative) }}</div>
