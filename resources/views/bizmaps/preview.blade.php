@@ -98,6 +98,7 @@ const PREVIEW_DATA = @json($results);
 
 @push('scripts')
 <script>
+@verbatim
 document.addEventListener('DOMContentLoaded', function () {
 
   // 全選択チェックボックス
@@ -183,6 +184,7 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
 });
+@endverbatim
 </script>
 @endpush
 @endsection

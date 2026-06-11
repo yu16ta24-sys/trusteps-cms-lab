@@ -118,6 +118,7 @@
 
 @push('scripts')
 <script>
+@verbatim
 document.addEventListener('DOMContentLoaded', function () {
 
   const prefSelect   = document.getElementById('prefectureSelect');
@@ -226,6 +227,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 });
+@endverbatim
 </script>
 @endpush
 @endsection
