@@ -66,7 +66,7 @@ class ShokokaiBulkHtmlImportService
             'summary' => $summary,
             'pref_groups' => $prefGroups,
             'meta' => [
-                'collector_version' => '0.18.9.4',
+                'collector_version' => '0.18.9.5',
                 'collector_type' => 'shokokai_web_search_bulk_html',
                 'source_name' => '全国商工会WEBサーチ 全件HTML',
                 'created_at' => now()->timestamp,

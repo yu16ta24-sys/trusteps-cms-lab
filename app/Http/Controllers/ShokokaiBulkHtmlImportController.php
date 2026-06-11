@@ -145,7 +145,7 @@ class ShokokaiBulkHtmlImportController extends Controller
                     $row['default_checked'] = true;
                     $row['manual_url_provided'] = true;
                     $row['confidence_label'] = '手動確認';
-                    $row['confidence_reason'] = 'URLなし/URL要確認の行に対して、Google確認後に手入力された公式HP候補。';
+                    $row['confidence_reason'] = 'URLなし/URL要確認/リンク切れ等の行に対して、人間が確認・修正入力した公式HP候補。';
                     $row['recommendation_label'] = '手入力URLを保存';
                     $row['recommendation_reason'] = '人間が確認して入力したURLのため、名簿元候補として保存する。';
                     $row['duplicate_signals'] = array_values(array_filter($row['duplicate_signals'] ?? [], fn ($signal) => !in_array($signal, ['URLなし', 'URL要確認'], true)));
@@ -172,7 +172,7 @@ class ShokokaiBulkHtmlImportController extends Controller
         if ($rows->isEmpty()) {
             return redirect()
                 ->route('directory-sources.shokokai-bulk-html')
-                ->withErrors(['selected_rows' => '保存可能な候補がない。URLなし・URL要確認の行は、Google確認後に公式HP URLを入力すると保存できる。']);
+                ->withErrors(['selected_rows' => '保存可能な候補がない。URLなし・URL要確認・リンク切れ等の行は、公式HP URLを入力/修正すると保存できる。']);
         }
 
         $saved = 0;
@@ -183,7 +183,7 @@ class ShokokaiBulkHtmlImportController extends Controller
                     'source_type' => 'directory_source_candidate',
                     'source_url' => $row['url'] ?? null,
                     'raw_json' => [
-                        'collector_version' => '0.18.9.4',
+                        'collector_version' => '0.18.9.5',
                         'collector_type' => 'shokokai_web_search_bulk_html',
                         'origin' => 'shokokai_web_search_bulk_html',
                         'source_name' => '全国商工会WEBサーチ 全件HTML',

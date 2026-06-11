@@ -42,7 +42,7 @@
                 1600件前後のHTMLは送信前にブラウザ内で軽量データへ前処理します。巨大な生HTMLをそのまま送らないため、nginxの413を避けます。
                 グーペ系URLと、同一県内で同一ドメイン・別パスになっている商工会ページは、URLが有効なら初期チェックONにします。
                 既にsource_recordsへ保存済みの完全一致URL、または同一商工会コードはプレビューから除外し、未保存分だけを再確認できます。
-                URLなし/URL要確認の行には、Google検索リンクと公式HP URLの手入力欄を表示します。見つけたURLを貼れば、チェックなしでも保存できます。
+                URLなし/URL要確認の行に加え、リンク切れ・誤URLが疑わしい行も公式HP URLを手入力で差し替えて保存できます。手入力欄にURLを入れた行はチェックなしでも保存対象になります。
             </p>
             <div class="muted small-text" id="clientParseStatus"></div>
             <div class="button-row">
@@ -171,34 +171,39 @@
                                                         <div class="muted small-text">No.{{ $row['raw_index'] ?? '-' }} / code {{ $row['pref_code'] ?? '-' }}-{{ $row['shokokai_code'] ?? '-' }}</div>
                                                     </td>
                                                     <td>
-                                                        @if (!empty($row['url']))
+                                                        @if (!empty($row['url']) && (($row['status_key'] ?? '') === 'valid_url'))
                                                             <a href="{{ $row['url'] }}" target="_blank" rel="noopener">{{ $row['url'] }}</a>
                                                             <div class="muted small-text">{{ $row['normalized_domain'] ?? '-' }}</div>
+                                                        @elseif (!empty($row['url']) || !empty($row['raw_url']))
+                                                            <div class="danger-text">{{ $row['raw_url'] ?? $row['url'] }}</div>
+                                                            <div class="muted small-text">このURLは形式不正・要確認として扱っています。正しいURLが分かる場合は下の欄で差し替えできます。</div>
                                                         @else
-                                                            @if (!empty($row['raw_url']))
-                                                                <div class="danger-text">{{ $row['raw_url'] }}</div>
-                                                            @else
-                                                                <span class="muted">URLなし</span>
-                                                            @endif
-
-                                                            @if (!empty($row['google_search_url']))
-                                                                <div class="small-text">
-                                                                    <a href="{{ $row['google_search_url'] }}" target="_blank" rel="noopener">Googleで公式HP候補を確認</a>
-                                                                </div>
-                                                                <div class="muted small-text">{{ $row['search_query'] ?? '' }}</div>
-                                                            @endif
-
-                                                            <div class="manual-url-box">
-                                                                <label class="muted small-text" for="manual_url_{{ $row['row_id'] }}">見つけた公式HP URL</label>
-                                                                <input
-                                                                    id="manual_url_{{ $row['row_id'] }}"
-                                                                    type="text"
-                                                                    name="manual_urls[{{ $row['row_id'] }}]"
-                                                                    class="form-input"
-                                                                    placeholder="https://example.jp">
-                                                                <div class="muted small-text">ここにURLを入れた行は、チェックなしでも保存対象になります。</div>
-                                                            </div>
+                                                            <span class="muted">URLなし</span>
                                                         @endif
+
+                                                        @if (!empty($row['google_search_url']))
+                                                            <div class="small-text">
+                                                                <a href="{{ $row['google_search_url'] }}" target="_blank" rel="noopener">Googleで公式HP候補を確認</a>
+                                                            </div>
+                                                            <div class="muted small-text">{{ $row['search_query'] ?? '' }}</div>
+                                                        @endif
+
+                                                        <div class="manual-url-box">
+                                                            <label class="muted small-text" for="manual_url_{{ $row['row_id'] }}">
+                                                                @if (!empty($row['url']) && (($row['status_key'] ?? '') === 'valid_url'))
+                                                                    URLを差し替えて保存する場合の修正URL
+                                                                @else
+                                                                    見つけた公式HP URL
+                                                                @endif
+                                                            </label>
+                                                            <input
+                                                                id="manual_url_{{ $row['row_id'] }}"
+                                                                type="text"
+                                                                name="manual_urls[{{ $row['row_id'] }}]"
+                                                                class="form-input"
+                                                                placeholder="https://example.jp">
+                                                            <div class="muted small-text">ここにURLを入れた行は、既存URLを上書きして保存します。チェックなしでも保存対象になります。</div>
+                                                        </div>
                                                     </td>
                                                     <td>
                                                         <div>{{ $row['postal_code'] ?? '' }} {{ $row['address'] ?? '-' }}</div>
