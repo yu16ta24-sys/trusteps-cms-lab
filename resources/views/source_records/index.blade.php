@@ -296,9 +296,115 @@
                 </div>
             </form>
 
-            <div class="pagination">
-                {{ $sourceRecords->appends(request()->query())->links() }}
-            </div>
+            @php
+                $paginator = $sourceRecords->appends(request()->query());
+                $currentPage = $paginator->currentPage();
+                $lastPage = $paginator->lastPage();
+                $windowStart = max(1, $currentPage - 3);
+                $windowEnd = min($lastPage, $currentPage + 3);
+            @endphp
+
+            @if ($lastPage > 1)
+                <nav class="pagination compact-pagination" aria-label="source_records pagination">
+                    <div class="pagination-links">
+                        @if ($paginator->onFirstPage())
+                            <span class="page-link disabled">‹ Previous</span>
+                        @else
+                            <a class="page-link" href="{{ $paginator->previousPageUrl() }}">‹ Previous</a>
+                        @endif
+
+                        @if ($windowStart > 1)
+                            <a class="page-link" href="{{ $paginator->url(1) }}">1</a>
+                            @if ($windowStart > 2)
+                                <span class="page-ellipsis">…</span>
+                            @endif
+                        @endif
+
+                        @for ($page = $windowStart; $page <= $windowEnd; $page++)
+                            @if ($page === $currentPage)
+                                <span class="page-link active" aria-current="page">{{ $page }}</span>
+                            @else
+                                <a class="page-link" href="{{ $paginator->url($page) }}">{{ $page }}</a>
+                            @endif
+                        @endfor
+
+                        @if ($windowEnd < $lastPage)
+                            @if ($windowEnd < $lastPage - 1)
+                                <span class="page-ellipsis">…</span>
+                            @endif
+                            <a class="page-link" href="{{ $paginator->url($lastPage) }}">{{ $lastPage }}</a>
+                        @endif
+
+                        @if ($paginator->hasMorePages())
+                            <a class="page-link" href="{{ $paginator->nextPageUrl() }}">Next ›</a>
+                        @else
+                            <span class="page-link disabled">Next ›</span>
+                        @endif
+                    </div>
+                    <div class="pagination-count">
+                        Showing {{ number_format($paginator->firstItem() ?? 0) }} to {{ number_format($paginator->lastItem() ?? 0) }} of {{ number_format($paginator->total()) }} results
+                    </div>
+                </nav>
+            @endif
+
+            <style>
+                .compact-pagination {
+                    margin-top: 18px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    flex-wrap: wrap;
+                    color: #475467;
+                    font-size: 13px;
+                }
+                .compact-pagination .pagination-links {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    flex-wrap: wrap;
+                }
+                .compact-pagination .page-link,
+                .compact-pagination .page-ellipsis {
+                    min-width: 34px;
+                    height: 34px;
+                    padding: 0 10px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-radius: 999px;
+                    border: 1px solid #d9e2ee;
+                    background: rgba(255,255,255,.82);
+                    color: #344054;
+                    font-weight: 850;
+                    text-decoration: none;
+                    line-height: 1;
+                    box-shadow: none;
+                }
+                .compact-pagination .page-link:hover {
+                    background: #f8fafc;
+                    color: #0f172a;
+                }
+                .compact-pagination .page-link.active {
+                    background: #0f172a;
+                    color: #fff;
+                    border-color: #0f172a;
+                }
+                .compact-pagination .page-link.disabled {
+                    opacity: .45;
+                    cursor: not-allowed;
+                }
+                .compact-pagination .page-ellipsis {
+                    border-color: transparent;
+                    background: transparent;
+                    min-width: 20px;
+                    padding: 0 2px;
+                }
+                .compact-pagination .pagination-count {
+                    color: #667085;
+                    font-weight: 700;
+                }
+            </style>
         </section>
     </main>
 
