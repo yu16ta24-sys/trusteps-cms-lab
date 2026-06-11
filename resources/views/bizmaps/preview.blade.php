@@ -75,7 +75,7 @@
           <td style="font-weight:800;max-width:260px;">{{ $row['name'] ?? '-' }}</td>
           <td style="white-space:nowrap;">{{ $row['pref'] ?? '-' }}</td>
           <td style="white-space:nowrap;">{{ $row['city'] ?? '-' }}</td>
-          <td style="max-width:140px;">
+          <td style="max-width:140px;" id="industry-cell-{{ $i }}">
             <span style="font-size:12px;color:var(--muted);">{{ Str::limit($row['industry'] ?? '-', 25) }}</span>
           </td>
           <td style="max-width:220px;" id="hp-cell-{{ $i }}">
@@ -216,6 +216,17 @@ document.addEventListener('DOMContentLoaded', function () {
           // PREVIEW_DATAも更新（保存時に使う）
           if (PREVIEW_DATA[idx]) {
             PREVIEW_DATA[idx].hp_url = data.hp_url;
+          }
+        }
+
+        // 業種セルを更新（HP取得あり/なし問わず）
+        if (data.industry) {
+          const industryCell = document.getElementById('industry-cell-' + idx);
+          if (industryCell) {
+            industryCell.innerHTML = `<span style="font-size:12px;color:var(--muted);">${data.industry.substring(0, 25)}${data.industry.length > 25 ? '…' : ''}</span>`;
+          }
+          if (PREVIEW_DATA[idx]) {
+            PREVIEW_DATA[idx].industry = data.industry;
           }
 
           // チェックボックスをONに

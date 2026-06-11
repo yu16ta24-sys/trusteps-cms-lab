@@ -119,10 +119,13 @@ class BizmapsImportController extends Controller
                 }
 
                 try {
-                    $hpUrl = $scraper->fetchDetailHpUrl($detailUrl);
+                    $detail = $scraper->fetchDetailInfo($detailUrl);
+                    $hpUrl  = $detail['hp_url']   ?? null;
+                    $industry = $detail['industry'] ?? null;
                     $this->sseEmit([
                         'index'      => $index,
                         'hp_url'     => $hpUrl,
+                        'industry'   => $industry,
                         'detail_url' => $detailUrl,
                         'status'     => $hpUrl ? 'found' : 'not_found',
                     ]);

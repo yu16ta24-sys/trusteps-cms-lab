@@ -9,9 +9,6 @@ class BizmapsScraperService
     private const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
     private const SLEEP_SEC  = 1;
 
-    /**
-     * BIZMAPSの一覧ページから企業情報を取得する
-     */
     public function fetchList(string $startUrl, int $limit = 50, bool $fetchHp = false): array
     {
         $results = [];
@@ -31,7 +28,6 @@ class BizmapsScraperService
 
                 $nextUrl = $this->getNextPageUrl($html, $nextUrl, $page);
                 $page++;
-
                 if ($nextUrl) sleep(self::SLEEP_SEC);
 
             } catch (\Throwable $e) {
@@ -40,13 +36,13 @@ class BizmapsScraperService
             }
         }
 
-        // 詳細ページからHP URL取得
         if ($fetchHp && count($results) > 0) {
             foreach ($results as &$item) {
                 if (empty($item['detail_url'])) continue;
                 try {
-                    $hp = $this->fetchDetailHpUrl($item['detail_url']);
-                    if ($hp) $item['hp_url'] = $hp;
+                    $detail = $this->fetchDetailInfo($item['detail_url']);
+                    if (!empty($detail['hp_url']))    $item['hp_url']    = $detail['hp_url'];
+                    if (!empty($detail['industry']))  $item['industry']  = $detail['industry'];
                 } catch (\Throwable $e) {
                     Log::warning('BizmapsScraper detail error: ' . $e->getMessage(), ['url' => $item['detail_url']]);
                 }
@@ -57,9 +53,6 @@ class BizmapsScraperService
         return $results;
     }
 
-    /**
-     * 一覧ページHTMLから企業情報を抽出する
-     */
     private function parseListPage(string $html): array
     {
         $items = [];
@@ -68,98 +61,81 @@ class BizmapsScraperService
         @$doc->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
         $xpath = new \DOMXPath($doc);
 
-        $listItems = $xpath->query('//ul[contains(@class,"list")]/li | //div[contains(@class,"list")]//li');
+        // results__item クラスのliを対象にする
+        $listItems = $xpath->query('//li[contains(@class,"results__item")]');
 
-        if ($listItems->length === 0) {
-            $listItems = $xpath->query('//a[contains(@href,"/item/")]');
-        }
-
-        foreach ($listItems as $li) {
-            $item = $this->parseListItem($li, $xpath);
-            if ($item) $items[] = $item;
-        }
-
-        // フォールバック：/item/ リンクを直接取得
-        if (empty($items)) {
-            $links = $xpath->query('//a[contains(@href,"/item/")]');
-            $seen  = [];
-            foreach ($links as $link) {
-                $href = $link->getAttribute('href');
-                if (!$href || isset($seen[$href])) continue;
-                $seen[$href] = true;
-
-                $fullHref = strpos($href, 'http') === 0
-                    ? $href
-                    : 'https://biz-maps.com' . $href;
-
-                $rawName   = $link->textContent;
-                $nameLines = array_filter(array_map('trim', explode("\n", $rawName)));
-                $name      = reset($nameLines) ?: '';
-                if (mb_strlen($name) < 2) continue;
-
-                $items[] = [
-                    'name'       => $name,
-                    'address'    => null,
-                    'pref'       => null,
-                    'city'       => null,
-                    'industry'   => null,
-                    'hp_url'     => null,
-                    'detail_url' => $fullHref,
-                ];
+        if ($listItems->length > 0) {
+            foreach ($listItems as $li) {
+                $item = $this->parseResultsItem($li, $xpath);
+                if ($item) $items[] = $item;
             }
+            return $items;
+        }
+
+        // フォールバック：/item/ リンクから取得
+        $links = $xpath->query('//a[contains(@href,"/item/")]');
+        $seen  = [];
+        foreach ($links as $link) {
+            $href = $link->getAttribute('href');
+            if (!$href || isset($seen[$href])) continue;
+            $seen[$href] = true;
+
+            $fullHref  = strpos($href, 'http') === 0 ? $href : 'https://biz-maps.com' . $href;
+            $rawName   = $link->textContent;
+            $nameLines = array_filter(array_map('trim', explode("\n", $rawName)));
+            $name      = reset($nameLines) ?: '';
+            if (mb_strlen($name) < 2) continue;
+
+            $items[] = [
+                'name'       => $name,
+                'address'    => null,
+                'pref'       => null,
+                'city'       => null,
+                'industry'   => null,
+                'hp_url'     => null,
+                'detail_url' => $fullHref,
+            ];
         }
 
         return $items;
     }
 
     /**
-     * li要素から1件分の企業情報を抽出
+     * results__item 構造のliから情報を抽出
      */
-    private function parseListItem(\DOMNode $node, \DOMXPath $xpath): ?array
+    private function parseResultsItem(\DOMNode $li, \DOMXPath $xpath): ?array
     {
-        $nameNode = $xpath->query('.//a[contains(@href,"/item/")]', $node)->item(0);
+        // 会社名
+        $nameNode  = $xpath->query('.//div[contains(@class,"results__name")]', $li)->item(0);
         if (!$nameNode) return null;
-
-        $rawName   = $nameNode->textContent;
-        $nameLines = array_filter(array_map('trim', explode("\n", $rawName)));
+        $nameLines = array_filter(array_map('trim', explode("\n", $nameNode->textContent)));
         $name      = reset($nameLines) ?: '';
-        $detailHref = $nameNode->getAttribute('href');
         if (mb_strlen($name) < 2) return null;
 
-        $detailUrl = strpos($detailHref, 'http') === 0
-            ? $detailHref
-            : 'https://biz-maps.com' . $detailHref;
+        // 詳細URL
+        $linkNode  = $xpath->query('.//a[contains(@href,"/item/")]', $li)->item(0);
+        if (!$linkNode) return null;
+        $href      = $linkNode->getAttribute('href');
+        $detailUrl = strpos($href, 'http') === 0 ? $href : 'https://biz-maps.com' . $href;
 
-        $address  = null;
-        $pref     = null;
-        $city     = null;
-        $industry = null;
+        // results__table から各フィールドを取得
+        $fields  = $this->parseResultsTable($li, $xpath);
+        $address = $fields['住所'] ?? null;
+        $industry = $fields['業種'] ?? null;
 
-        $allText = $node->textContent;
-
-        if (preg_match('/〒\s*\d{3}-\d{4}\s+([^\s]+[都道府県])([^\s]+?(?:市|区|町|村))/u', $allText, $m)) {
-            $pref    = $m[1];
-            $city    = $m[2];
-            $address = trim($m[0]);
-        } elseif (preg_match('/([^\s]+[都道府県])([^\s]+?(?:市|区|町|村))/u', $allText, $m)) {
-            $pref = $m[1];
-            $city = $m[2];
-        }
-
-        $tds = $xpath->query('.//td | .//dd', $node);
-        $prevLabel = '';
-        foreach ($tds as $td) {
-            $text = trim($td->textContent);
-            if ($prevLabel === '業種' && !empty($text) && strpos($text, '〒') === false) {
-                $industry = $text;
-                break;
+        // 住所から都道府県・市区町村を抽出
+        $pref = null;
+        $city = null;
+        if ($address) {
+            if (preg_match('/([^\s]+[都道府県])([^\s]+?(?:市|区|町|村))/u', $address, $m)) {
+                $pref = $m[1];
+                $city = $m[2];
             }
-            $prevLabel = $text;
         }
 
         return [
             'name'       => $name,
-            'address'    => $address,
+            'address'    => $address ? preg_replace('/\s+/u', ' ', trim($address)) : null,
             'pref'       => $pref,
             'city'       => $city,
             'industry'   => $industry,
@@ -169,89 +145,121 @@ class BizmapsScraperService
     }
 
     /**
-     * 詳細ページからHP URLを取得する
+     * results__table から th→td のペアを連想配列で返す
      */
-    public function fetchDetailHpUrl(string $detailUrl): ?string
+    private function parseResultsTable(\DOMNode $li, \DOMXPath $xpath): array
+    {
+        $fields = [];
+        $rows   = $xpath->query('.//table[contains(@class,"results__table")]//tr', $li);
+
+        foreach ($rows as $row) {
+            $th = $xpath->query('.//th', $row)->item(0);
+            $td = $xpath->query('.//td', $row)->item(0);
+            if (!$th || !$td) continue;
+
+            $label = trim($th->textContent);
+            $value = trim(preg_replace('/\s+/u', ' ', $td->textContent));
+            if ($label && $value && $value !== '-') {
+                $fields[$label] = $value;
+            }
+        }
+
+        return $fields;
+    }
+
+    /**
+     * 詳細ページからHP URL + 業種を取得
+     */
+    public function fetchDetailInfo(string $detailUrl): array
     {
         sleep(self::SLEEP_SEC);
         $html = $this->fetch($detailUrl);
-        if (!$html) return null;
+        if (!$html) return [];
 
         $doc = new \DOMDocument();
         @$doc->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
         $xpath = new \DOMXPath($doc);
 
-        // URLラベルの隣のリンクを探す
+        $result = ['hp_url' => null, 'industry' => null];
+
+        // th/td テーブルから全フィールド取得
         $rows = $xpath->query('//tr');
         foreach ($rows as $row) {
             $th = $xpath->query('.//th', $row)->item(0);
-            if (!$th) continue;
-            $label = trim($th->textContent);
-            if (!str_contains($label, 'URL') && !str_contains($label, 'ホームページ')) continue;
+            $td = $xpath->query('.//td', $row)->item(0);
+            if (!$th || !$td) continue;
 
-            $aTag = $xpath->query('.//td//a[@href]', $row)->item(0);
-            if ($aTag) {
-                $href = $aTag->getAttribute('href');
-                if ($href && strpos($href, 'http') === 0 && !str_contains($href, 'biz-maps.com')) {
-                    return $href;
+            $label = trim($th->textContent);
+            $value = trim($td->textContent);
+
+            if (str_contains($label, 'URL') || str_contains($label, 'ホームページ')) {
+                $aTag = $xpath->query('.//a[@href]', $td)->item(0);
+                if ($aTag) {
+                    $href = $aTag->getAttribute('href');
+                    if ($href && str_starts_with($href, 'http') && !str_contains($href, 'biz-maps.com')) {
+                        $result['hp_url'] = $href;
+                    }
+                } elseif (str_starts_with($value, 'http')) {
+                    $result['hp_url'] = $value;
                 }
             }
 
-            $tdText = trim($xpath->query('.//td', $row)->item(0)?->textContent ?? '');
-            if (str_starts_with($tdText, 'http')) {
-                return $tdText;
+            if ($label === '業種' && $value && $value !== '-') {
+                $result['industry'] = $value;
             }
         }
 
-        // お問い合わせURLフィールド以外のリンクを探す
-        $links = $xpath->query('//a[@href]');
-        foreach ($links as $link) {
-            $href     = $link->getAttribute('href');
-            $linkText = trim($link->textContent);
-            if (!$href || !str_starts_with($href, 'http')) continue;
-            if (str_contains($href, 'biz-maps.com')) continue;
-            if (str_contains($href, 'facebook.com')) continue;
-            if (str_contains($href, 'instagram.com')) continue;
-            if (str_contains($href, 'twitter.com') || str_contains($href, 'x.com')) continue;
-            if (str_contains($href, 'google.com')) continue;
-            if (str_contains($href, 'youtube.com')) continue;
-            if (preg_match('/\.(jpg|jpeg|png|gif|pdf)$/i', $href)) continue;
+        // HP URLが見つからない場合は外部リンクから探す
+        if (!$result['hp_url']) {
+            $links = $xpath->query('//a[@href]');
+            foreach ($links as $link) {
+                $href     = $link->getAttribute('href');
+                $linkText = trim($link->textContent);
+                if (!$href || !str_starts_with($href, 'http')) continue;
+                if (str_contains($href, 'biz-maps.com')) continue;
+                if (str_contains($href, 'facebook.com')) continue;
+                if (str_contains($href, 'instagram.com')) continue;
+                if (str_contains($href, 'twitter.com') || str_contains($href, 'x.com')) continue;
+                if (str_contains($href, 'google.com')) continue;
+                if (str_contains($href, 'youtube.com')) continue;
+                if (preg_match('/\.(jpg|jpeg|png|gif|pdf)$/i', $href)) continue;
 
-            // HPリンクテキストなら優先
-            if (preg_match('/HP|ホームページ|WEB|Web|サイト|公式/u', $linkText)) {
-                return $href;
+                if (preg_match('/HP|ホームページ|WEB|Web|サイト|公式/u', $linkText)) {
+                    $result['hp_url'] = $href;
+                    break;
+                }
             }
         }
 
-        return null;
+        return $result;
     }
 
     /**
-     * 次ページURLを取得
+     * 後方互換：HP URLのみ取得
      */
+    public function fetchDetailHpUrl(string $detailUrl): ?string
+    {
+        $info = $this->fetchDetailInfo($detailUrl);
+        return $info['hp_url'] ?? null;
+    }
+
     private function getNextPageUrl(string $html, string $currentUrl, int $currentPage): ?string
     {
         $doc = new \DOMDocument();
         @$doc->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
-        $xpath = new \DOMXPath($doc);
-
+        $xpath    = new \DOMXPath($doc);
         $nextPage = $currentPage + 1;
-        $links = $xpath->query('//a[contains(@href,"page=' . $nextPage . '")]');
+        $links    = $xpath->query('//a[contains(@href,"page=' . $nextPage . '")]');
+
         if ($links->length > 0) {
             $href = $links->item(0)->getAttribute('href');
             if ($href) {
-                return strpos($href, 'http') === 0
-                    ? $href
-                    : 'https://biz-maps.com' . $href;
+                return strpos($href, 'http') === 0 ? $href : 'https://biz-maps.com' . $href;
             }
         }
-
         return null;
     }
 
-    /**
-     * HTTPフェッチ
-     */
     private function fetch(string $url): ?string
     {
         $context = stream_context_create([
