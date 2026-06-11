@@ -95,7 +95,20 @@ class BizmapsImportController extends Controller
         $detailUrlsForSse = array_map(fn($r) => $r['detail_url'], $results);
         session(['bizmaps_detail_urls' => $detailUrlsForSse]);
 
-        return view('bizmaps.preview', compact('results', 'prefecture', 'limit'));
+        // 検索条件をセッションに保存（再取得用）
+        $searchCondition = [
+            'prefecture_id' => $prefectureId,
+            'prefecture_name' => $prefecture->name ?? '',
+            'city_codes'    => $cityCodes,
+            'industry_type' => $industryType,
+            'industry_id'   => $industryId,
+            'limit'         => $limit,
+            'big_ind_name'  => $request->input('big_ind_name', ''),
+            'm_ind_name'    => $request->input('m_ind_name', ''),
+        ];
+        session(['bizmaps_search_condition' => $searchCondition]);
+
+        return view('bizmaps.preview', compact('results', 'prefecture', 'limit', 'searchCondition'));
     }
 
     /**

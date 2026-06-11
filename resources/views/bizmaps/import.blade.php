@@ -87,6 +87,8 @@
             </div>
             <input type="hidden" name="industry_type" id="industryTypeInput" value="pref">
             <input type="hidden" name="industry_id"   id="industryIdInput"   value="">
+            <input type="hidden" name="big_ind_name"  id="bigIndNameInput"   value="">
+            <input type="hidden" name="m_ind_name"    id="mIndNameInput"     value="">
           </div>
         </div>
       </div>
@@ -198,6 +200,9 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
+  const bigIndNameInput = document.getElementById('bigIndNameInput');
+  const mIndNameInput   = document.getElementById('mIndNameInput');
+
   bigIndSelect.addEventListener('change', function () {
     const bigId = this.value;
     mIndSelect.innerHTML = '<option value="">読み込み中...</option>';
@@ -222,18 +227,28 @@ document.addEventListener('DOMContentLoaded', function () {
     const checked = cityBox.querySelectorAll('.city-check:checked').length;
     const bigId   = bigIndSelect.value;
     const mIndId  = mIndSelect.value;
+    const bigOpt  = bigIndSelect.selectedOptions[0];
+    const mOpt    = mIndSelect.selectedOptions[0];
 
     if (mIndId) {
       indTypeInput.value = 'm_ind'; indIdInput.value = mIndId;
+      if (bigIndNameInput) bigIndNameInput.value = bigOpt?.text || '';
+      if (mIndNameInput)   mIndNameInput.value   = mOpt?.text  || '';
       indTypeDisp.textContent = '中業種で絞り込み';
     } else if (bigId) {
       indTypeInput.value = 'big_ind'; indIdInput.value = bigId;
+      if (bigIndNameInput) bigIndNameInput.value = bigOpt?.text || '';
+      if (mIndNameInput)   mIndNameInput.value   = '';
       indTypeDisp.textContent = '大業種で絞り込み';
     } else if (checked > 0) {
       indTypeInput.value = 'city'; indIdInput.value = '';
+      if (bigIndNameInput) bigIndNameInput.value = '';
+      if (mIndNameInput)   mIndNameInput.value   = '';
       indTypeDisp.textContent = `市区町村 ${checked}件で検索`;
     } else if (prefId) {
       indTypeInput.value = 'pref'; indIdInput.value = '';
+      if (bigIndNameInput) bigIndNameInput.value = '';
+      if (mIndNameInput)   mIndNameInput.value   = '';
       indTypeDisp.textContent = '都道府県全体で検索';
     } else {
       indTypeInput.value = 'pref'; indIdInput.value = '';
