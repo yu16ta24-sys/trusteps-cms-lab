@@ -40,7 +40,8 @@
             <textarea id="html" name="html" rows="14" class="form-textarea" placeholder="<li>...商工会データ...</li> を含むHTMLを貼り付け">{{ old('html', $htmlInput ?? '') }}</textarea>
             <p class="form-hint">
                 1600件前後のHTMLは送信前にブラウザ内で軽量データへ前処理します。巨大な生HTMLをそのまま送らないため、nginxの413を避けます。
-                グーペ系URLは複数商工会が同一ドメイン配下に存在するため、URLが有効なら初期チェックONにします。
+                グーペ系URLと、同一県内で同一ドメイン・別パスになっている商工会ページは、URLが有効なら初期チェックONにします。
+                既にsource_recordsへ保存済みの完全一致URLはプレビューから除外し、未保存分だけを再確認できます。
                 URLなしの行には、公式HP確認用のGoogle検索リンクを表示します。
             </p>
             <div class="muted small-text" id="clientParseStatus"></div>
@@ -57,6 +58,9 @@
             <h2 class="section-title">抽出結果サマリー</h2>
             @if (!empty($preview['used_client_rows']))
                 <div class="alert success">大容量HTMLをブラウザ側で前処理してからプレビューしました。</div>
+            @endif
+            @if (($summary['already_saved_excluded'] ?? 0) > 0)
+                <div class="alert info">既にsource_recordsへ保存済みの完全一致URL {{ number_format($summary['already_saved_excluded']) }} 件をプレビューから除外しました。未保存分だけを確認できます。</div>
             @endif
 
             <div class="metric-grid compact">
@@ -79,6 +83,10 @@
                 <div class="metric-card">
                     <div class="metric-value">{{ number_format($summary['duplicate'] ?? 0) }}</div>
                     <div class="metric-label">重複/注意</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">{{ number_format($summary['already_saved_excluded'] ?? 0) }}</div>
+                    <div class="metric-label">保存済み除外</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-value">{{ number_format($summary['pref_count'] ?? 0) }}</div>

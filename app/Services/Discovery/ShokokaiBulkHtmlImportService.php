@@ -49,15 +49,24 @@ class ShokokaiBulkHtmlImportService
      */
     private function buildPreview(array $rows, string $source): array
     {
-        $summary = $this->buildSummary($rows);
-        $prefGroups = $this->buildPrefGroups($rows);
+        $inputTotal = count($rows);
+        $alreadySavedExcluded = collect($rows)->where('already_saved', true)->count();
+        $visibleRows = collect($rows)
+            ->reject(fn ($row) => !empty($row['already_saved']))
+            ->values()
+            ->all();
+
+        $summary = $this->buildSummary($visibleRows);
+        $summary['input_total'] = $inputTotal;
+        $summary['already_saved_excluded'] = $alreadySavedExcluded;
+        $prefGroups = $this->buildPrefGroups($visibleRows);
 
         return [
-            'rows' => $rows,
+            'rows' => $visibleRows,
             'summary' => $summary,
             'pref_groups' => $prefGroups,
             'meta' => [
-                'collector_version' => '0.18.9.2',
+                'collector_version' => '0.18.9.3',
                 'collector_type' => 'shokokai_web_search_bulk_html',
                 'source_name' => '全国商工会WEBサーチ 全件HTML',
                 'created_at' => now()->timestamp,
@@ -113,6 +122,8 @@ class ShokokaiBulkHtmlImportService
             'url' => $urlInfo['url'] ?? null,
             'raw_url' => $href,
             'normalized_domain' => $urlInfo['domain'] ?? null,
+            'url_path_key' => $urlInfo['path_key'] ?? null,
+            'url_identity_key' => $urlInfo['identity_key'] ?? null,
             'status_key' => $statusKey,
             'status_label' => $statusLabel,
             'storable' => $storable,
@@ -151,12 +162,13 @@ class ShokokaiBulkHtmlImportService
 
             if (!empty($row['normalized_domain'])) {
                 $domainKey = (string) $row['normalized_domain'];
-                if (!$this->isGoopeDomain($domainKey) && isset($seenDomains[$domainKey])) {
-                    $withinDuplicateSignals[] = '貼り付けHTML内でドメイン重複';
+                foreach ($seenDomains[$domainKey] ?? [] as $seenRow) {
+                    if ($this->shouldBlockDomainDuplicate($row, $seenRow)) {
+                        $withinDuplicateSignals[] = '貼り付けHTML内でドメイン重複';
+                        break;
+                    }
                 }
-                if (!$this->isGoopeDomain($domainKey)) {
-                    $seenDomains[$domainKey] = true;
-                }
+                $seenDomains[$domainKey][] = $row;
             }
 
             $codeKey = trim((string) ($row['pref_code'] ?? '')) . ':' . trim((string) ($row['shokokai_code'] ?? ''));
@@ -204,12 +216,13 @@ class ShokokaiBulkHtmlImportService
 
             if (!empty($row['normalized_domain'])) {
                 $domainKey = (string) $row['normalized_domain'];
-                if (!$this->isGoopeDomain($domainKey) && isset($seenDomains[$domainKey])) {
-                    $withinDuplicateSignals[] = '貼り付けHTML内でドメイン重複';
+                foreach ($seenDomains[$domainKey] ?? [] as $seenRow) {
+                    if ($this->shouldBlockDomainDuplicate($row, $seenRow)) {
+                        $withinDuplicateSignals[] = '貼り付けHTML内でドメイン重複';
+                        break;
+                    }
                 }
-                if (!$this->isGoopeDomain($domainKey)) {
-                    $seenDomains[$domainKey] = true;
-                }
+                $seenDomains[$domainKey][] = $row;
             }
 
             $codeKey = trim((string) ($row['pref_code'] ?? '')) . ':' . trim((string) ($row['shokokai_code'] ?? ''));
@@ -286,6 +299,8 @@ class ShokokaiBulkHtmlImportService
             'url' => $urlInfo['url'] ?? null,
             'raw_url' => $href,
             'normalized_domain' => $urlInfo['domain'] ?? null,
+            'url_path_key' => $urlInfo['path_key'] ?? null,
+            'url_identity_key' => $urlInfo['identity_key'] ?? null,
             'status_key' => $statusKey,
             'status_label' => $statusLabel,
             'storable' => $storable,
@@ -343,20 +358,30 @@ class ShokokaiBulkHtmlImportService
             $urlKey = mb_strtolower((string) ($row['url'] ?? ''));
             $domainKey = mb_strtolower((string) ($row['normalized_domain'] ?? ''));
 
+            $row['already_saved'] = false;
             if ($urlKey !== '' && $existingUrls->has($urlKey)) {
                 $signals[] = '既存source_recordsにURL登録済み';
+                $row['already_saved'] = true;
+                $row['storable'] = false;
+                $row['default_checked'] = false;
             }
-            if ($domainKey !== '' && !$this->isGoopeDomain($domainKey) && $existingDomains->has($domainKey)) {
-                $signals[] = '既存source_recordsにドメイン登録済み';
+            if ($domainKey !== '' && $existingDomains->has($domainKey) && empty($row['already_saved'])) {
+                $signals[] = '既存source_recordsに同一ドメインあり（URLパス違いなら別商工会ページとして保存可）';
             }
 
             $row['duplicate_signals'] = array_values(array_unique($signals));
-            $blockingSignals = array_filter($signals, function ($signal) use ($domainKey) {
-                if ($this->isGoopeDomain($domainKey) && str_contains((string) $signal, 'ドメイン重複')) {
+            $blockingSignals = array_filter($signals, function ($signal) use ($row) {
+                if (str_contains((string) $signal, '既存source_recordsにURL登録済み')) {
+                    return true;
+                }
+                if (str_contains((string) $signal, '同一ドメインあり')) {
+                    return false;
+                }
+                if (str_contains((string) $signal, 'ドメイン重複') && $this->isAllowedSharedDomainRow($row)) {
                     return false;
                 }
 
-                return true;
+                return !str_contains((string) $signal, '共有ドメイン');
             });
             if (!empty($blockingSignals)) {
                 $row['default_checked'] = false;
@@ -531,12 +556,12 @@ class ShokokaiBulkHtmlImportService
     }
 
     /**
-     * @return array{url:?string,domain:?string,valid:bool,reason:?string}
+     * @return array{url:?string,domain:?string,path_key:?string,identity_key:?string,valid:bool,reason:?string}
      */
     private function normalizeUrl(?string $url): array
     {
         if ($url === null || trim($url) === '') {
-            return ['url' => null, 'domain' => null, 'valid' => false, 'reason' => 'URLなし'];
+            return ['url' => null, 'domain' => null, 'path_key' => null, 'identity_key' => null, 'valid' => false, 'reason' => 'URLなし'];
         }
 
         $url = trim($this->decode($url));
@@ -545,7 +570,7 @@ class ShokokaiBulkHtmlImportService
         }
 
         if (!preg_match('/^https?:\/\//i', $url)) {
-            return ['url' => $url, 'domain' => null, 'valid' => false, 'reason' => 'http/httpsではない'];
+            return ['url' => $url, 'domain' => null, 'path_key' => null, 'identity_key' => null, 'valid' => false, 'reason' => 'http/httpsではない'];
         }
 
         $parts = parse_url($url);
@@ -553,13 +578,22 @@ class ShokokaiBulkHtmlImportService
         $host = preg_replace('/^www\./i', '', $host) ?: '';
 
         if ($host === '' || str_starts_with($host, '.') || str_ends_with($host, '.') || !filter_var($url, FILTER_VALIDATE_URL)) {
-            return ['url' => $url, 'domain' => $host ?: null, 'valid' => false, 'reason' => 'URL形式が不正'];
+            return ['url' => $url, 'domain' => $host ?: null, 'path_key' => null, 'identity_key' => null, 'valid' => false, 'reason' => 'URL形式が不正'];
         }
 
-        return ['url' => $url, 'domain' => $host, 'valid' => true, 'reason' => null];
+        $path = (string) ($parts['path'] ?? '/');
+        if ($path === '') {
+            $path = '/';
+        }
+        $path = '/' . ltrim($path, '/');
+        $pathKey = rtrim($path, '/') ?: '/';
+        $query = (string) ($parts['query'] ?? '');
+        $identityKey = $host . $pathKey . ($query !== '' ? '?' . $query : '');
+
+        return ['url' => $url, 'domain' => $host, 'path_key' => $pathKey, 'identity_key' => $identityKey, 'valid' => true, 'reason' => null];
     }
 
-    /** @param array{url:?string,domain:?string,valid:bool,reason:?string} $urlInfo */
+    /** @param array{url:?string,domain:?string,path_key:?string,identity_key:?string,valid:bool,reason:?string} $urlInfo */
     private function statusKey(?string $rawUrl, array $urlInfo): string
     {
         if ($rawUrl === null || trim($rawUrl) === '') {
@@ -627,6 +661,68 @@ class ShokokaiBulkHtmlImportService
         }
 
         return ['label' => '中', 'reason' => '有効URLだが連合会または共通CMS系の可能性があるため確認推奨。'];
+    }
+
+    /**
+     * 同一ドメインでも、同一県内でURLパス/クエリが異なるものは、
+     * 各商工会ごとの下層ページとして扱う。
+     * 例：kochi-shokokai.jp/mihara/ と kochi-shokokai.jp/otoyo/
+     *
+     * @param array<string,mixed> $row
+     * @param array<string,mixed> $seenRow
+     */
+    private function shouldBlockDomainDuplicate(array $row, array $seenRow): bool
+    {
+        $domain = (string) ($row['normalized_domain'] ?? '');
+        if ($domain === '') {
+            return false;
+        }
+
+        if ($this->isGoopeDomain($domain)) {
+            return false;
+        }
+
+        if ($this->isLikelySharedPrefectureDomain($row, $seenRow)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /** @param array<string,mixed> $row */
+    private function isAllowedSharedDomainRow(array $row): bool
+    {
+        return !empty($row['url_path_key']) && (string) $row['url_path_key'] !== '/';
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @param array<string,mixed> $seenRow
+     */
+    private function isLikelySharedPrefectureDomain(array $row, array $seenRow): bool
+    {
+        $prefCode = (string) ($row['pref_code'] ?? '');
+        $seenPrefCode = (string) ($seenRow['pref_code'] ?? '');
+        if ($prefCode === '' || $seenPrefCode === '' || $prefCode !== $seenPrefCode) {
+            return false;
+        }
+
+        $domain = (string) ($row['normalized_domain'] ?? '');
+        $seenDomain = (string) ($seenRow['normalized_domain'] ?? '');
+        if ($domain === '' || $domain !== $seenDomain) {
+            return false;
+        }
+
+        $path = (string) ($row['url_path_key'] ?? '');
+        $seenPath = (string) ($seenRow['url_path_key'] ?? '');
+        $identity = (string) ($row['url_identity_key'] ?? '');
+        $seenIdentity = (string) ($seenRow['url_identity_key'] ?? '');
+
+        if ($path === '' || $seenPath === '' || $path === '/' || $seenPath === '/') {
+            return false;
+        }
+
+        return $identity !== '' && $seenIdentity !== '' && $identity !== $seenIdentity;
     }
 
     private function isGoopeDomain(?string $domain): bool

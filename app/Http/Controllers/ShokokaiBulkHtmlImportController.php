@@ -130,7 +130,7 @@ class ShokokaiBulkHtmlImportController extends Controller
                     'source_type' => 'directory_source_candidate',
                     'source_url' => $row['url'] ?? null,
                     'raw_json' => [
-                        'collector_version' => '0.18.9.2',
+                        'collector_version' => '0.18.9.3',
                         'collector_type' => 'shokokai_web_search_bulk_html',
                         'origin' => 'shokokai_web_search_bulk_html',
                         'source_name' => '全国商工会WEBサーチ 全件HTML',
@@ -142,6 +142,8 @@ class ShokokaiBulkHtmlImportController extends Controller
                         'organization_type_label' => $row['organization_type_label'] ?? null,
                         'url' => $row['url'] ?? null,
                         'raw_url' => $row['raw_url'] ?? null,
+                        'url_path_key' => $row['url_path_key'] ?? null,
+                        'url_identity_key' => $row['url_identity_key'] ?? null,
                         'postal_code' => $row['postal_code'] ?? null,
                         'address' => $row['address'] ?? null,
                         'tel' => $row['tel'] ?? null,
