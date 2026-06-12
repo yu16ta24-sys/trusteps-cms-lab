@@ -51,6 +51,22 @@ class HpAnalyzerService
         'ブログ', 'blog', '新着情報', '最新情報',
     ];
 
+    // 2階層クロール（Phase 2-B）で追加取得するサブページの探索キーワード（優先度順）
+    private const SUBPAGE_KEYWORDS = [
+        'contact', 'inquiry', 'お問い合わせ', '問い合わせ',
+        'about', 'company', '会社概要', '会社情報', '企業情報',
+        'recruit', '採用', '求人',
+        'works', 'case', 'portfolio', '施工事例', '実績', '事例',
+        'service', 'services', 'サービス',
+        'voice', 'review', 'testimonial', 'お客様の声',
+        'faq', 'よくある質問',
+        'price', 'pricing', '料金', '費用',
+        'staff', 'team', 'member', 'スタッフ',
+    ];
+
+    // サブページ取得の上限件数
+    private const MAX_SUBPAGES = 5;
+
     /**
      * HPを解析してスナップショット・ファクトを保存する
      *
@@ -125,12 +141,52 @@ class HpAnalyzerService
             ];
         }
 
+        // ====== Phase 2-B: 2階層クロール（サブページ取得） ======
+        $topHtml      = $html;
+        $baseUrl      = $fetchResult['final_url'] ?: $url;
+        $crawledUrls  = [];
+        $skippedUrls  = [];
+        $subpageHtmls = [];
+
+        $subpageUrls = $this->extractSubpageUrls($topHtml, $baseUrl, self::MAX_SUBPAGES);
+        foreach ($subpageUrls as $subUrl) {
+            if (count($crawledUrls) >= self::MAX_SUBPAGES) {
+                break;
+            }
+            try {
+                // サブページはタイムアウト短め(10s)・SSL再判定なし
+                $subFetch = $this->fetchHtml($subUrl, 10, false);
+                if (!$subFetch['success'] || empty($subFetch['html'])) {
+                    $skippedUrls[] = $subUrl;
+                    continue;
+                }
+                // JSレンダリングサイトはスキップ
+                if ($this->detectJsRendering($subFetch['html'])) {
+                    $skippedUrls[] = $subUrl;
+                    continue;
+                }
+                $subpageHtmls[] = $subFetch['html'];
+                $crawledUrls[]  = $subUrl;
+            } catch (\Throwable $e) {
+                // 取得失敗は握りつぶしてスキップ
+                $skippedUrls[] = $subUrl;
+            }
+        }
+
+        // トップ＋サブページのHTMLをマージ（既存解析はそのまま、入力HTMLが増えるだけ）
+        $combinedHtml = $topHtml;
+        if (!empty($subpageHtmls)) {
+            $combinedHtml = $topHtml . "\n" . implode("\n", $subpageHtmls);
+        }
+
         // HTML解析（地域キーワード検出のため municipality を読み込んで渡す）
         $company->loadMissing('municipality.prefecture');
-        $factData = $this->analyzeHtml($html, $headers, $url, $fetchResult['final_url'], $fetchResult['ssl_enabled'] ?? null, $company);
+        $factData = $this->analyzeHtml($combinedHtml, $headers, $url, $baseUrl, $fetchResult['ssl_enabled'] ?? null, $company);
         $factData['hp_snapshot_id'] = $snapshot->id;
         $factData['extractor_version'] = self::EXTRACTOR_VERSION;
         $factData['extracted_at'] = now();
+        $factData['hp_crawled_subpages'] = !empty($crawledUrls) ? json_encode($crawledUrls, JSON_UNESCAPED_UNICODE) : null;
+        $factData['hp_subpage_count'] = count($crawledUrls);
 
         // ファクト保存
         $fact = DB::transaction(function () use ($snapshot, $factData) {
@@ -150,7 +206,111 @@ class HpAnalyzerService
             'url_upgraded'     => $fetchResult['url_upgraded'] ?? false,
             'https_url'        => $fetchResult['https_url'] ?? null,
             'https_accessible' => $fetchResult['https_accessible'] ?? false,
+            'crawled_subpages' => $crawledUrls,
+            'skipped_subpages' => $skippedUrls,
         ];
+    }
+
+    /**
+     * トップページHTMLから、追加取得すべきサブページの絶対URLを抽出する。
+     * キーワード優先度順に最大 $maxCount 件を返す。
+     *
+     * @return string[]
+     */
+    private function extractSubpageUrls(string $topHtml, string $topUrl, int $maxCount = 5): array
+    {
+        $host = parse_url($this->normalizeUrl($topUrl), PHP_URL_HOST) ?? '';
+        if ($host === '') {
+            return [];
+        }
+
+        $topNorm = $this->normalizeUrlForCompare($topUrl);
+
+        // 候補URLを収集（同一ドメイン・ファイル除外・アンカー除外・トップ自身除外）
+        // key: 比較用に正規化したURL, value: ['url'=>絶対URL, 'haystack'=>キーワード照合用文字列]
+        $candidates = [];
+        if (preg_match_all('/<a[^>]+href=["\']([^"\']+)["\'][^>]*>/i', $topHtml, $matches)) {
+            foreach ($matches[1] as $hrefRaw) {
+                $href = trim($hrefRaw);
+                if ($href === '' || str_starts_with($href, '#')) {
+                    continue;
+                }
+                $lowPrefix = strtolower($href);
+                if (str_starts_with($lowPrefix, 'mailto:') ||
+                    str_starts_with($lowPrefix, 'tel:') ||
+                    str_starts_with($lowPrefix, 'javascript:')) {
+                    continue;
+                }
+
+                $abs = $this->resolveUrl($href, $topUrl);
+                $abs = preg_replace('/#.*$/', '', $abs); // フラグメント除去
+                if (!is_string($abs) || $abs === '') {
+                    continue;
+                }
+
+                // 同一ドメインのみ
+                $absHost = parse_url($abs, PHP_URL_HOST) ?? '';
+                if ($absHost === '' || strcasecmp($absHost, $host) !== 0) {
+                    continue;
+                }
+
+                // 画像・PDF等のファイルは除外
+                $path = parse_url($abs, PHP_URL_PATH) ?? '';
+                if (preg_match('/\.(jpe?g|png|gif|svg|webp|bmp|ico|pdf|zip|rar|docx?|xlsx?|pptx?|mp4|mov|avi|mp3|css|js)$/i', $path)) {
+                    continue;
+                }
+
+                $absNorm = $this->normalizeUrlForCompare($abs);
+
+                // トップページ自身は除外（取得済み）
+                if ($absNorm === $topNorm) {
+                    continue;
+                }
+
+                if (!isset($candidates[$absNorm])) {
+                    $candidates[$absNorm] = [
+                        'url'      => $abs,
+                        'haystack' => strtolower(urldecode($href) . ' ' . $abs),
+                    ];
+                }
+            }
+        }
+
+        if (empty($candidates)) {
+            return [];
+        }
+
+        // キーワード優先度順に選定
+        $selected = [];   // 比較用正規化URL => 絶対URL
+        foreach (self::SUBPAGE_KEYWORDS as $kw) {
+            if (count($selected) >= $maxCount) {
+                break;
+            }
+            $kwLow = strtolower($kw);
+            foreach ($candidates as $norm => $info) {
+                if (count($selected) >= $maxCount) {
+                    break;
+                }
+                if (isset($selected[$norm])) {
+                    continue;
+                }
+                if (str_contains($info['haystack'], $kwLow)) {
+                    $selected[$norm] = $info['url'];
+                }
+            }
+        }
+
+        return array_values($selected);
+    }
+
+    /**
+     * URL比較用に正規化する（フラグメント除去・末尾スラッシュ除去・小文字化）。
+     */
+    private function normalizeUrlForCompare(string $url): string
+    {
+        $url = $this->normalizeUrl($url);
+        $url = preg_replace('/#.*$/', '', $url);
+        return strtolower(rtrim($url, '/'));
     }
 
     /**
@@ -158,7 +318,7 @@ class HpAnalyzerService
      *
      * @return array{success:bool, html:string|null, headers:array, final_url:string, http_status:int|null, error_type:string|null, error_message:string|null}
      */
-    private function fetchHtml(string $url): array
+    private function fetchHtml(string $url, int $timeout = 15, bool $detectSsl = true): array
     {
         $url = $this->normalizeUrl($url);
 
@@ -170,7 +330,7 @@ class HpAnalyzerService
                     'Accept: text/html,application/xhtml+xml',
                     'Accept-Language: ja,en;q=0.5',
                 ]),
-                'timeout'         => 15,
+                'timeout'         => $timeout,
                 'follow_location' => 1,
                 'max_redirects'   => 5,
                 'ignore_errors'   => true,
@@ -219,8 +379,19 @@ class HpAnalyzerService
             }
 
             // SSL（HTTPS）対応の実態判定。ここに到達した時点で正規化後URLの取得は成功している。
-            $normalizedIsHttps = str_starts_with(strtolower($url), 'https://');
-            $sslInfo           = $this->detectSslEnabled($url, $normalizedIsHttps);
+            // サブページ取得時($detectSsl=false)は追加プローブを行わずスキームのみで簡易判定する。
+            if ($detectSsl) {
+                $normalizedIsHttps = str_starts_with(strtolower($url), 'https://');
+                $sslInfo           = $this->detectSslEnabled($url, $normalizedIsHttps);
+            } else {
+                $isHttps = str_starts_with(strtolower($url), 'https://');
+                $sslInfo = [
+                    'ssl_enabled'      => $isHttps,
+                    'https_accessible' => $isHttps,
+                    'url_upgraded'     => false,
+                    'https_url'        => preg_replace('#^https?://#i', 'https://', $url),
+                ];
+            }
 
             return [
                 'success'          => true,

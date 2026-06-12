@@ -58,6 +58,9 @@ class HpFact extends Model
         'hp_has_company_profile',
         'hp_has_owner_name',
         'hp_has_local_keyword',
+        // 2階層クロール（Phase 2-B）
+        'hp_crawled_subpages',
+        'hp_subpage_count',
     ];
     protected $casts = [
         'has_ec' => 'boolean',
