@@ -9,8 +9,9 @@ class ScoreSuggester
     public const ALGO = 'suggest_v2';
 
     private const DEV_DIFFICULTY = [
-        'lodging'        => 5,
-        'medical'        => 4,
+        'lodging'         => 5,
+        'lodging_leisure' => 5,
+        'medical'         => 4,
         'food'           => 4,
         'beauty'         => 4,
         'real_estate'    => 4,
@@ -30,24 +31,25 @@ class ScoreSuggester
     ];
 
     private const SELF_UPDATE_FIT = [
-        'construction'   => 5,
-        'exterior_paint' => 5,
-        'professional'   => 4,
-        'welfare_care'   => 4,
-        'btob_service'   => 3,
+        'construction'    => 5,
+        'exterior_paint'  => 5,
+        'professional'    => 4,
+        'welfare_care'    => 4,
+        'btob_service'    => 3,
         'child_education' => 3,
-        'culture_event'  => 3,
-        'food'           => 3,
-        'beauty'         => 3,
-        'therapy'        => 3,
-        'manufacturing'  => 2,
-        'local_service'  => 2,
-        'retail'         => 2,
-        'automotive'     => 2,
-        'real_estate'    => 2,
-        'agriculture'    => 2,
-        'medical'        => 2,
-        'lodging'        => 2,
+        'culture_event'   => 3,
+        'food'            => 3,
+        'beauty'          => 3,
+        'therapy'         => 3,
+        'manufacturing'   => 2,
+        'local_service'   => 2,
+        'retail'          => 2,
+        'automotive'      => 2,
+        'real_estate'     => 2,
+        'agriculture'     => 2,
+        'medical'         => 2,
+        'lodging'         => 2,
+        'lodging_leisure' => 2,
     ];
 
     /**
@@ -211,19 +213,37 @@ class ScoreSuggester
      */
     private function byIndustry(Company $company, array $map, string $note): array
     {
-        $slug = $company->industry?->slug;
-
-        if ($slug === null || !array_key_exists($slug, $map)) {
-            return $this->none('業種未設定または未対応業種のため自動提案なし。');
+        $industry = $company->industry;
+        if (!$industry) {
+            return $this->none('業種未設定のため自動提案なし。');
         }
 
-        return [
-            'value'      => $map[$slug],
-            'confidence' => '0.3',
-            'basis'      => 'auto',
-            'drivers'    => ['industry:' . $slug],
-            'note'       => $note,
-        ];
+        $slug = $industry->slug;
+
+        // 直接マッチ
+        if (array_key_exists($slug, $map)) {
+            return [
+                'value'      => $map[$slug],
+                'confidence' => '0.3',
+                'basis'      => 'auto',
+                'drivers'    => ['industry:' . $slug],
+                'note'       => $note,
+            ];
+        }
+
+        // サブカテゴリの場合は親スラッグにフォールバック
+        $parentSlug = $industry->parent?->slug;
+        if ($parentSlug !== null && array_key_exists($parentSlug, $map)) {
+            return [
+                'value'      => $map[$parentSlug],
+                'confidence' => '0.3',
+                'basis'      => 'auto',
+                'drivers'    => ['industry:' . $slug],
+                'note'       => $note,
+            ];
+        }
+
+        return $this->none('業種未設定または未対応業種のため自動提案なし。');
     }
 
     private function byPortalDomain(Company $company): array
