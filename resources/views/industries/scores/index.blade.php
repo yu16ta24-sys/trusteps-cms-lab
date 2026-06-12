@@ -4,10 +4,6 @@
 <main class="content isc">
 <style>
 .isc { display:grid; gap:20px; }
-.isc-topbar { display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px; }
-.isc-kicker { font-size:11px; font-weight:900; color:var(--muted); letter-spacing:.1em; text-transform:uppercase; margin-bottom:6px; }
-.isc-title { margin:0; font-size:28px; font-weight:950; letter-spacing:-.03em; color:var(--text); }
-.isc-sub { margin:5px 0 0; font-size:13px; color:var(--muted); }
 .isc-parent-card { background:#fff; border:1px solid var(--line); border-radius:20px; overflow:hidden; }
 .isc-parent-head { padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; cursor:pointer; user-select:none; }
 .isc-parent-head:hover { background:#f8fafc; }
@@ -46,28 +42,22 @@
 .isc-score-cell--amber { background:#fef3c7 !important; }
 .isc-obs { font-size:10px; color:#6b7280; margin-top:3px; white-space:nowrap; line-height:1.3; }
 .isc-obs--ref { color:#d1d5db; }
-.isc-filter { display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:#fff; border:1px solid var(--line); border-radius:16px; padding:10px 14px; }
-.isc-filter-label { font-size:10px; font-weight:900; letter-spacing:.08em; color:var(--muted); text-transform:uppercase; white-space:nowrap; }
-.isc-filter-regions { display:flex; gap:5px; flex-wrap:wrap; flex:1; }
-.isc-filter-btn { padding:5px 12px; border-radius:999px; font-size:12px; font-weight:700; color:#6b7280; background:#f3f4f6; text-decoration:none; transition:background .12s,color .12s; white-space:nowrap; }
-.isc-filter-btn:hover { background:#e5e7eb; color:#111827; }
-.isc-filter-btn.active { background:#1f5eff; color:#fff; }
 .isc-pref-select { height:32px; border:1px solid #d9e2ee; border-radius:8px; padding:0 8px; font-size:12px; color:var(--text); background:#fff; cursor:pointer; }
 .isc-filter-clear { font-size:11px; font-weight:900; color:#ef4444; text-decoration:none; white-space:nowrap; padding:4px 8px; border-radius:6px; background:#fee2e2; }
 .isc-filter-clear:hover { background:#fecaca; }
 </style>
 
-<div class="isc-topbar">
-    <div>
-        <div class="isc-kicker">Industry Scores · Layer 1</div>
-        <h1 class="isc-title">業界スコア</h1>
-        <p class="isc-sub">業種ごとのCMS事業適性・参入余白を仮説値として管理する。大分類ごとに編集モードで一括入力できる。</p>
+<div class="page-header">
+    <div class="page-header-left">
+        <p class="page-kicker">Industry Scores · Layer 1</p>
+        <h1 class="page-title">業界スコア</h1>
+        <p class="page-subtitle">業種ごとのCMS事業適性・参入余白を仮説値として管理する。大分類ごとに編集モードで一括入力できる。</p>
     </div>
-    <div style="display:flex;gap:10px;align-items:center;">
+    <div class="page-header-right">
         <div class="mini-card" style="text-align:center;padding:12px 18px;">
-            <div style="font-size:10px;font-weight:900;letter-spacing:.08em;color:var(--muted);">AXES</div>
-            <div style="font-size:24px;font-weight:950;margin-top:2px;">{{ $axes->count() }}</div>
-            <div style="font-size:11px;color:var(--muted);">有効軸</div>
+            <div class="section-label">AXES</div>
+            <div style="font-size:24px;font-weight:950;margin-top:4px;">{{ $axes->count() }}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">有効軸</div>
         </div>
         <a class="button light small" href="{{ route('industries.scores.export') }}">CSVエクスポート</a>
         <a class="button light small" href="{{ route('industries.scores.import') }}">CSVインポート</a>
@@ -80,18 +70,16 @@
 @endif
 
 {{-- 地域フィルター --}}
-<div class="isc-filter">
-    <span class="isc-filter-label">実績絞り込み</span>
-    <div class="isc-filter-regions">
-        <a href="{{ route('industries.scores.index') }}"
-           class="isc-filter-btn{{ (!$selectedRegionId && !$selectedPrefectureId) ? ' active' : '' }}">全国</a>
-        @foreach($regions as $region)
-            <a href="{{ route('industries.scores.index', ['region_id' => $region->id]) }}"
-               class="isc-filter-btn{{ $selectedRegionId === $region->id ? ' active' : '' }}">
-                {{ $region->name }}
-            </a>
-        @endforeach
-    </div>
+<div class="filter-bar">
+    <span class="section-label">実績絞り込み</span>
+    <a href="{{ route('industries.scores.index') }}"
+       class="filter-pill{{ (!$selectedRegionId && !$selectedPrefectureId) ? ' active' : '' }}">全国</a>
+    @foreach($regions as $region)
+        <a href="{{ route('industries.scores.index', ['region_id' => $region->id]) }}"
+           class="filter-pill{{ $selectedRegionId === $region->id ? ' active' : '' }}">
+            {{ $region->name }}
+        </a>
+    @endforeach
     <select class="isc-pref-select"
             onchange="this.value ? location.href='{{ route('industries.scores.index') }}?prefecture_id='+this.value : location.href='{{ route('industries.scores.index') }}'">
         <option value="">都道府県▾</option>

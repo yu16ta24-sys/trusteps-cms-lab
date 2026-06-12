@@ -52,7 +52,6 @@
 .cs-meta { margin:5px 0 0; font-size:13px; color:var(--muted); display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 .cs-header-nav { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:14px; padding-top:14px; border-top:1px solid var(--line); }
 .cs-nav-label { font-size:11px; color:var(--muted); font-weight:900; }
-.cs-sec-label { font-size:10px; font-weight:900; color:var(--muted); letter-spacing:.1em; text-transform:uppercase; margin-bottom:12px; }
 .cs-hp-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; }
 .cs-hp-item { padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:#f8fafc; }
 .cs-hp-k { font-size:10px; color:var(--muted); font-weight:900; margin-bottom:5px; }
@@ -124,7 +123,7 @@
         @if ($company->primaryDomain)
             <form method="POST" action="{{ route('companies.analyze', $company) }}" style="margin-left:auto;">
                 @csrf
-                <button class="button small" type="submit" style="background:#0f172a;box-shadow:none;">HP解析 → スコア自動保存</button>
+                <button class="button small dark" type="submit">HP解析 → スコア自動保存</button>
             </form>
         @endif
     </div>
@@ -148,7 +147,7 @@
 {{-- HP解析結果 --}}
 <section class="card">
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
-        <div class="cs-sec-label" style="margin:0">HP解析（Layer 2）</div>
+        <div class="section-label">HP解析（Layer 2）</div>
         @if ($latestFact)
             <span style="font-size:11px; color:var(--muted);">{{ optional($latestFact->extracted_at)->format('Y-m-d H:i') }}</span>
         @endif
@@ -234,7 +233,7 @@
 {{-- 4軸スコア --}}
 <section class="card">
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
-        <div class="cs-sec-label" style="margin:0">4軸スコア（Layer 2）</div>
+        <div class="section-label">4軸スコア（Layer 2）</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <span style="font-size:11px;color:var(--muted);">機会 {{ $opportunityScore }}/10 · リスク {{ $riskScore }}/10 · 採点 {{ $scoredAxesCount }}/4</span>
             <span class="badge {{ $scoreJudgmentClass }}">{{ $scoreJudgment }}</span>
@@ -328,7 +327,7 @@
 {{-- kill_flags --}}
 <section class="card">
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
-        <div class="cs-sec-label" style="margin:0">kill_flags</div>
+        <div class="section-label">kill_flags</div>
         <span class="badge {{ $company->is_killed ? 'red' : 'green' }}">is_killed={{ $company->is_killed ? 'true' : 'false' }}</span>
     </div>
     <div class="table-wrap">
@@ -382,7 +381,7 @@
 
 {{-- company基本情報 --}}
 <section class="card">
-    <div class="cs-sec-label">company基本情報</div>
+    <p class="section-label" style="margin-bottom:12px;">company基本情報</p>
     <div class="cs-kv-grid">
         <div class="cs-kv"><div class="cs-kv-k">status</div><div class="cs-kv-v"><span class="badge gray">{{ $company->status }}</span></div></div>
         <div class="cs-kv"><div class="cs-kv-k">display_name</div><div class="cs-kv-v">{{ $company->display_name }}</div></div>
@@ -396,7 +395,7 @@
     </div>
     @if ($company->mergedChildren->count())
         <div style="margin-top:14px;">
-            <div class="cs-sec-label">このcompanyに統合されたcompany</div>
+            <p class="section-label" style="margin-bottom:8px;">このcompanyに統合されたcompany</p>
             <div class="table-wrap">
                 <table>
                     <thead><tr><th>ID</th><th>display_name</th><th>status</th><th></th></tr></thead>
@@ -418,7 +417,7 @@
 
 {{-- domains --}}
 <section class="card">
-    <div class="cs-sec-label">domains</div>
+    <p class="section-label" style="margin-bottom:12px;">domains</p>
     <div class="table-wrap">
         <table>
             <thead><tr><th>ID</th><th>url</th><th>normalized_domain</th><th>role</th><th>primary</th></tr></thead>
@@ -441,7 +440,7 @@
 
 {{-- source links --}}
 <section class="card">
-    <div class="cs-sec-label">source links</div>
+    <p class="section-label" style="margin-bottom:12px;">source links</p>
     <div class="table-wrap">
         <table>
             <thead><tr><th>source_record_id</th><th>match_type</th><th>source_type</th><th>domain</th><th></th></tr></thead>

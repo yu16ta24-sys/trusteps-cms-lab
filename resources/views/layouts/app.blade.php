@@ -407,7 +407,7 @@
         .section-label {
             margin: 0;
             color: var(--muted);
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 900;
             letter-spacing: .08em;
             text-transform: uppercase;
@@ -793,6 +793,44 @@
         details.help-panel[open] {
             box-shadow: var(--shadow-soft);
         }
+
+        /* v0.17.6 shared layout primitives */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .page-header-left { flex: 1; min-width: 0; }
+        .page-header-right { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .filter-bar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .filter-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 14px;
+            border-radius: 99px;
+            font-size: 12px;
+            font-weight: 700;
+            border: 1px solid var(--line);
+            background: var(--card);
+            color: var(--text);
+            text-decoration: none;
+            cursor: pointer;
+            transition: background .12s, color .12s, border-color .12s;
+            white-space: nowrap;
+        }
+        .filter-pill:hover { background: #f3f4f6; border-color: #b8c7da; }
+        .filter-pill.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .button.dark { background: #0f172a; color: #fff; box-shadow: none; border-color: rgba(15,23,42,.08); }
+        .button.dark:hover { background: #1e293b; }
 
         @media (max-width: 900px) {
             .auth-shell { grid-template-columns: 1fr; margin: 24px auto; }
