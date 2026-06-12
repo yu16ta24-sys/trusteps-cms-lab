@@ -41,6 +41,38 @@ class ScoreSuggester
         'rank_a_provisional'            => '高評価だがデータ不足のため要確認',
     ];
 
+    /** サブスコアキー → 日本語ラベル（axis_detail 表示用） */
+    private const SUBSCORE_LABELS = [
+        'site_weakness_score'               => 'サイト技術的弱点',
+        'content_gap_score'                 => 'コンテンツ不足',
+        'conversion_gap_score'              => '問い合わせ導線の弱さ',
+        'freshness_gap_score'               => '更新停滞度',
+        'comparison_material_gap_score'     => '比較材料の不足',
+        'improvement_room_score'            => '改善余地',
+        'trust_hp_importance_score'         => '公式HP信用重要度',
+        'portal_independence_score'         => 'ポータル非依存度',
+        'customer_research_depth_score'     => '比較検討の深さ',
+        'conversion_value_score'            => '問い合わせ単価価値',
+        'market_white_space_score'          => '市場余白',
+        'comparison_leverage_score'         => '比較優位の作りやすさ',
+        'simple_site_fit_score'             => 'シンプルサイト適合',
+        'low_function_complexity_score'     => '機能シンプルさ',
+        'addon_fit_score'                   => '追加機能提案余地',
+        'low_regulation_risk_score'         => '規制リスクの低さ',
+        'migration_ease_score'              => '移行容易性',
+        'sales_reachability_score'          => '営業到達性',
+        'contact_route_score'               => '連絡経路の豊富さ',
+        'decision_distance_score'           => '意思決定者との距離',
+        'company_size_fit_score'            => '企業規模適合',
+        'local_business_score'              => '地域密着度',
+        'update_neta_score'                 => '更新ネタの豊富さ',
+        'self_update_fit_score'             => '自走更新適合',
+        'update_literacy_score'             => '更新リテラシー',
+        'recurring_content_potential_score' => '継続コンテンツ余地',
+        'recruit_content_need_score'        => '採用コンテンツ需要',
+        'maintenance_need_score'            => '保守需要',
+    ];
+
     private const DEV_DIFFICULTY = [
         'lodging'         => 1,
         'lodging_leisure' => 1,
@@ -581,6 +613,19 @@ class ScoreSuggester
             ],
         ];
 
+        // === 各軸の詳細内訳（sub_scores / factors / narrative）を付与 ===
+        $axisDetails = $this->buildAxisDetailsV2(
+            $s,
+            $hasHp ? $hpFact : null,
+            $hasHp,
+            $comparisonLeverage,
+            compact('opportunity', 'impact', 'feasibility', 'reachability', 'recurring'),
+            $capsApplied
+        );
+        foreach ($axisDetails as $axisKey => $detail) {
+            $axes[$axisKey]['reason_json']['axis_detail'] = $detail;
+        }
+
         return [
             'score_version'  => 'scoring_v1.0',
             'axes'           => $axes,
@@ -865,6 +910,338 @@ class ScoreSuggester
             'recruit_content_need_score'        => $n,
             'maintenance_need_score'            => $n,
         ];
+    }
+
+    // =========================================================
+    // === axis_detail (sub_scores / factors / narrative) ======
+    // =========================================================
+
+    /**
+     * 各軸の詳細内訳を構築する。
+     * sub_scores（重みと寄与）/ positive_factors / negative_factors /
+     * weighted_total / gate_applied / flag_cap_applied / narrative。
+     *
+     * @param array        $finalScores ['opportunity'=>..,'impact'=>..,..] ゲート/キャップ後
+     * @return array<string, array> axisKey('opportunity_score'等) => detail
+     */
+    private function buildAxisDetailsV2(
+        array $s,
+        ?object $hpFact,
+        bool $hasHp,
+        float $comparisonLeverage,
+        array $finalScores,
+        array $capsApplied
+    ): array {
+        $g         = fn (string $k): float => (float) ($s[$k] ?? 3.0);
+        $isNeutral = fn (float $v): bool => abs($v - 3.0) < 0.001;
+
+        // suggestV2() の加重式と完全一致させること
+        $weightMaps = [
+            'opportunity_score' => [
+                'site_weakness_score' => 0.40, 'content_gap_score' => 0.20, 'conversion_gap_score' => 0.15,
+                'freshness_gap_score' => 0.10, 'comparison_material_gap_score' => 0.10, 'improvement_room_score' => 0.05,
+            ],
+            'impact_score' => [
+                'trust_hp_importance_score' => 0.25, 'portal_independence_score' => 0.20, 'customer_research_depth_score' => 0.20,
+                'conversion_value_score' => 0.15, 'market_white_space_score' => 0.10, 'comparison_leverage_score' => 0.10,
+            ],
+            'feasibility_score' => [
+                'simple_site_fit_score' => 0.30, 'low_function_complexity_score' => 0.30, 'addon_fit_score' => 0.20,
+                'low_regulation_risk_score' => 0.10, 'migration_ease_score' => 0.10,
+            ],
+            'reachability_score' => [
+                'sales_reachability_score' => 0.25, 'contact_route_score' => 0.25, 'decision_distance_score' => 0.25,
+                'company_size_fit_score' => 0.15, 'local_business_score' => 0.10,
+            ],
+            'recurring_score' => [
+                'update_neta_score' => 0.20, 'self_update_fit_score' => 0.15, 'update_literacy_score' => 0.10,
+                'recurring_content_potential_score' => 0.20, 'recruit_content_need_score' => 0.15, 'maintenance_need_score' => 0.20,
+            ],
+        ];
+
+        $result = [];
+        foreach ($weightMaps as $axisKey => $weights) {
+            $short = str_replace('_score', '', $axisKey);
+            $score = (float) ($finalScores[$short] ?? 3.0);
+
+            $subScores = [];
+            $weighted  = 0.0;
+            foreach ($weights as $sk => $w) {
+                $val     = $sk === 'comparison_leverage_score' ? round($comparisonLeverage, 2) : $g($sk);
+                $contrib = round($val * $w, 3);
+                $weighted += $contrib;
+                $subScores[] = [
+                    'key'          => str_replace('_score', '', $sk),
+                    'label'        => self::SUBSCORE_LABELS[$sk] ?? $sk,
+                    'score'        => round($val, 2),
+                    'weight'       => $w,
+                    'contribution' => $contrib,
+                    'is_neutral'   => $isNeutral($val),
+                ];
+            }
+
+            [$pos, $neg]   = $this->axisFactorsV2($axisKey, $g, $hpFact, $hasHp);
+            $neutralLabels = array_values(array_map(
+                fn ($r) => $r['label'],
+                array_filter($subScores, fn ($r) => $r['is_neutral'])
+            ));
+
+            $flagCap = false;
+            foreach ($capsApplied as $c) {
+                if (($c['axis'] ?? null) === $axisKey && isset($c['flag'])) {
+                    $flagCap = true;
+                }
+            }
+
+            $gateApplied = match ($axisKey) {
+                'opportunity_score'  => $score < 2.0,
+                'impact_score'       => $score < 2.5,
+                'feasibility_score'  => $score < 2.5,
+                'reachability_score' => $score < 2.0,
+                default              => false,
+            };
+
+            $result[$axisKey] = [
+                'sub_scores'       => $subScores,
+                'positive_factors' => $pos,
+                'negative_factors' => $neg,
+                'weighted_total'   => round($weighted, 2),
+                'gate_applied'     => $gateApplied,
+                'flag_cap_applied' => $flagCap,
+                'narrative'        => $this->axisNarrativeV2($axisKey, $score, $g, $hpFact, $hasHp, $pos, $neg, $neutralLabels),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * 軸ごとの加点要因 / 減点要因をルールベースで生成する。
+     * @return array{0: array<int,array>, 1: array<int,array>} [positive, negative]
+     */
+    private function axisFactorsV2(string $axisKey, callable $g, ?object $hpFact, bool $hasHp): array
+    {
+        $pos = [];
+        $neg = [];
+        $P   = function (string $label, float $c, string $src) use (&$pos): void {
+            $pos[] = ['label' => $label, 'contribution' => round($c, 2), 'source' => $src];
+        };
+        $N   = function (string $label, float $c, string $src) use (&$neg): void {
+            $neg[] = ['label' => $label, 'contribution' => round($c, 2), 'source' => $src];
+        };
+        $hp = ($hasHp && $hpFact) ? $hpFact : null;
+
+        switch ($axisKey) {
+            case 'opportunity_score':
+                if ($hp) {
+                    if (!$hp->ssl_enabled) {
+                        $P('SSL未対応', 1.5 * 0.40, 'site_weakness');
+                    } else {
+                        $N('SSL対応済み（改善余地なし）', -1.5 * 0.40, 'site_weakness');
+                    }
+                    if (!$hp->mobile_friendly) {
+                        $P('スマホ非対応', 1.5 * 0.40, 'site_weakness');
+                    } else {
+                        $N('スマホ対応済み（改善余地なし）', -1.5 * 0.40, 'site_weakness');
+                    }
+                    if (in_array($hp->cms_type, ['unknown', 'static', null], true)) {
+                        $P('静的HTML/CMS未使用', 1.0 * 0.40, 'site_weakness');
+                    }
+                    $d = $hp->hp_update_staleness_days;
+                    if ($d !== null && $d > 730) {
+                        $P("更新{$d}日以上停止", 0.20, 'freshness_gap');
+                    } elseif ($d !== null && $d > 365) {
+                        $P("更新{$d}日以上停止", 0.10, 'freshness_gap');
+                    }
+                    if (!$hp->has_contact_form && !$hp->has_public_email) {
+                        $P('問い合わせ導線なし', (1.5 + 1.5) * 0.15, 'conversion_gap');
+                    }
+                    if ($hp->hp_word_count !== null && $hp->hp_word_count < 300) {
+                        $P("情報量が少ない（{$hp->hp_word_count}文字）", 0.20, 'content_gap');
+                    }
+                    if ($hp->hp_has_news) {
+                        $N('お知らせセクションあり', -0.10, 'freshness_gap');
+                    }
+                }
+                break;
+
+            case 'impact_score':
+                $ti  = $g('trust_hp_importance_score');
+                $tiD = (int) round($ti);
+                if ($ti >= 4) {
+                    $P("公式HPの信用重要度が高い業種（{$tiD}点）", ($ti - 3) * 0.25, 'trust_hp_importance');
+                } elseif ($ti < 3) {
+                    $N('HP信用重要度が低い業種', ($ti - 3) * 0.25, 'trust_hp_importance');
+                }
+                $pi  = $g('portal_independence_score');
+                $piD = (int) round($pi);
+                if ($pi >= 4) {
+                    $P("ポータル依存が低い（portal_independence={$piD}）", ($pi - 3) * 0.20, 'portal_independence');
+                } elseif ($pi < 3) {
+                    $N('ポータル依存が高い', ($pi - 3) * 0.20, 'portal_independence');
+                }
+                $crd  = $g('customer_research_depth_score');
+                $crdD = (int) round($crd);
+                if ($crd >= 4) {
+                    $P("比較検討されやすい業種（{$crdD}点）", ($crd - 3) * 0.20, 'customer_research_depth');
+                }
+                $cv  = $g('conversion_value_score');
+                $cvD = (int) round($cv);
+                if ($cv >= 4) {
+                    $P("問い合わせ1件の価値が高い業種（{$cvD}点）", ($cv - 3) * 0.15, 'conversion_value');
+                }
+                $mw  = $g('market_white_space_score');
+                $mwD = (int) round($mw);
+                if ($mw >= 4) {
+                    $P("市場余白が大きい業種（{$mwD}点）", ($mw - 3) * 0.10, 'market_white_space');
+                }
+                break;
+
+            case 'feasibility_score':
+                if ($hp) {
+                    if (!$hp->has_ec && !$hp->has_reservation) {
+                        $P('予約・EC機能不要', 0.30, 'low_function_complexity');
+                    }
+                    if ($hp->has_ec) {
+                        $N('EC機能あり（制作難易度上昇）', -0.30, 'low_function_complexity');
+                    }
+                    if ($hp->has_reservation) {
+                        $N('予約機能あり（制作難易度上昇）', -0.30, 'low_function_complexity');
+                    }
+                    if ($hp->cms_type === 'wordpress') {
+                        $P('WordPress使用（移行しやすい）', 0.20, 'migration_ease');
+                    }
+                }
+                $af = $g('addon_fit_score');
+                if ($af >= 4) {
+                    $P('追加機能提案しやすい業種', ($af - 3) * 0.20, 'addon_fit');
+                }
+                break;
+
+            case 'reachability_score':
+                $crr = $g('contact_route_score');
+                if ($crr >= 4) {
+                    $P('メール/フォームで連絡可能', ($crr - 3) * 0.25, 'contact_route');
+                } elseif (abs($crr - 1.0) < 0.001) {
+                    $N('連絡手段なし', (1 - 3) * 0.25, 'contact_route');
+                } elseif ($crr <= 2) {
+                    $N('連絡手段が限定的', ($crr - 3) * 0.25, 'contact_route');
+                }
+                $sr = $g('sales_reachability_score');
+                if ($sr >= 4) {
+                    $P('営業到達しやすい業種', ($sr - 3) * 0.25, 'sales_reachability');
+                }
+                break;
+
+            case 'recurring_score':
+                $un = $g('update_neta_score');
+                if ($un >= 4) {
+                    $P('更新ネタが豊富な業種', ($un - 3) * 0.20, 'update_neta');
+                } elseif ($un < 3) {
+                    $N('更新ネタが少ない業種', ($un - 3) * 0.20, 'update_neta');
+                }
+                $suf = $g('self_update_fit_score');
+                if ($suf >= 4) {
+                    $P('自走更新との相性が良い', ($suf - 3) * 0.15, 'self_update_fit');
+                }
+                $mn = $g('maintenance_need_score');
+                if ($mn >= 4) {
+                    $P('保守契約提案しやすい', ($mn - 3) * 0.20, 'maintenance_need');
+                }
+                break;
+        }
+
+        return [$pos, $neg];
+    }
+
+    /**
+     * 軸ごとの判定コメント（narrative）をルールベースで生成する。
+     */
+    private function axisNarrativeV2(
+        string $axisKey,
+        float $score,
+        callable $g,
+        ?object $hpFact,
+        bool $hasHp,
+        array $pos,
+        array $neg,
+        array $neutralLabels
+    ): string {
+        $hp    = ($hasHp && $hpFact) ? $hpFact : null;
+        $parts = [];
+
+        switch ($axisKey) {
+            case 'opportunity_score':
+                if (count($pos) >= 2) {
+                    $parts[] = "このHPは{$pos[0]['label']}・{$pos[1]['label']}の点で明確な弱点があり、リニューアル提案の根拠として使いやすい状態です。";
+                } elseif (count($pos) === 1) {
+                    $parts[] = "このHPは{$pos[0]['label']}という弱点があり、改善提案の入口になります。";
+                } else {
+                    $parts[] = 'このHPに大きな技術的弱点は検出されませんでした。提案には別角度の根拠が必要です。';
+                }
+                if ($g('conversion_gap_score') >= 4) {
+                    $parts[] = '問い合わせ導線も弱く、改善後の成果が出やすい構造です。';
+                }
+                break;
+
+            case 'impact_score':
+                $ti  = $g('trust_hp_importance_score');
+                $pi  = $g('portal_independence_score');
+                $crd = $g('customer_research_depth_score');
+                if ($ti >= 4 && $pi >= 4) {
+                    $parts[] = 'HP改善が直接集客・信用向上につながる業種構造です。';
+                }
+                if ($crd >= 4) {
+                    $parts[] = '顧客が比較検討する業種のため、HP上の情報充実が意思決定に効きます。';
+                }
+                if ($pi < 3) {
+                    $parts[] = 'ポータル依存が高く、HP改善の集客効果は限定的な可能性があります。';
+                }
+                if (empty($parts)) {
+                    $parts[] = 'この業種ではHP改善のインパクトは中程度です。';
+                }
+                break;
+
+            case 'feasibility_score':
+                $complex = $hp && ($hp->has_ec || $hp->has_reservation);
+                if (!$complex) {
+                    $parts[] = '会社案内・事例・お知らせ・採用・問い合わせで完結する案件構造です。YUTAさんが得意とする領域です。';
+                } else {
+                    $parts[] = '予約/EC機能が絡む可能性があり、スコープ確認が必要です。';
+                }
+                break;
+
+            case 'reachability_score':
+                $crr = $g('contact_route_score');
+                if ($crr >= 4) {
+                    $parts[] = 'メール/フォームで直接アプローチ可能です。';
+                } elseif ($crr <= 2) {
+                    $parts[] = '連絡手段が限定的なため、別途アプローチ方法の検討が必要です。';
+                } else {
+                    $parts[] = '連絡手段は一定あり、アプローチ可能です。';
+                }
+                if (in_array('意思決定者との距離', $neutralLabels, true)) {
+                    $parts[] = '意思決定者との距離は目視確認推奨です。';
+                }
+                break;
+
+            case 'recurring_score':
+                $un = $g('update_neta_score');
+                if ($score >= 4 || $un >= 4) {
+                    $parts[] = '施工事例・採用・お知らせ等の継続更新ネタが見込める業種です。保守・更新契約につなげやすい案件です。';
+                } elseif ($un < 3) {
+                    $parts[] = '更新ネタが少なく、単発制作で終わる可能性があります。保守提案時は工夫が必要です。';
+                } else {
+                    $parts[] = '継続更新の余地は中程度です。';
+                }
+                break;
+        }
+
+        if (!empty($neutralLabels) && $axisKey !== 'reachability_score') {
+            $parts[] = '※ ' . implode('・', array_slice($neutralLabels, 0, 3)) . 'は未取得のため中立値（3.0）。目視確認でスコアが変動する可能性があります。';
+        }
+
+        return implode('', $parts);
     }
 
 }
