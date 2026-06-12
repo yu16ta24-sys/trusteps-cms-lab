@@ -145,11 +145,9 @@ class CompanyController extends Controller
                 'industry',
                 'municipality.prefecture',
                 'primaryDomain',
-                'scores'                => fn ($scoreQuery) => $scoreQuery->where('algo_version', 'v1'),
                 'latestOutreachContact',
                 'scoreSummary',
             ])
-            ->withCount(['sourceLinks', 'domains', 'killFlags'])
             ->where('is_killed', false)
             ->where('status', '!=', 'merged');
 
@@ -197,60 +195,11 @@ class CompanyController extends Controller
 
         $companies = $all
             ->map(function (Company $company) use ($latestFactsByDomainId) {
-                $scores = $company->scores->keyBy('axis');
-
-                $hpWeakness = optional($scores->get('hp_weakness'))->value;
-                $selfUpdateFit = optional($scores->get('self_update_fit'))->value;
-                $devDifficulty = optional($scores->get('dev_difficulty'))->value;
-                $portalDependence = optional($scores->get('portal_dependence'))->value;
-
-                $scoredAxesCount = collect([$hpWeakness, $selfUpdateFit, $devDifficulty, $portalDependence])
-                    ->filter(fn ($value) => $value !== null)
-                    ->count();
-
-                $autoSuggestionCount = $scores
-                    ->filter(fn ($score) => $score->auto_suggested_value !== null)
-                    ->count();
-
-                $manualAdjustedCount = $scores
-                    ->filter(fn ($score) => $score->auto_suggested_value !== null && (int) $score->value !== (int) $score->auto_suggested_value)
-                    ->count();
-
-                $opportunityScore = ($hpWeakness ?? 0) + ($selfUpdateFit ?? 0);
-                $riskScore = ($devDifficulty ?? 0) + ($portalDependence ?? 0);
-
-                [$judgment, $judgmentClass] = $this->scoreJudgment($opportunityScore, $riskScore, $scoredAxesCount);
-
                 $hpFact = $latestFactsByDomainId->get($company->primaryDomain?->id);
                 $company->setRelation('latestHpFact', $hpFact);
 
-                $contactPenalty = 0;
-                if ($hpFact) {
-                    if (!$hpFact->hp_contact_email && !$hpFact->hp_contact_form_url && !$hpFact->hp_contact_phone) {
-                        $contactPenalty = -3;
-                    } elseif (!$hpFact->hp_contact_email && !$hpFact->hp_contact_form_url) {
-                        $contactPenalty = -1; // 電話のみ
-                    }
-                }
-
                 $v2sum = $company->scoreSummary;
-                $v2TotalScore = $v2sum?->total_score;
-
-                $priorityScore = $v2TotalScore !== null
-                    ? (float) $v2TotalScore * 20
-                    : ($scoredAxesCount < 4
-                        ? -100 + $scoredAxesCount + $contactPenalty
-                        : ($opportunityScore * 10) + ($riskScore * 10) + min($company->source_links_count, 5) + $contactPenalty);
-
-                $company->setAttribute('opportunity_score', $opportunityScore);
-                $company->setAttribute('risk_score', $riskScore);
-                $company->setAttribute('scored_axes_count', $scoredAxesCount);
-                $company->setAttribute('auto_suggestion_count', $autoSuggestionCount);
-                $company->setAttribute('manual_adjusted_count', $manualAdjustedCount);
-                $company->setAttribute('candidate_judgment', $judgment);
-                $company->setAttribute('candidate_judgment_class', $judgmentClass);
-                $company->setAttribute('candidate_priority_score', $priorityScore);
-                $company->setAttribute('v2_total_score', $v2TotalScore);
+                $company->setAttribute('v2_total_score', $v2sum?->total_score);
                 $company->setAttribute('v2_rank', $v2sum?->rank);
                 $company->setAttribute('v2_candidate_type', $v2sum?->candidate_type);
                 $company->setAttribute('v2_confidence', $v2sum?->confidence);
@@ -259,38 +208,27 @@ class CompanyController extends Controller
                 return $company;
             });
 
-        $preset = $request->input('preset', 'recommended');
-
-        if ($preset === 'recommended') {
-            $companies = $companies->filter(fn ($company) =>
-                $company->scored_axes_count === 4
-                && $company->opportunity_score >= 7
-                && $company->risk_score >= 7
-            );
-        } elseif ($preset === 'high_opportunity') {
-            $companies = $companies->filter(fn ($company) =>
-                $company->scored_axes_count === 4
-                && $company->opportunity_score >= 7
-            );
-        } elseif ($preset === 'needs_scoring') {
-            $companies = $companies->filter(fn ($company) => $company->scored_axes_count < 4);
-        } elseif ($preset === 'all_active') {
-            // no additional filter
+        // --- プリセット ---
+        $preset = $request->input('preset', 'all');
+        if ($preset === 'rank_a') {
+            $companies = $companies->filter(fn ($c) => $c->v2_rank === 'A');
+        } elseif ($preset === 'rank_b') {
+            $companies = $companies->filter(fn ($c) => $c->v2_rank === 'B');
+        } elseif ($preset === 'manual') {
+            $companies = $companies->filter(fn ($c) => (bool) $c->is_manual_candidate);
+        } elseif ($preset === 'unclassified') {
+            $companies = $companies->filter(fn ($c) => $c->v2_candidate_type === 'unclassified');
         }
 
-        $scoreState = (string) $request->input('score_state', '');
-        if ($scoreState === 'unscored') {
-            $companies = $companies->filter(fn ($company) => $company->scored_axes_count === 0);
-        } elseif ($scoreState === 'partial') {
-            $companies = $companies->filter(fn ($company) => $company->scored_axes_count > 0 && $company->scored_axes_count < 4);
-        } elseif ($scoreState === 'fully_scored') {
-            $companies = $companies->filter(fn ($company) => $company->scored_axes_count === 4);
-        } elseif ($scoreState === 'has_auto_suggestion') {
-            $companies = $companies->filter(fn ($company) => $company->auto_suggestion_count > 0);
-        } elseif ($scoreState === 'manual_adjusted') {
-            $companies = $companies->filter(fn ($company) => $company->manual_adjusted_count > 0);
-        } elseif ($scoreState === 'suggestion_as_is') {
-            $companies = $companies->filter(fn ($company) => $company->auto_suggestion_count > 0 && $company->manual_adjusted_count === 0);
+        // --- フィルター ---
+        $selectedRank = trim((string) $request->input('rank', ''));
+        if ($selectedRank !== '') {
+            $companies = $companies->filter(fn ($c) => $c->v2_rank === $selectedRank);
+        }
+
+        $selectedCandidateType = trim((string) $request->input('candidate_type', ''));
+        if ($selectedCandidateType !== '') {
+            $companies = $companies->filter(fn ($c) => $c->v2_candidate_type === $selectedCandidateType);
         }
 
         $selectedPref = trim((string) $request->input('pref', ''));
@@ -298,10 +236,7 @@ class CompanyController extends Controller
 
         $prefOptions = $companies
             ->map(fn (Company $company) => $this->companyPrefLabel($company))
-            ->filter()
-            ->unique()
-            ->sort(SORT_NATURAL)
-            ->values();
+            ->filter()->unique()->sort(SORT_NATURAL)->values();
 
         $cityOptionSource = $selectedPref !== ''
             ? $companies->filter(fn (Company $company) => $this->companyPrefLabel($company) === $selectedPref)
@@ -309,10 +244,7 @@ class CompanyController extends Controller
 
         $cityOptions = $cityOptionSource
             ->map(fn (Company $company) => $this->companyCityLabel($company))
-            ->filter()
-            ->unique()
-            ->sort(SORT_NATURAL)
-            ->values();
+            ->filter()->unique()->sort(SORT_NATURAL)->values();
 
         if ($selectedPref !== '') {
             $companies = $companies->filter(fn (Company $company) => $this->companyPrefLabel($company) === $selectedPref);
@@ -326,51 +258,35 @@ class CompanyController extends Controller
             $companies = $companies->filter(fn (Company $company) => (bool) $company->is_manual_candidate);
         }
 
-        $sort = (string) $request->input('sort', 'priority');
+        // --- ソート（デフォルト: v2_total_score 降順）---
+        $sort      = (string) $request->input('sort', 'v2_total_score');
         $direction = $request->input('direction') === 'asc' ? 'asc' : 'desc';
-        $allowedSorts = [
-            'priority', 'id', 'display_name', 'industry', 'region',
-            'opportunity_score', 'risk_score', 'scored_axes_count',
-            'source_links_count', 'domains_count', 'kill_flags_count',
-            'domain', 'auto_suggestion_count', 'manual_adjusted_count',
-            'v2_total_score', 'v2_rank',
-        ];
+        $allowedSorts = ['v2_total_score', 'v2_rank', 'v2_candidate_type', 'display_name', 'industry', 'region', 'domain'];
 
         if (!in_array($sort, $allowedSorts, true)) {
-            $sort = 'priority';
+            $sort = 'v2_total_score';
         }
 
         $companies = $companies
             ->sort(function ($a, $b) use ($sort, $direction) {
                 $valueFor = function (Company $company) use ($sort) {
                     return match ($sort) {
-                        'id' => $company->id,
-                        'display_name' => $company->display_name ?? '',
-                        'industry' => $company->industry?->name ?? '',
-                        'region' => (($company->municipality?->prefecture?->name ?? $company->pref ?? '') . '/' . ($company->municipality?->name ?? $company->city ?? '')),
-                        'opportunity_score' => $company->opportunity_score,
-                        'risk_score' => $company->risk_score,
-                        'scored_axes_count' => $company->scored_axes_count,
-                        'source_links_count' => $company->source_links_count,
-                        'domains_count' => $company->domains_count,
-                        'kill_flags_count' => $company->kill_flags_count,
-                        'domain' => $company->primaryDomain?->normalized_domain ?? '',
-                        'auto_suggestion_count' => $company->auto_suggestion_count,
-                        'manual_adjusted_count' => $company->manual_adjusted_count,
-                        'v2_total_score' => $company->v2_total_score ?? -1,
-                        'v2_rank' => $company->v2_rank ?? 'Z',
-                        default => $company->candidate_priority_score,
+                        'display_name'     => $company->display_name ?? '',
+                        'industry'         => $company->industry?->name ?? '',
+                        'region'           => (($company->municipality?->prefecture?->name ?? $company->pref ?? '') . '/' . ($company->municipality?->name ?? $company->city ?? '')),
+                        'domain'           => $company->primaryDomain?->normalized_domain ?? '',
+                        'v2_rank'          => $company->v2_rank ?? 'Z',
+                        'v2_candidate_type'=> $company->v2_candidate_type ?? 'z',
+                        default            => (float) ($company->v2_total_score ?? -1),
                     };
                 };
 
                 $aValue = $valueFor($a);
                 $bValue = $valueFor($b);
 
-                if (is_numeric($aValue) && is_numeric($bValue)) {
-                    $comparison = $aValue <=> $bValue;
-                } else {
-                    $comparison = strnatcasecmp((string) $aValue, (string) $bValue);
-                }
+                $comparison = is_numeric($aValue) && is_numeric($bValue)
+                    ? $aValue <=> $bValue
+                    : strnatcasecmp((string) $aValue, (string) $bValue);
 
                 if ($comparison === 0) {
                     $comparison = $a->id <=> $b->id;
@@ -387,10 +303,7 @@ class CompanyController extends Controller
             $companies->count(),
             $perPage,
             $page,
-            [
-                'path' => $request->url(),
-                'query' => $request->query(),
-            ]
+            ['path' => $request->url(), 'query' => $request->query()]
         );
 
         $industries = Industry::query()
@@ -399,23 +312,27 @@ class CompanyController extends Controller
             ->orderBy('id')
             ->get();
 
-        $summaryBase = Company::query()
-            ->where('is_killed', false)
-            ->where('status', '!=', 'merged');
-
-        $activeCandidateTotal = (clone $summaryBase)->count();
+        $activeBase = Company::query()->where('is_killed', false)->where('status', '!=', 'merged');
+        $activeCandidateTotal = (clone $activeBase)->count();
+        $rankACount   = (clone $activeBase)->whereHas('scoreSummary', fn ($q) => $q->where('rank', 'A'))->count();
+        $rankBCount   = (clone $activeBase)->whereHas('scoreSummary', fn ($q) => $q->where('rank', 'B'))->count();
+        $manualCount  = (clone $activeBase)->where('is_manual_candidate', true)->count();
 
         return view('companies.candidates', [
-            'companies' => $pagedCompanies,
-            'industries' => $industries,
-            'prefOptions' => $prefOptions,
-            'cityOptions' => $cityOptions,
+            'companies'            => $pagedCompanies,
+            'industries'           => $industries,
+            'prefOptions'          => $prefOptions,
+            'cityOptions'          => $cityOptions,
             'activeCandidateTotal' => $activeCandidateTotal,
-            'filteredCount' => $companies->count(),
-            'preset' => $preset,
-            'sort' => $sort,
-            'direction' => $direction,
-            'scoreState' => $scoreState,
+            'rankACount'           => $rankACount,
+            'rankBCount'           => $rankBCount,
+            'manualCount'          => $manualCount,
+            'filteredCount'        => $companies->count(),
+            'preset'               => $preset,
+            'sort'                 => $sort,
+            'direction'            => $direction,
+            'selectedRank'         => $selectedRank,
+            'selectedCandidateType'=> $selectedCandidateType,
         ]);
     }
 

@@ -9,160 +9,76 @@
                     radial-gradient(circle at 88% 12%, rgba(22,163,74,.14), transparent 30%),
                     radial-gradient(circle at 8% 0%, rgba(31,94,255,.10), transparent 28%),
                     linear-gradient(135deg, rgba(255,255,255,.96), rgba(248,250,252,.92));
-                position:relative;
-                overflow:hidden;
+                position:relative; overflow:hidden;
             }
             .candidates-index .hero-inner { position:relative; z-index:1; }
             .candidates-index .stat-grid {
                 display:grid;
-                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-                gap:14px;
-                margin-top:22px;
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap:14px; margin-top:22px;
             }
             .candidates-index .stat-card {
-                padding:18px;
-                border:1px solid #d9e2ee;
-                border-radius:20px;
-                background:rgba(255,255,255,.76);
-                box-shadow:0 10px 26px rgba(16,24,40,.05);
+                padding:18px; border:1px solid #d9e2ee; border-radius:20px;
+                background:rgba(255,255,255,.76); box-shadow:0 10px 26px rgba(16,24,40,.05);
             }
             .candidates-index .stat-label {
-                color:#667085;
-                font-size:12px;
-                font-weight:900;
-                letter-spacing:.08em;
-                text-transform:uppercase;
+                color:#667085; font-size:12px; font-weight:900;
+                letter-spacing:.08em; text-transform:uppercase;
             }
             .candidates-index .stat-value {
-                margin-top:9px;
-                font-size:32px;
-                font-weight:950;
-                line-height:1;
-                letter-spacing:-.04em;
+                margin-top:9px; font-size:32px; font-weight:950;
+                line-height:1; letter-spacing:-.04em;
             }
-            .candidates-index .control-card {
-                padding:0;
-                overflow:hidden;
-                box-shadow:0 10px 26px rgba(16,24,40,.05);
-            }
-            .candidates-index .control-head {
-                padding:18px 20px;
-                border-bottom:1px solid #e4e7ec;
-                background:rgba(248,250,252,.76);
-            }
+            .candidates-index .control-card { padding:0; overflow:hidden; box-shadow:0 10px 26px rgba(16,24,40,.05); }
+            .candidates-index .control-head { padding:18px 20px; border-bottom:1px solid #e4e7ec; background:rgba(248,250,252,.76); }
             .candidates-index .control-body { padding:20px; }
-            .candidates-index .preset-tabs {
-                display:flex;
-                gap:10px;
-                flex-wrap:wrap;
-            }
+            .candidates-index .preset-tabs { display:flex; gap:10px; flex-wrap:wrap; }
             .candidates-index .tab {
-                padding:10px 14px;
-                border-radius:999px;
-                text-decoration:none;
-                border:1px solid #d9e2ee;
-                background:rgba(255,255,255,.82);
-                font-weight:900;
-                color:#475467;
-                box-shadow:0 8px 18px rgba(16,24,40,.04);
+                padding:10px 14px; border-radius:999px; text-decoration:none;
+                border:1px solid #d9e2ee; background:rgba(255,255,255,.82);
+                font-weight:900; color:#475467; box-shadow:0 8px 18px rgba(16,24,40,.04);
             }
             .candidates-index .tab.active {
-                background:#0f172a;
-                color:#fff;
-                border-color:#0f172a;
+                background:#0f172a; color:#fff; border-color:#0f172a;
                 box-shadow:0 12px 24px rgba(15,23,42,.16);
             }
-            .candidates-index .active-filters {
-                display:flex;
-                gap:8px;
-                flex-wrap:wrap;
-                margin-top:12px;
-            }
+            .candidates-index .active-filters { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
             .candidates-index .filter-chip {
-                display:inline-flex;
-                align-items:center;
-                gap:7px;
-                padding:7px 10px;
-                border-radius:999px;
-                border:1px solid #d9e2ee;
-                background:#fff;
-                color:#344054;
-                font-size:12px;
-                font-weight:900;
-                text-decoration:none;
+                display:inline-flex; align-items:center; gap:7px;
+                padding:7px 10px; border-radius:999px; border:1px solid #d9e2ee;
+                background:#fff; color:#344054; font-size:12px; font-weight:900; text-decoration:none;
             }
             .candidates-index .filter-chip span { color:#98a2b3; }
-            .candidates-index .company-name {
-                font-weight:950;
-                font-size:15px;
-                margin-bottom:4px;
-            }
-            .candidates-index .subtext {
-                color:#667085;
-                font-size:12px;
-                line-height:1.55;
-            }
-            .candidates-index .score-pill {
-                display:inline-flex;
-                align-items:center;
-                gap:6px;
-                padding:8px 10px;
-                border-radius:999px;
-                font-size:13px;
-                font-weight:900;
-                white-space:nowrap;
-            }
-            .candidates-index .score-pill.opportunity { background:#dcfce7; color:#166534; }
-            .candidates-index .score-pill.risk { background:#fee2e2; color:#991b1b; }
-            .candidates-index .score-pill.priority { background:#dbeafe; color:#1d4ed8; }
-            .candidates-index .score-pill.empty { background:#eef2f7; color:#667085; }
-            .candidates-index .judgment {
-                display:inline-flex;
-                align-items:center;
-                padding:8px 10px;
-                border-radius:999px;
-                font-size:12px;
-                font-weight:900;
-                white-space:nowrap;
-                background:#eef2ff;
-                color:#1d4ed8;
-            }
-            .candidates-index .judgment.green { background:#dcfce7; color:#166534; }
-            .candidates-index .judgment.red { background:#fee2e2; color:#991b1b; }
-            .candidates-index .judgment.gray { background:#eef2f7; color:#475467; }
+            .candidates-index .company-name { font-weight:950; font-size:15px; margin-bottom:4px; }
+            .candidates-index .subtext { color:#667085; font-size:12px; line-height:1.55; }
             .candidates-index .domain-chip {
-                display:inline-flex;
-                max-width:220px;
-                padding:7px 10px;
-                border-radius:12px;
-                background:#f8fafc;
-                border:1px solid #e4e7ec;
-                color:#344054;
-                font-size:12px;
-                font-weight:800;
-                overflow-wrap:anywhere;
+                display:inline-flex; max-width:220px; padding:7px 10px;
+                border-radius:12px; background:#f8fafc; border:1px solid #e4e7ec;
+                color:#344054; font-size:12px; font-weight:800; overflow-wrap:anywhere;
             }
             .candidates-index td { vertical-align:middle; }
             .candidates-index .tight { white-space:nowrap; }
-            .candidates-index .table-wrap table { min-width:1120px; }
+            .candidates-index .table-wrap table { min-width:900px; }
             .candidates-index th a { text-decoration:none; color:inherit; }
             .candidates-index th a:hover { color:#1f5eff; }
         </style>
 
         @php
-            $scoreStateLabels = [
-                'unscored' => '未採点',
-                'partial' => '一部採点',
-                'fully_scored' => '4軸採点済み',
-                'has_auto_suggestion' => '自動提案記録あり',
-                'manual_adjusted' => '手動補正あり',
-                'suggestion_as_is' => '提案どおり',
+            $v2TypeLabels = [
+                'renewal_candidate'        => 'HPリニューアル',
+                'cms_conversion_candidate' => 'CMS化',
+                'maintenance_candidate'    => '保守・更新',
+                'new_site_candidate'       => '新規制作',
+                'reject'                   => '優先度低',
+                'unclassified'             => '未分類',
             ];
+            $v2RankColors = ['A' => 'green', 'B' => 'blue', 'C' => 'amber', 'D' => 'red'];
             $presetLabels = [
-                'recommended' => '推奨',
-                'high_opportunity' => '高機会',
-                'needs_scoring' => '未採点あり',
-                'all_active' => '全active',
+                'all'          => '全候補',
+                'rank_a'       => 'Aランク',
+                'rank_b'       => 'Bランク',
+                'manual'       => '手動候補',
+                'unclassified' => '未分類',
             ];
             $activeFilterLinks = [];
             if (request('q')) {
@@ -175,8 +91,11 @@
             if (request('status')) {
                 $activeFilterLinks[] = ['label' => '状態', 'value' => request('status'), 'url' => route('companies.candidates', request()->except(['page', 'status']))];
             }
-            if (request('score_state')) {
-                $activeFilterLinks[] = ['label' => '採点', 'value' => $scoreStateLabels[request('score_state')] ?? request('score_state'), 'url' => route('companies.candidates', request()->except(['page', 'score_state']))];
+            if (request('rank')) {
+                $activeFilterLinks[] = ['label' => 'ランク', 'value' => request('rank'), 'url' => route('companies.candidates', request()->except(['page', 'rank']))];
+            }
+            if (request('candidate_type')) {
+                $activeFilterLinks[] = ['label' => '提案タイプ', 'value' => $v2TypeLabels[request('candidate_type')] ?? request('candidate_type'), 'url' => route('companies.candidates', request()->except(['page', 'candidate_type']))];
             }
             if (request('pref')) {
                 $activeFilterLinks[] = ['label' => '都道府県', 'value' => request('pref'), 'url' => route('companies.candidates', request()->except(['page', 'pref', 'city']))];
@@ -190,46 +109,43 @@
         @endphp
 
         <div class="stack">
+            {{-- ヒーロー --}}
             <section class="card hero">
                 <div class="hero-inner">
                     <div class="row">
                         <div>
                             <p class="page-kicker">Candidate Board</p>
                             <h1 class="page-title">営業候補一覧</h1>
-                            <p class="page-subtitle">
-                                未kill・未mergedのcompanyから、4軸スコアをもとに候補を抽出する営業前の選別ボード。
-                            </p>
-                            <details class="help-panel">
-                                <summary>候補一覧の使い方</summary>
-                                <div class="help-body">
-                                    まずは「推奨：高機会・低リスク」を見る。まだ採点が足りない場合は「未採点あり」で採点待ちを処理し、候補精度を上げる。
-                                </div>
-                            </details>
+                            <p class="page-subtitle">5軸スコアをもとに営業候補を選別するボード。</p>
                         </div>
                         <div class="actions">
                             <a class="button light" href="{{ route('dashboard') }}">Dashboard</a>
-                            <a class="button light" href="{{ route('companies.index') }}">companies一覧へ</a>
-                            <a class="button light" href="{{ route('source-records.index') }}">source_recordsへ</a>
+                            <a class="button light" href="{{ route('companies.index') }}">companies一覧</a>
                         </div>
                     </div>
 
                     <div class="stat-grid">
                         <div class="stat-card">
-                            <div class="stat-label">Active base</div>
+                            <div class="stat-label">Active Base</div>
                             <div class="stat-value">{{ number_format($activeCandidateTotal) }}</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-label">Filtered</div>
-                            <div class="stat-value">{{ number_format($filteredCount) }}</div>
+                            <div class="stat-label">Aランク</div>
+                            <div class="stat-value" style="color:#16a34a;">{{ number_format($rankACount) }}</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-label">Preset</div>
-                            <div class="stat-value" style="font-size:22px;">{{ $presetLabels[$preset] ?? $preset }}</div>
+                            <div class="stat-label">Bランク</div>
+                            <div class="stat-value" style="color:#1d4ed8;">{{ number_format($rankBCount) }}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">手動候補</div>
+                            <div class="stat-value" style="color:#b45309;">{{ number_format($manualCount) }}</div>
                         </div>
                     </div>
                 </div>
             </section>
 
+            {{-- フィルターコントロール --}}
             <section class="card control-card">
                 <div class="control-head row">
                     <div>
@@ -237,25 +153,25 @@
                         <h2 style="margin:4px 0 0; font-size:20px;">候補の絞り込み</h2>
                     </div>
                     <div class="actions">
-                        <a class="button light small" href="{{ route('companies.candidates', ['preset' => $preset]) }}">条件クリア</a>
+                        <a class="button light small" href="{{ route('companies.candidates') }}">全クリア</a>
                     </div>
                 </div>
                 <div class="control-body">
                     <div class="preset-tabs">
-                        <a class="tab {{ $preset === 'recommended' ? 'active' : '' }}" href="{{ route('companies.candidates', array_merge(request()->except('page'), ['preset' => 'recommended'])) }}">推奨：高機会・低リスク</a>
-                        <a class="tab {{ $preset === 'high_opportunity' ? 'active' : '' }}" href="{{ route('companies.candidates', array_merge(request()->except('page'), ['preset' => 'high_opportunity'])) }}">高機会</a>
-                        <a class="tab {{ $preset === 'needs_scoring' ? 'active' : '' }}" href="{{ route('companies.candidates', array_merge(request()->except('page'), ['preset' => 'needs_scoring'])) }}">未採点あり</a>
-                        <a class="tab {{ $preset === 'all_active' ? 'active' : '' }}" href="{{ route('companies.candidates', array_merge(request()->except('page'), ['preset' => 'all_active'])) }}">全active</a>
+                        @foreach ($presetLabels as $key => $label)
+                            <a class="tab {{ $preset === $key ? 'active' : '' }}"
+                               href="{{ route('companies.candidates', array_merge(request()->except(['page', 'preset']), ['preset' => $key])) }}">{{ $label }}</a>
+                        @endforeach
                     </div>
 
                     <form method="GET" action="{{ route('companies.candidates') }}" style="margin-top:18px;">
                         <input type="hidden" name="preset" value="{{ $preset }}">
-                        <input type="hidden" name="sort" value="{{ $sort ?? request('sort', 'priority') }}">
-                        <input type="hidden" name="direction" value="{{ $direction ?? request('direction', 'desc') }}">
+                        <input type="hidden" name="sort" value="{{ $sort }}">
+                        <input type="hidden" name="direction" value="{{ $direction }}">
                         <div class="grid">
                             <div class="field" style="margin-bottom:0;">
                                 <label for="q">検索</label>
-                                <input id="q" type="text" name="q" value="{{ request('q') }}" placeholder="会社名・法人番号・domain・地域など">
+                                <input id="q" type="text" name="q" value="{{ request('q') }}" placeholder="会社名・domain・地域など">
                             </div>
                             <div class="field" style="margin-bottom:0;">
                                 <label for="industry_id">業種</label>
@@ -279,19 +195,20 @@
                                 </select>
                             </div>
                             <div class="field" style="margin-bottom:0;">
-                                <label for="status">状態</label>
-                                <select id="status" name="status">
+                                <label for="rank">ランク</label>
+                                <select id="rank" name="rank">
                                     <option value="">すべて</option>
-                                    <option value="candidate" @selected(request('status') === 'candidate')>candidate</option>
-                                    <option value="confirmed" @selected(request('status') === 'confirmed')>confirmed</option>
+                                    @foreach (['A', 'B', 'C', 'D'] as $r)
+                                        <option value="{{ $r }}" @selected($selectedRank === $r)>{{ $r }}</option>
+                                    @endforeach
                                 </select>
                             </div>
                             <div class="field" style="margin-bottom:0;">
-                                <label for="score_state">採点状態</label>
-                                <select id="score_state" name="score_state">
+                                <label for="candidate_type">提案タイプ</label>
+                                <select id="candidate_type" name="candidate_type">
                                     <option value="">すべて</option>
-                                    @foreach ($scoreStateLabels as $value => $label)
-                                        <option value="{{ $value }}" @selected(request('score_state') === $value)>{{ $label }}</option>
+                                    @foreach ($v2TypeLabels as $typeKey => $typeLabel)
+                                        <option value="{{ $typeKey }}" @selected($selectedCandidateType === $typeKey)>{{ $typeLabel }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -339,23 +256,16 @@
             </section>
 
             @php
-                $sortKey = $sort ?? request('sort', 'priority');
-                $sortDirection = $direction ?? request('direction', 'desc');
-                $sortUrl = function (string $key) use ($sortKey, $sortDirection) {
-                    $nextDirection = ($sortKey === $key && $sortDirection === 'asc') ? 'desc' : 'asc';
-                    return route('companies.candidates', array_merge(request()->except(['page']), [
-                        'sort' => $key,
-                        'direction' => $nextDirection,
-                    ]));
+                $sortUrl = function (string $key) use ($sort, $direction) {
+                    $nextDir = ($sort === $key && $direction === 'asc') ? 'desc' : 'asc';
+                    return route('companies.candidates', array_merge(request()->except(['page']), ['sort' => $key, 'direction' => $nextDir]));
                 };
-                $sortMark = function (string $key) use ($sortKey, $sortDirection) {
-                    if ($sortKey !== $key) {
-                        return '';
-                    }
-                    return $sortDirection === 'asc' ? ' ↑' : ' ↓';
+                $sortMark = function (string $key) use ($sort, $direction) {
+                    return $sort === $key ? ($direction === 'asc' ? ' ↑' : ' ↓') : '';
                 };
             @endphp
 
+            {{-- 候補リスト --}}
             <section class="card">
                 <div class="row" style="margin-bottom:16px;">
                     <div>
@@ -365,12 +275,6 @@
                             <span class="badge gray">表示 {{ $companies->count() }} / {{ number_format($companies->total()) }}</span>
                         </div>
                     </div>
-                    <details class="help-panel" style="min-width:min(440px, 100%); margin-top:0;">
-                        <summary>並び替えとpriority</summary>
-                        <div class="help-body">
-                            priorityは並び替え用の内部スコア。ソート条件を変えた時に順位番号が混乱しないよう、順位列は表示しない。
-                        </div>
-                    </details>
                 </div>
 
                 <div class="table-wrap">
@@ -388,22 +292,9 @@
                                 /
                                 <a href="{{ $sortUrl('v2_total_score') }}">スコア{{ $sortMark('v2_total_score') }}</a>
                             </th>
-                            <th>
-                                <a href="{{ $sortUrl('scored_axes_count') }}">判定{{ $sortMark('scored_axes_count') }}</a>
-                                <div class="subtext">
-                                    <a href="{{ $sortUrl('auto_suggestion_count') }}">auto{{ $sortMark('auto_suggestion_count') }}</a>
-                                    /
-                                    <a href="{{ $sortUrl('manual_adjusted_count') }}">補正{{ $sortMark('manual_adjusted_count') }}</a>
-                                </div>
-                            </th>
-                            <th><a href="{{ $sortUrl('priority') }}">priority{{ $sortMark('priority') }}</a></th>
-                            <th>
-                                <a href="{{ $sortUrl('source_links_count') }}">source{{ $sortMark('source_links_count') }}</a>
-                                /
-                                <a href="{{ $sortUrl('domains_count') }}">domain数{{ $sortMark('domains_count') }}</a>
-                                /
-                                <a href="{{ $sortUrl('kill_flags_count') }}">kill{{ $sortMark('kill_flags_count') }}</a>
-                            </th>
+                            <th><a href="{{ $sortUrl('v2_candidate_type') }}">提案タイプ{{ $sortMark('v2_candidate_type') }}</a></th>
+                            <th>信頼度</th>
+                            <th>手動</th>
                             <th><a href="{{ $sortUrl('domain') }}">domain{{ $sortMark('domain') }}</a></th>
                             <th>営業入り口</th>
                             <th></th>
@@ -415,24 +306,21 @@
                                 $outreachPhase = $company->latestOutreachContact?->phase;
                                 $outreachColors = ['list'=>'gray','attacked'=>'blue','negotiating'=>'amber','contracted'=>'green','rejected'=>'red','hold'=>'gray'];
                                 $outreachLabels = ['list'=>'未着手','attacked'=>'アタック済','negotiating'=>'商談中','contracted'=>'成約','rejected'=>'見送り','hold'=>'保留'];
+                                $v2RankTd = $company->v2_rank;
                             @endphp
                             <tr>
+                                {{-- 会社・屋号 --}}
                                 <td>
                                     <div class="company-name">{{ $company->display_name }}</div>
                                     @if ($company->legal_name)
                                         <div class="subtext">{{ $company->legal_name }}</div>
                                     @endif
-                                    @if ($company->corporate_number)
-                                        <div class="subtext">法人番号：{{ $company->corporate_number }}</div>
-                                    @endif
-                                    <div class="subtext">状態：{{ $company->status }}</div>
-                                    @if ($company->is_manual_candidate)
-                                        <span class="badge amber" style="margin-top:4px;">手動</span>
-                                    @endif
+                                    <div class="subtext">{{ $company->status }}</div>
                                     @if ($outreachPhase)
                                         <span class="badge {{ $outreachColors[$outreachPhase] ?? 'gray' }}" style="margin-top:4px;">{{ $outreachLabels[$outreachPhase] ?? $outreachPhase }}</span>
                                     @endif
                                 </td>
+                                {{-- 業種/地域 --}}
                                 <td>
                                     <div><strong>{{ $company->industry?->name ?? '-' }}</strong></div>
                                     <div class="subtext">
@@ -441,46 +329,46 @@
                                         {{ $company->municipality?->name ?? $company->city ?? '-' }}
                                     </div>
                                 </td>
+                                {{-- ランク/スコア --}}
                                 <td>
-                                    @php
-                                        $v2RankTd = $company->v2_rank;
-                                        $v2RankColorsTd = ['A' => 'green', 'B' => 'blue', 'C' => 'amber', 'D' => 'red'];
-                                        $v2TypeLabelsTd = [
-                                            'renewal_candidate'        => 'HPリニューアル',
-                                            'cms_conversion_candidate' => 'CMS化',
-                                            'maintenance_candidate'    => '保守・更新',
-                                            'new_site_candidate'       => '新規制作',
-                                            'reject'                   => '優先度低',
-                                            'unclassified'             => '未分類',
-                                        ];
-                                    @endphp
                                     @if ($v2RankTd)
-                                        <div style="display:grid; gap:4px; justify-items:start;">
-                                            <span class="badge {{ $v2RankColorsTd[$v2RankTd] ?? 'gray' }}" style="font-size:12px;font-weight:700;">{{ $v2RankTd }} &nbsp;{{ number_format((float)$company->v2_total_score, 1) }}</span>
-                                            <span class="badge gray" style="font-size:10px;">{{ $v2TypeLabelsTd[$company->v2_candidate_type] ?? ($company->v2_candidate_type ?? '—') }}</span>
-                                        </div>
+                                        <span class="badge {{ $v2RankColors[$v2RankTd] ?? 'gray' }}" style="font-size:13px;font-weight:700;">
+                                            {{ $v2RankTd }} &nbsp;{{ number_format((float)$company->v2_total_score, 2) }}
+                                        </span>
                                     @else
-                                        <span class="score-pill empty">未計算</span>
+                                        <span style="font-size:12px;color:var(--muted);">未計算</span>
                                     @endif
                                 </td>
+                                {{-- 提案タイプ --}}
                                 <td>
-                                    @if ($company->v2_confidence !== null && $company->v2_confidence < 0.70)
-                                        <span class="badge amber" style="font-size:10px;margin-bottom:4px;display:inline-block;">目視推奨</span>
+                                    @if ($company->v2_candidate_type)
+                                        <span class="badge gray" style="font-size:11px;">{{ $v2TypeLabels[$company->v2_candidate_type] ?? $company->v2_candidate_type }}</span>
+                                    @else
+                                        <span style="font-size:12px;color:var(--muted);">—</span>
                                     @endif
-                                    <div class="subtext" style="font-size:11px;">信頼度 {{ $company->v2_confidence !== null ? (int)round($company->v2_confidence * 100).'%' : '—' }}</div>
-                                    <div class="subtext" style="margin-top:4px;">採点 {{ $company->scored_axes_count }} / 4</div>
                                 </td>
-                                <td>
-                                    <span class="score-pill priority">{{ number_format($company->candidate_priority_score, 1) }}</span>
-                                </td>
+                                {{-- 信頼度 --}}
                                 <td class="tight">
-                                    <div class="subtext">source：{{ $company->source_links_count }}</div>
-                                    <div class="subtext">domain：{{ $company->domains_count }}</div>
-                                    <div class="subtext">kill：{{ $company->kill_flags_count }}</div>
+                                    @if ($company->v2_confidence !== null)
+                                        @if ($company->v2_confidence < 0.70)
+                                            <span class="badge amber" style="font-size:10px;display:block;margin-bottom:3px;">目視推奨</span>
+                                        @endif
+                                        <span style="font-size:13px;font-weight:700;">{{ (int)round($company->v2_confidence * 100) }}%</span>
+                                    @else
+                                        <span style="font-size:12px;color:var(--muted);">—</span>
+                                    @endif
                                 </td>
+                                {{-- 手動候補バッジ --}}
+                                <td class="tight">
+                                    @if ($company->is_manual_candidate)
+                                        <span class="badge amber" style="font-size:11px;">手動</span>
+                                    @endif
+                                </td>
+                                {{-- DOMAIN --}}
                                 <td>
                                     <span class="domain-chip">{{ $company->primaryDomain?->normalized_domain ?? '-' }}</span>
                                 </td>
+                                {{-- 営業入り口 --}}
                                 <td>
                                     @php $hpFact = $company->latestHpFact; @endphp
                                     @if (!$hpFact)
@@ -502,6 +390,7 @@
                                         </div>
                                     @endif
                                 </td>
+                                {{-- 詳細 --}}
                                 <td class="tight">
                                     <a class="button small" href="{{ route('companies.show', $company) }}">詳細</a>
                                 </td>
@@ -512,10 +401,9 @@
                                     <div class="empty-state-box">
                                         <div class="empty-icon">候</div>
                                         <p class="empty-title">条件に合う営業候補がない</p>
-                                        <p class="empty-copy">4軸スコアを増やすか、プリセットを「全active」に変えると候補の母集団を確認できる。</p>
+                                        <p class="empty-copy">フィルターを変更するか、プリセットを「全候補」に変えると母集団を確認できます。</p>
                                         <div class="empty-actions">
-                                            <a class="button small light" href="{{ route('companies.candidates', ['preset' => 'active']) }}">全activeを見る</a>
-                                            <a class="button small" href="{{ route('companies.index', ['score_review' => 'unscored']) }}">未採点companyを見る</a>
+                                            <a class="button small light" href="{{ route('companies.candidates', ['preset' => 'all']) }}">全候補を見る</a>
                                         </div>
                                     </div>
                                 </td>
