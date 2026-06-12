@@ -259,10 +259,20 @@
                                 <label for="industry_id">業種</label>
                                 <select id="industry_id" name="industry_id">
                                     <option value="">すべて</option>
-                                    @foreach ($industries as $industry)
-                                        <option value="{{ $industry->id }}" @selected((string) request('industry_id') === (string) $industry->id)>
-                                            {{ $industry->name }}
-                                        </option>
+                                    @php
+                                        $parentIndustries = $industries->whereNull('parent_id');
+                                        $childByParent    = $industries->whereNotNull('parent_id')->groupBy('parent_id');
+                                    @endphp
+                                    @foreach ($parentIndustries as $parent)
+                                        @if ($childByParent->has($parent->id))
+                                            <optgroup label="{{ $parent->name }}">
+                                                @foreach ($childByParent[$parent->id] as $child)
+                                                    <option value="{{ $child->id }}" @selected((string) request('industry_id') === (string) $child->id)>{{ $child->name }}</option>
+                                                @endforeach
+                                            </optgroup>
+                                        @else
+                                            <option value="{{ $parent->id }}" @selected((string) request('industry_id') === (string) $parent->id)>{{ $parent->name }}</option>
+                                        @endif
                                     @endforeach
                                 </select>
                             </div>
