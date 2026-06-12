@@ -107,7 +107,9 @@ class IndustryScorePresetSeeder extends Seeder
             }
         }
 
-        $total = count(self::AXES) * count(reset(self::AXES));
+        $axes    = self::AXES;
+        $first   = array_values($axes)[0];
+        $total   = count($axes) * count($first);
         $this->command->info("IndustryScorePresetSeeder: {$total} 件を投入しました。");
     }
 }
