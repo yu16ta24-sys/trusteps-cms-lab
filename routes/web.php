@@ -84,6 +84,10 @@ Route::middleware('auth')->group(function () {
 
 
     Route::get('/industries/scores', [IndustryScoreController::class, 'index'])->name('industries.scores.index');
+    Route::get('/industries/scores/export', [IndustryScoreController::class, 'export'])->name('industries.scores.export');
+    Route::get('/industries/scores/import', [IndustryScoreController::class, 'importForm'])->name('industries.scores.import');
+    Route::post('/industries/scores/import/preview', [IndustryScoreController::class, 'importPreview'])->name('industries.scores.import.preview');
+    Route::post('/industries/scores/import/store', [IndustryScoreController::class, 'importStore'])->name('industries.scores.import.store');
     Route::get('/industries/scores/{industry}/edit', [IndustryScoreController::class, 'edit'])->name('industries.scores.edit');
     Route::put('/industries/scores/{industry}', [IndustryScoreController::class, 'update'])->name('industries.scores.update');
     Route::post('/industries/scores/bulk-update/{parent}', [IndustryScoreController::class, 'bulkUpdateByParent'])->name('industries.scores.bulk-update');

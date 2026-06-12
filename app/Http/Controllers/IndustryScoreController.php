@@ -11,6 +11,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class IndustryScoreController extends Controller
 {
@@ -231,6 +232,152 @@ class IndustryScoreController extends Controller
         return redirect()
             ->route('industries.scores.index')
             ->with('status', "{$parentModel->name} の業界スコアを保存しました。");
+    }
+
+    public function export(): StreamedResponse
+    {
+        $axes     = $this->activeAxes();
+        $scores   = IndustryScore::query()->orderBy('industry_key')->orderBy('axis_key')->get();
+        $nameMap  = Industry::whereNotNull('parent_id')->pluck('name', 'slug');
+        $labelMap = $axes->pluck('label', 'key');
+
+        return response()->streamDownload(function () use ($scores, $nameMap, $labelMap) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM（Excel対応）
+            fputcsv($out, ['industry_key', 'industry_name', 'axis_key', 'axis_label', 'value', 'confidence', 'score_type', 'note']);
+            foreach ($scores as $s) {
+                fputcsv($out, [
+                    $s->industry_key,
+                    $nameMap[$s->industry_key] ?? '',
+                    $s->axis_key,
+                    $labelMap[$s->axis_key] ?? '',
+                    $s->value ?? '',
+                    $s->confidence ?? '',
+                    $s->score_type ?? '',
+                    $s->note ?? '',
+                ]);
+            }
+            fclose($out);
+        }, 'industry_scores_' . date('Ymd_His') . '.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    public function importForm(): View
+    {
+        return view('industries.scores.import');
+    }
+
+    public function importPreview(Request $request): View|RedirectResponse
+    {
+        $request->validate(['csv_file' => ['required', 'file', 'mimes:csv,txt', 'max:4096']]);
+
+        $handle = fopen($request->file('csv_file')->getRealPath(), 'r');
+        $bom    = fread($handle, 3);
+        if ($bom !== "\xEF\xBB\xBF") {
+            rewind($handle);
+        }
+
+        $header = array_map('trim', fgetcsv($handle) ?: []);
+        foreach (['industry_key', 'axis_key', 'value'] as $req) {
+            if (!in_array($req, $header, true)) {
+                fclose($handle);
+                return back()->withErrors(['csv_file' => "必須列「{$req}」がCSVに含まれていません。"]);
+            }
+        }
+
+        $validSlugs = Industry::whereNotNull('parent_id')->where('is_active', true)->pluck('name', 'slug');
+        $validAxes  = IndustryScoreAxis::where('is_active', true)->pluck('label', 'key');
+        $existing   = IndustryScore::all()->keyBy(fn($s) => $s->industry_key . '::' . $s->axis_key);
+
+        $rows = $errors = [];
+        $line = 1;
+
+        while (($raw = fgetcsv($handle)) !== false) {
+            $line++;
+            $d           = array_combine($header, array_pad($raw, count($header), ''));
+            $industryKey = trim($d['industry_key'] ?? '');
+            $axisKey     = trim($d['axis_key'] ?? '');
+            $rawValue    = trim($d['value'] ?? '');
+
+            if ($industryKey === '' && $axisKey === '' && $rawValue === '') {
+                continue;
+            }
+            if (!isset($validSlugs[$industryKey])) {
+                $errors[] = "行{$line}: industry_key「{$industryKey}」が存在しません。";
+                continue;
+            }
+            if (!isset($validAxes[$axisKey])) {
+                $errors[] = "行{$line}: axis_key「{$axisKey}」が存在しません。";
+                continue;
+            }
+            if ($rawValue === '') {
+                continue; // 空欄はスキップ（既存レコードを削除しない）
+            }
+            if (!ctype_digit($rawValue) || (int) $rawValue < 0 || (int) $rawValue > 5) {
+                $errors[] = "行{$line}: value「{$rawValue}」は 0〜5 の整数が必要です。";
+                continue;
+            }
+
+            $rawConf = trim($d['confidence'] ?? '');
+            $rawType = trim($d['score_type'] ?? '');
+            $key     = $industryKey . '::' . $axisKey;
+            $current = $existing->get($key);
+
+            $rows[] = [
+                'industry_key'  => $industryKey,
+                'industry_name' => $validSlugs[$industryKey],
+                'axis_key'      => $axisKey,
+                'axis_label'    => $validAxes[$axisKey],
+                'value'         => (int) $rawValue,
+                'confidence'    => in_array($rawConf, ['low', 'medium', 'high'], true) ? $rawConf : null,
+                'score_type'    => in_array($rawType, ['hypothesis', 'observed', 'mixed'], true) ? $rawType : 'hypothesis',
+                'note'          => trim($d['note'] ?? '') ?: null,
+                'current_value' => $current?->value,
+                'is_new'        => $current === null,
+                'is_changed'    => $current !== null && $current->value !== (int) $rawValue,
+            ];
+        }
+        fclose($handle);
+
+        if (!empty($errors)) {
+            return back()->withErrors(['csv_file' => implode("\n", $errors)]);
+        }
+        if (empty($rows)) {
+            return back()->withErrors(['csv_file' => '有効なデータ行がありませんでした。']);
+        }
+
+        session(['industry_score_import_rows' => $rows]);
+
+        return view('industries.scores.import', compact('rows'));
+    }
+
+    public function importStore(): RedirectResponse
+    {
+        $rows = session('industry_score_import_rows', []);
+
+        if (empty($rows)) {
+            return redirect()->route('industries.scores.import')
+                ->withErrors(['csv_file' => 'セッションが切れました。再度CSVをアップロードしてください。']);
+        }
+
+        DB::transaction(function () use ($rows) {
+            foreach ($rows as $row) {
+                IndustryScore::query()->updateOrCreate(
+                    ['industry_key' => $row['industry_key'], 'axis_key' => $row['axis_key']],
+                    [
+                        'value'      => $row['value'],
+                        'confidence' => $row['confidence'],
+                        'score_type' => $row['score_type'],
+                        'note'       => $row['note'],
+                        'updated_by' => auth()->id(),
+                    ]
+                );
+            }
+        });
+
+        session()->forget('industry_score_import_rows');
+
+        return redirect()->route('industries.scores.index')
+            ->with('status', count($rows) . '件の業界スコアをインポートしました。');
     }
 
     private function activeAxes(): Collection

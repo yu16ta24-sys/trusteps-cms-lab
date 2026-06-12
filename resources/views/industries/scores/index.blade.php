@@ -57,6 +57,8 @@
             <div style="font-size:24px;font-weight:950;margin-top:2px;">{{ $axes->count() }}</div>
             <div style="font-size:11px;color:var(--muted);">有効軸</div>
         </div>
+        <a class="button light small" href="{{ route('industries.scores.export') }}">CSVエクスポート</a>
+        <a class="button light small" href="{{ route('industries.scores.import') }}">CSVインポート</a>
         <a class="button light small" href="{{ route('dashboard') }}">Dashboard</a>
     </div>
 </div>
