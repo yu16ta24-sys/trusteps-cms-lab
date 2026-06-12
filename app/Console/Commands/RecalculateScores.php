@@ -14,13 +14,13 @@ class RecalculateScores extends Command
     protected $signature = 'scores:recalculate
         {--company_id= : 対象 company の ID（単体）}
         {--all : 全 company を対象にする}
-        {--version=scoring_v1.0 : 保存する score_version}';
+        {--score-version=scoring_v1.0 : 保存する score_version}';
 
     protected $description = 'suggestV2() で 5軸スコアを再計算し company_scores / company_score_summaries に保存する';
 
     public function handle(ScoreSuggester $suggester): int
     {
-        $version   = (string) $this->option('version');
+        $version   = (string) $this->option('score-version');
         $companyId = $this->option('company_id');
         $all       = (bool) $this->option('all');
 
