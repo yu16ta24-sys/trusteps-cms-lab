@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Domain;
 use App\Models\HpFact;
 use App\Models\HpSnapshot;
+use App\Models\IndustryScoreObservation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -112,6 +113,9 @@ class HpAnalyzerService
             HpFact::where('hp_snapshot_id', $snapshot->id)->delete();
             return HpFact::create($factData);
         });
+
+        // 業種別観測値を記録
+        $this->recordObservations($company, $factData);
 
         return [
             'success'     => true,
@@ -684,5 +688,79 @@ class HpAnalyzerService
             $url = 'https://' . $url;
         }
         return $url;
+    }
+
+    private function recordObservations(Company $company, array $factData): void
+    {
+        if (!$company->industry_id) {
+            return;
+        }
+
+        $company->loadMissing('municipality.prefecture');
+        $prefectureId = $company->municipality?->prefecture?->id;
+
+        $axes = [
+            'hp_improvement_score'    => $factData['hp_improvement_score'] ?? null,
+            'ssl_enabled'             => isset($factData['ssl_enabled']) ? ($factData['ssl_enabled'] ? 1 : 0) : null,
+            'mobile_friendly'         => isset($factData['mobile_friendly']) ? ($factData['mobile_friendly'] ? 1 : 0) : null,
+            'update_status'           => $this->updateStatusToInt($factData['update_status'] ?? null),
+            'cms_type'                => $this->cmsTypeToInt($factData['cms_type'] ?? null),
+            'portal_dependency_level' => $this->portalLevelToInt($factData['portal_dependency_level'] ?? null),
+        ];
+
+        foreach ($axes as $axisKey => $value) {
+            if ($value === null) {
+                continue;
+            }
+
+            IndustryScoreObservation::updateOrCreate(
+                [
+                    'industry_id'       => $company->industry_id,
+                    'axis_key'          => $axisKey,
+                    'source_company_id' => $company->id,
+                ],
+                [
+                    'value'         => $value,
+                    'prefecture_id' => $prefectureId,
+                    'region_id'     => null,
+                    'observed_at'   => now(),
+                ]
+            );
+        }
+    }
+
+    private function updateStatusToInt(?string $status): ?int
+    {
+        return match ($status) {
+            'active'         => 3,
+            'partial_active' => 2,
+            'stale_1y'       => 1,
+            'stale_2y'       => 0,
+            default          => null,
+        };
+    }
+
+    private function cmsTypeToInt(?string $cmsType): ?int
+    {
+        if ($cmsType === null) {
+            return null;
+        }
+        return match ($cmsType) {
+            'unknown' => 0,
+            'builder' => 2,
+            'wordpress', 'wix', 'squarespace' => 3,
+            default   => 1,
+        };
+    }
+
+    private function portalLevelToInt(?string $level): ?int
+    {
+        return match ($level) {
+            'none'   => 0,
+            'low'    => 1,
+            'medium' => 2,
+            'high'   => 3,
+            default  => null,
+        };
     }
 }
