@@ -86,6 +86,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/industries/scores', [IndustryScoreController::class, 'index'])->name('industries.scores.index');
     Route::get('/industries/scores/{industry}/edit', [IndustryScoreController::class, 'edit'])->name('industries.scores.edit');
     Route::put('/industries/scores/{industry}', [IndustryScoreController::class, 'update'])->name('industries.scores.update');
+    Route::post('/industries/scores/bulk-update/{parent}', [IndustryScoreController::class, 'bulkUpdateByParent'])->name('industries.scores.bulk-update');
 
     Route::get('/system/reset-mvp-data', [MvpResetController::class, 'show'])->name('system.reset-mvp-data.index');
     Route::post('/system/reset-mvp-data/preview', [MvpResetController::class, 'preview'])->name('system.reset-mvp-data.preview');
@@ -123,6 +124,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/companies/{company}/scores', [CompanyController::class, 'storeScores'])->name('companies.scores.store');
     Route::post('/companies/{company}/kill-flags', [CompanyController::class, 'storeKillFlag'])->name('companies.kill-flags.store');
     Route::delete('/companies/{company}/kill-flags/{killFlag}', [CompanyController::class, 'deleteKillFlag'])->name('companies.kill-flags.destroy');
+    Route::get('/companies/{company}/edit', [CompanyController::class, 'edit'])->name('companies.edit');
+    Route::put('/companies/{company}', [CompanyController::class, 'update'])->name('companies.update');
+    Route::post('/companies/{company}/analyze', [CompanyController::class, 'analyze'])->name('companies.analyze');
     Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
 
     // BIZMAPSインポート
