@@ -1170,17 +1170,31 @@ class ScoreSuggester
         $hp    = ($hasHp && $hpFact) ? $hpFact : null;
         $parts = [];
 
+        // 軸ごとの「目視確認すべき対象」のヒント（中立値の注記に使う）
+        $neutralHints = [
+            'opportunity_score'  => '施工事例・料金表の有無を目視確認する',
+            'impact_score'       => '競合他社のHP水準を目視確認する',
+            'feasibility_score'  => '予約・EC等の必要機能の有無を確認する',
+            'recurring_score'    => '更新ネタ（事例・採用情報等）の実在を確認する',
+        ];
+
         switch ($axisKey) {
             case 'opportunity_score':
-                if (count($pos) >= 2) {
-                    $parts[] = "このHPは{$pos[0]['label']}・{$pos[1]['label']}の点で明確な弱点があり、リニューアル提案の根拠として使いやすい状態です。";
-                } elseif (count($pos) === 1) {
-                    $parts[] = "このHPは{$pos[0]['label']}という弱点があり、改善提案の入口になります。";
+                $pf = array_map(fn ($f) => $f['label'], $pos);
+                if (count($pf) >= 2) {
+                    $parts[] = 'このHPは' . implode('・', array_slice($pf, 0, 3)) . 'の点で明確な弱点があり、リニューアル提案の根拠として使いやすい状態です。';
+                } elseif (count($pf) === 1) {
+                    $parts[] = "このHPは{$pf[0]}という弱点があり、改善提案の入口になります。";
                 } else {
-                    $parts[] = 'このHPに大きな技術的弱点は検出されませんでした。提案には別角度の根拠が必要です。';
+                    $parts[] = 'このHPに大きな技術的弱点は検出されませんでした。技術面の改善余地は小さいため、コンテンツ追加や運用改善を軸にした提案が有効です。';
                 }
-                if ($g('conversion_gap_score') >= 4) {
-                    $parts[] = '問い合わせ導線も弱く、改善後の成果が出やすい構造です。';
+                if (in_array('問い合わせ導線なし', $pf, true) || $g('conversion_gap_score') >= 4) {
+                    $parts[] = '特に問い合わせ導線が弱く、改善後に問い合わせ数が増加しやすい構造です。';
+                }
+                if (count($pf) >= 2) {
+                    $parts[] = '既存HPをベースにした改善提案より、新規構築の方が費用対効果を説明しやすいケースです。';
+                } elseif (count($pf) === 1) {
+                    $parts[] = '現状のHPを活かしつつ、部分改善から入る提案も可能です。';
                 }
                 break;
 
@@ -1188,57 +1202,86 @@ class ScoreSuggester
                 $ti  = $g('trust_hp_importance_score');
                 $pi  = $g('portal_independence_score');
                 $crd = $g('customer_research_depth_score');
-                if ($ti >= 4 && $pi >= 4) {
+                $cv  = $g('conversion_value_score');
+                if ($ti >= 4) {
                     $parts[] = 'HP改善が直接集客・信用向上につながる業種構造です。';
+                } elseif ($ti < 3) {
+                    $parts[] = 'この業種は公式HPの信用寄与が小さめで、HP改善の効果は限定的な可能性があります。';
+                } else {
+                    $parts[] = 'この業種ではHP改善のインパクトは中程度です。';
                 }
                 if ($crd >= 4) {
-                    $parts[] = '顧客が比較検討する業種のため、HP上の情報充実が意思決定に効きます。';
+                    $parts[] = '顧客が比較検討する業種のため、HP上の情報充実が意思決定に直結します。';
                 }
-                if ($pi < 3) {
-                    $parts[] = 'ポータル依存が高く、HP改善の集客効果は限定的な可能性があります。';
+                if ($pi >= 4) {
+                    $parts[] = 'ポータル依存が低く、自社HPが主な集客窓口になり得るため、HP改善の費用対効果を説明しやすい案件です。';
+                } elseif ($pi < 3) {
+                    $parts[] = '一方でポータル依存が高く、自社HP単独での集客効果は限定的な可能性があります。';
                 }
-                if (empty($parts)) {
-                    $parts[] = 'この業種ではHP改善のインパクトは中程度です。';
+                if ($cv >= 4) {
+                    $parts[] = '問い合わせ1件の単価が高い業種のため、成約1件で制作費用を十分回収できる構造です。';
                 }
                 break;
 
             case 'feasibility_score':
                 $complex = $hp && ($hp->has_ec || $hp->has_reservation);
                 if (!$complex) {
-                    $parts[] = '会社案内・事例・お知らせ・採用・問い合わせで完結する案件構造です。YUTAさんが得意とする領域です。';
+                    $parts[] = '会社案内・実績紹介・お知らせ・採用・問い合わせフォームで完結する案件構造で、YUTAさんが得意とする領域です。';
                 } else {
-                    $parts[] = '予約/EC機能が絡む可能性があり、スコープ確認が必要です。';
+                    $parts[] = '予約・EC等の機能が絡む可能性があり、スコープの事前確認が必要な案件です。';
+                }
+                if ($hp && $hp->cms_type === 'wordpress') {
+                    $parts[] = 'WordPressを使用しているため既存コンテンツの移行がしやすく、制作工数を抑えられる可能性があります。';
+                }
+                if (!$complex) {
+                    $parts[] = '予約・EC・会員機能等の複雑な機能が中核でないため、スコープが明確で見積もりしやすい案件です。';
+                } else {
+                    $parts[] = '機能要件次第で工数が大きく変わるため、初回ヒアリングで要件の核を確認することを推奨します。';
+                }
+                if ($g('addon_fit_score') >= 4) {
+                    $parts[] = '追加機能の提案余地もあり、段階的な機能拡張で継続的に関わりやすい構造です。';
                 }
                 break;
 
             case 'reachability_score':
                 $crr = $g('contact_route_score');
+                $sr  = $g('sales_reachability_score');
                 if ($crr >= 4) {
-                    $parts[] = 'メール/フォームで直接アプローチ可能です。';
+                    $parts[] = 'メール/フォームで直接アプローチ可能で、営業の入口が確保されています。';
                 } elseif ($crr <= 2) {
-                    $parts[] = '連絡手段が限定的なため、別途アプローチ方法の検討が必要です。';
+                    $parts[] = '連絡手段が限定的なため、営業の入口確保に別途工夫が必要な案件です。';
                 } else {
                     $parts[] = '連絡手段は一定あり、アプローチ可能です。';
                 }
+                if ($sr >= 4) {
+                    $parts[] = '業種的に意思決定者に直接届きやすい構造です。';
+                }
                 if (in_array('意思決定者との距離', $neutralLabels, true)) {
-                    $parts[] = '意思決定者との距離は目視確認推奨です。';
+                    $parts[] = 'ただし意思決定者との距離は目視確認推奨です。HP上に代表者名・担当者名が記載されているか確認すると、アプローチ精度が上がります。';
                 }
                 break;
 
             case 'recurring_score':
-                $un = $g('update_neta_score');
+                $un  = $g('update_neta_score');
+                $suf = $g('self_update_fit_score');
                 if ($score >= 4 || $un >= 4) {
-                    $parts[] = '施工事例・採用・お知らせ等の継続更新ネタが見込める業種です。保守・更新契約につなげやすい案件です。';
+                    $parts[] = '施工事例・採用情報・お知らせ等の継続更新ネタが見込める業種です。';
+                    $parts[] = '月次更新・写真追加・採用ページ運用など、保守・更新契約につなげやすい案件構造です。';
+                    $parts[] = '単発制作で終わらず、月額の保守契約として提案できる可能性が高い業種です。';
+                    if ($suf >= 4) {
+                        $parts[] = '更新代行・投稿代行サービスとの相性も良く、長期継続受注が見込めます。';
+                    }
                 } elseif ($un < 3) {
-                    $parts[] = '更新ネタが少なく、単発制作で終わる可能性があります。保守提案時は工夫が必要です。';
+                    $parts[] = '更新ネタが少なく、単発制作で終わる可能性があります。';
+                    $parts[] = '保守提案時は、更新ネタの掘り起こしやセキュリティ・表示速度の維持など、運用価値の訴求に工夫が必要です。';
                 } else {
-                    $parts[] = '継続更新の余地は中程度です。';
+                    $parts[] = '継続更新の余地は中程度です。お知らせ・実績の更新を軸に、無理のない保守プランから提案するのが現実的です。';
                 }
                 break;
         }
 
-        if (!empty($neutralLabels) && $axisKey !== 'reachability_score') {
-            $parts[] = '※ ' . implode('・', array_slice($neutralLabels, 0, 3)) . 'は未取得のため中立値（3.0）。目視確認でスコアが変動する可能性があります。';
+        if (!empty($neutralLabels) && isset($neutralHints[$axisKey])) {
+            $parts[] = '※' . implode('・', array_slice($neutralLabels, 0, 3)) . 'は未取得のため中立値（3.0）。' . $neutralHints[$axisKey] . 'とスコアが変動する可能性があります。';
         }
 
         return implode('', $parts);

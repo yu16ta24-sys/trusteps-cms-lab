@@ -294,27 +294,31 @@
     </div>
 
     <style>
-        .v2-axis-card{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#fff;}
-        .v2-axis-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
-        .v2-axis-name{font-weight:700;font-size:14px;}
-        .v2-axis-key{font-size:10px;color:var(--muted);margin-left:8px;}
-        .v2-axis-score{font-size:22px;font-weight:800;color:#166534;line-height:1;white-space:nowrap;}
-        .v2-axis-score span{font-size:12px;font-weight:400;color:var(--muted);}
-        .v2-bar{height:6px;border-radius:4px;background:#e5e7eb;margin:8px 0 10px;overflow:hidden;}
+        .v2-axis-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;align-items:start;}
+        .v2-axis-card{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff;display:flex;flex-direction:column;}
+        .v2-axis-name{font-weight:700;font-size:13px;line-height:1.3;}
+        .v2-axis-key{display:block;font-size:9px;color:var(--muted);margin-top:2px;}
+        .v2-axis-score{font-size:20px;font-weight:800;color:#166534;line-height:1;margin-top:6px;}
+        .v2-axis-score span{font-size:11px;font-weight:400;color:var(--muted);}
+        .v2-bar{height:5px;border-radius:4px;background:#e5e7eb;margin:7px 0 9px;overflow:hidden;}
         .v2-bar-fill{height:100%;background:linear-gradient(90deg,#22c55e,#16a34a);}
-        .v2-factors{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;}
+        .v2-factors{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:7px;}
+        .v2-factors .badge{font-size:10px;}
         .v2-factors .badge b{font-variant-numeric:tabular-nums;}
-        .v2-sub-table{width:100%;border-collapse:collapse;font-size:11px;margin:6px 0;}
-        .v2-sub-table th,.v2-sub-table td{text-align:left;padding:4px 6px;border-bottom:1px solid #f0f0f0;}
-        .v2-sub-table th{color:var(--muted);font-weight:600;font-size:10px;}
+        .v2-narrative{font-size:11px;line-height:1.65;color:#374151;background:#f8fafc;border-radius:8px;padding:8px 10px;margin-bottom:8px;}
+        .v2-acc{margin-top:auto;}
+        .v2-acc summary{cursor:pointer;font-size:11px;font-weight:600;color:var(--muted);padding:4px 0;list-style:none;}
+        .v2-acc summary::-webkit-details-marker{display:none;}
+        .v2-sub-table{width:100%;border-collapse:collapse;font-size:10px;margin:6px 0 2px;}
+        .v2-sub-table th,.v2-sub-table td{text-align:left;padding:3px 4px;border-bottom:1px solid #f0f0f0;}
+        .v2-sub-table th{color:var(--muted);font-weight:600;font-size:9px;}
         .v2-sub-table td:nth-child(2),.v2-sub-table td:nth-child(3),.v2-sub-table td:nth-child(4){text-align:right;font-variant-numeric:tabular-nums;}
         .v2-sub-table tr.v2-neutral td{color:#9ca3af;background:#fafafa;}
-        .v2-sub-key{display:block;font-size:9px;color:#b0b0b0;}
-        .v2-sub-table tfoot td{border-top:2px solid #e5e7eb;font-size:11px;border-bottom:none;padding-top:6px;}
-        .v2-narrative{font-size:12px;line-height:1.7;color:#374151;background:#f8fafc;border-radius:8px;padding:9px 11px;margin-top:6px;}
+        .v2-sub-key{display:block;font-size:8px;color:#b0b0b0;}
+        .v2-sub-table tfoot td{border-top:2px solid #e5e7eb;font-size:10px;border-bottom:none;padding-top:5px;}
     </style>
 
-    <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:14px;">
+    <div class="v2-axis-grid">
         @foreach ($v2Axes as $axisKey => $axisLabel)
             @php
                 $axisRow  = $scoresV2->get($axisKey);
@@ -325,62 +329,68 @@
                 $pct      = $scoreNum !== null ? max(0, min(100, $scoreNum / 5 * 100)) : 0;
             @endphp
             <div class="v2-axis-card">
-                <div class="v2-axis-head">
-                    <div>
-                        <span class="v2-axis-name">{{ $axisLabel }}</span>
-                        <span class="v2-axis-key">{{ $axisKey }}</span>
-                    </div>
-                    <div class="v2-axis-score">{{ $scoreNum !== null ? number_format($scoreNum, 1) : '—' }}<span>/5</span></div>
-                </div>
+                <div class="v2-axis-name">{{ $axisLabel }}<span class="v2-axis-key">{{ $axisKey }}</span></div>
+                <div class="v2-axis-score">{{ $scoreNum !== null ? number_format($scoreNum, 1) : '—' }}<span>/5</span></div>
                 <div class="v2-bar"><div class="v2-bar-fill" style="width:{{ $pct }}%"></div></div>
 
                 @if ($detail)
                     @if (!empty($detail['positive_factors']))
                         <div class="v2-factors">
                             @foreach ($detail['positive_factors'] as $f)
-                                <span class="badge green" style="font-size:11px;">✓ {{ $f['label'] }} <b>{{ sprintf('%+.2f', $f['contribution']) }}</b></span>
+                                <span class="badge green">✓ {{ $f['label'] }} <b>{{ sprintf('%+.2f', $f['contribution']) }}</b></span>
                             @endforeach
                         </div>
                     @endif
                     @if (!empty($detail['negative_factors']))
                         <div class="v2-factors">
                             @foreach ($detail['negative_factors'] as $f)
-                                <span class="badge amber" style="font-size:11px;">✗ {{ $f['label'] }} <b>{{ sprintf('%+.2f', $f['contribution']) }}</b></span>
+                                <span class="badge amber">✗ {{ $f['label'] }} <b>{{ sprintf('%+.2f', $f['contribution']) }}</b></span>
                             @endforeach
                         </div>
                     @endif
 
-                    @if (!empty($detail['sub_scores']))
-                        <table class="v2-sub-table">
-                            <thead>
-                                <tr><th>項目</th><th>score</th><th>重み</th><th>寄与pt</th><th>備考</th></tr>
-                            </thead>
-                            <tbody>
-                                @foreach ($detail['sub_scores'] as $sub)
-                                    <tr class="{{ !empty($sub['is_neutral']) ? 'v2-neutral' : '' }}">
-                                        <td>{{ $sub['label'] ?? $sub['key'] }}<span class="v2-sub-key">{{ $sub['key'] }}</span></td>
-                                        <td>{{ number_format((float) $sub['score'], 1) }}</td>
-                                        <td>{{ number_format((float) $sub['weight'], 2) }}</td>
-                                        <td>{{ number_format((float) $sub['contribution'], 2) }}</td>
-                                        <td>@if (!empty($sub['is_neutral']))<span class="badge gray" style="font-size:10px;">未実装/中立</span>@endif</td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                            <tfoot>
-                                <tr>
-                                    <td colspan="3">加重合計（ゲート/キャップ前）</td>
-                                    <td colspan="2">
-                                        <b>{{ number_format((float) ($detail['weighted_total'] ?? 0), 2) }}</b>
-                                        @if (!empty($detail['flag_cap_applied']))<span class="badge amber" style="font-size:10px;">flagキャップ適用</span>@endif
-                                        @if (!empty($detail['gate_applied']))<span class="badge amber" style="font-size:10px;">ゲート発火軸</span>@endif
-                                    </td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    @endif
-
                     @if (!empty($detail['narrative']))
                         <div class="v2-narrative">{{ $detail['narrative'] }}</div>
+                    @endif
+
+                    @if (!empty($detail['sub_scores']))
+                        <details class="v2-acc">
+                            <summary>サブスコア内訳 ▼</summary>
+                            <table class="v2-sub-table">
+                                <thead>
+                                    <tr><th>項目</th><th>score</th><th>重み</th><th>寄与</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($detail['sub_scores'] as $sub)
+                                        <tr class="{{ !empty($sub['is_neutral']) ? 'v2-neutral' : '' }}">
+                                            <td>
+                                                {{ $sub['label'] ?? $sub['key'] }}
+                                                <span class="v2-sub-key">{{ $sub['key'] }}@if (!empty($sub['is_neutral'])) · 未実装/中立 @endif</span>
+                                            </td>
+                                            <td>{{ number_format((float) $sub['score'], 1) }}</td>
+                                            <td>{{ number_format((float) $sub['weight'], 2) }}</td>
+                                            <td>{{ number_format((float) $sub['contribution'], 2) }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td>加重合計<span class="v2-sub-key">ゲート/キャップ前</span></td>
+                                        <td colspan="3" style="text-align:right;">
+                                            <b>{{ number_format((float) ($detail['weighted_total'] ?? 0), 2) }}</b>
+                                        </td>
+                                    </tr>
+                                    @if (!empty($detail['flag_cap_applied']) || !empty($detail['gate_applied']))
+                                        <tr>
+                                            <td colspan="4" style="border:none;padding-top:4px;">
+                                                @if (!empty($detail['flag_cap_applied']))<span class="badge amber" style="font-size:9px;">flagキャップ適用</span>@endif
+                                                @if (!empty($detail['gate_applied']))<span class="badge amber" style="font-size:9px;">ゲート発火軸</span>@endif
+                                            </td>
+                                        </tr>
+                                    @endif
+                                </tfoot>
+                            </table>
+                        </details>
                     @endif
                 @else
                     <div class="v2-narrative">詳細データなし（scores:recalculate の再実行が必要です）。</div>
