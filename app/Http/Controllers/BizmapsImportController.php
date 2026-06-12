@@ -70,22 +70,22 @@ class BizmapsImportController extends Controller
         ]);
 
         $scraper = new BizmapsScraperService();
-        $results = [];
 
+        // 1. 初回フェッチ
+        $results = [];
         foreach ($urls as $url) {
             $fetched = $scraper->fetchList($url, $limit - count($results), false);
             $results = array_merge($results, $fetched);
             if (count($results) >= $limit) break;
         }
-
         $results = array_slice($results, 0, $limit);
 
-        // 重複チェック（active と is_excluded 済みを分離）
-        $detailUrls = array_filter(array_column($results, 'detail_url'));
+        // 2. 重複チェック（active と is_excluded を分離）
+        $detailUrls = array_values(array_filter(array_column($results, 'detail_url')));
 
         $existingActiveUrls = DB::table('source_records')
             ->whereIn('source_url', $detailUrls)
-            ->where(function ($q) { $q->whereNull('is_excluded')->orWhere('is_excluded', false); })
+            ->where(fn($q) => $q->whereNull('is_excluded')->orWhere('is_excluded', false))
             ->pluck('source_url')
             ->toArray();
 
@@ -95,7 +95,6 @@ class BizmapsImportController extends Controller
             ->pluck('source_url')
             ->toArray();
 
-        // 除外リストチェック（bizmaps_excluded_companies）
         $excludedUrls = DB::table('bizmaps_excluded_companies')
             ->whereIn('detail_url', $detailUrls)
             ->pluck('detail_url')
@@ -103,7 +102,7 @@ class BizmapsImportController extends Controller
 
         $mainResults           = [];
         $excludedResults       = [];
-        $excludedSourceResults = []; // is_excluded=true の source_record が既存
+        $excludedSourceResults = [];
 
         foreach ($results as &$r) {
             $r['is_duplicate']       = in_array($r['detail_url'], $existingActiveUrls);
@@ -117,6 +116,67 @@ class BizmapsImportController extends Controller
             }
         }
         unset($r);
+
+        // 3. is_excluded / bizmaps_excluded で消費されたスロットを補充フェッチ
+        //    BIZMAPS に次ページがある場合のみ有効。同一 URL セットで件数を増やして
+        //    再取得し、初回フェッチ済み分をスキップして差分だけ処理する。
+        $shortage = count($excludedSourceResults) + count($excludedResults);
+        if ($shortage > 0) {
+            $supplementTarget = $limit + $shortage + 5; // +5 は安全マージン
+            $allFetched = [];
+            foreach ($urls as $url) {
+                $fetched = $scraper->fetchList($url, $supplementTarget - count($allFetched), false);
+                $allFetched = array_merge($allFetched, $fetched);
+                if (count($allFetched) >= $supplementTarget) break;
+            }
+
+            // 初回取得分（先頭 count($results) 件）を除いた差分を取り出す
+            $seenUrls  = array_flip(array_filter(array_column($results, 'detail_url')));
+            $suppItems = array_values(array_filter(
+                array_slice($allFetched, count($results)),
+                fn($r) => !isset($seenUrls[$r['detail_url'] ?? ''])
+            ));
+
+            if (!empty($suppItems)) {
+                $suppDetailUrls = array_values(array_filter(array_column($suppItems, 'detail_url')));
+
+                $suppActiveUrls = DB::table('source_records')
+                    ->whereIn('source_url', $suppDetailUrls)
+                    ->where(fn($q) => $q->whereNull('is_excluded')->orWhere('is_excluded', false))
+                    ->pluck('source_url')
+                    ->toArray();
+
+                $suppExcludedUrls = DB::table('source_records')
+                    ->whereIn('source_url', $suppDetailUrls)
+                    ->where('is_excluded', true)
+                    ->pluck('source_url')
+                    ->toArray();
+
+                $suppBzmUrls = DB::table('bizmaps_excluded_companies')
+                    ->whereIn('detail_url', $suppDetailUrls)
+                    ->pluck('detail_url')
+                    ->toArray();
+
+                foreach ($suppItems as &$r) {
+                    $r['is_duplicate']       = in_array($r['detail_url'], $suppActiveUrls);
+                    $r['is_excluded_source'] = in_array($r['detail_url'], $suppExcludedUrls);
+                    if (in_array($r['detail_url'], $suppBzmUrls)) {
+                        $excludedResults[] = $r;
+                    } elseif ($r['is_excluded_source']) {
+                        $excludedSourceResults[] = $r;
+                    } else {
+                        $mainResults[] = $r;
+                    }
+                }
+                unset($r);
+
+                // SSE 用に補充分の detail_url もセッションに含める
+                $results = array_merge($results, $suppItems);
+            }
+
+            // ユーザーが指定した件数上限にキャップ
+            $mainResults = array_slice($mainResults, 0, $limit);
+        }
 
         // SSE用にdetail_urlリストをセッションに保存
         $detailUrlsForSse = array_map(fn($r) => $r['detail_url'], $results);
