@@ -11,6 +11,7 @@ use App\Http\Controllers\DirectorySourceController;
 use App\Http\Controllers\IndustryScoreController;
 use App\Http\Controllers\MvpResetController;
 use App\Http\Controllers\OfficialSiteResolverController;
+use App\Http\Controllers\OutreachController;
 use App\Http\Controllers\SourceRecordController;
 use App\Http\Controllers\ShokokaiBulkHtmlImportController;
 use App\Http\Controllers\ShokokaiWebSearchController;
@@ -134,6 +135,12 @@ Route::middleware('auth')->group(function () {
     Route::post('/companies/{company}/analyze', [CompanyController::class, 'analyze'])->name('companies.analyze');
     Route::post('/companies/{company}/set-primary-url', [CompanyController::class, 'setPrimaryUrl'])->name('companies.set-primary-url');
     Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
+
+    // 営業管理
+    Route::get('/outreach', [OutreachController::class, 'index'])->name('outreach.index');
+    Route::post('/outreach/{company}/phase', [OutreachController::class, 'updatePhase'])->name('outreach.phase');
+    Route::post('/outreach/{company}/contact', [OutreachController::class, 'storeContact'])->name('outreach.contact.store');
+    Route::delete('/outreach/{company}/contact/{contact}', [OutreachController::class, 'destroyContact'])->name('outreach.contact.destroy');
 
     // BIZMAPSインポート
     Route::get('/bizmaps/import', [BizmapsImportController::class, 'index'])->name('bizmaps.import');

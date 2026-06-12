@@ -394,6 +394,131 @@
     </form>
 </section>
 
+{{-- 営業管理 --}}
+@php
+    use App\Http\Controllers\OutreachController;
+    $phasesMeta = OutreachController::PHASES;
+    $contactMethods = OutreachController::CONTACT_METHODS;
+    $outreachHistory = $company->outreachContacts ?? collect();
+    $currentOutreach = $outreachHistory->first();
+    $currentPhase = $currentOutreach?->phase ?? null;
+    $phaseBadgeColors = ['list'=>'gray','attacked'=>'blue','negotiating'=>'amber','contracted'=>'green','rejected'=>'red','hold'=>'gray'];
+@endphp
+<section class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+        <div class="section-label">営業管理</div>
+        @if ($currentPhase)
+            <span class="badge {{ $phaseBadgeColors[$currentPhase] ?? 'gray' }}">{{ $phasesMeta[$currentPhase]['label'] ?? $currentPhase }}</span>
+        @else
+            <span class="badge gray">未登録</span>
+        @endif
+    </div>
+
+    {{-- フェーズ変更ボタン --}}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;">
+        @foreach ($phasesMeta as $phaseKey => $phaseMeta)
+            <form method="POST" action="{{ route('outreach.phase', $company) }}">
+                @csrf
+                <input type="hidden" name="phase" value="{{ $phaseKey }}">
+                <button class="button small {{ $currentPhase === $phaseKey ? '' : 'light' }}" type="submit"
+                    style="{{ $currentPhase === $phaseKey ? '' : 'opacity:.7;' }}">
+                    {{ $phaseMeta['label'] }}
+                </button>
+            </form>
+        @endforeach
+    </div>
+
+    {{-- コンタクト記録フォーム --}}
+    <details style="margin-bottom:14px;">
+        <summary style="cursor:pointer;font-size:13px;font-weight:700;padding:8px 0;list-style:none;display:flex;align-items:center;gap:6px;">
+            <span style="width:18px;height:18px;border-radius:4px;background:var(--primary);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex:0 0 auto;">+</span>
+            コンタクト記録を追加
+        </summary>
+        <form method="POST" action="{{ route('outreach.contact.store', $company) }}" style="margin-top:10px;padding:14px;background:#f8fafc;border:1px solid var(--line);border-radius:10px;">
+            @csrf
+            <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:10px;">
+                <div class="field" style="margin-bottom:0;">
+                    <label for="oc_phase">フェーズ</label>
+                    <select id="oc_phase" name="phase" required>
+                        @foreach ($phasesMeta as $pk => $pm)
+                            <option value="{{ $pk }}" @selected($currentPhase === $pk || (!$currentPhase && $pk === 'list'))>{{ $pm['label'] }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="field" style="margin-bottom:0;">
+                    <label for="oc_method">コンタクト方法</label>
+                    <select id="oc_method" name="contact_method">
+                        <option value="">—</option>
+                        @foreach ($contactMethods as $mk => $ml)
+                            <option value="{{ $mk }}">{{ $ml }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="field" style="margin-bottom:0;">
+                    <label for="oc_contacted_at">コンタクト日時</label>
+                    <input id="oc_contacted_at" type="datetime-local" name="contacted_at">
+                </div>
+                <div class="field" style="margin-bottom:0;">
+                    <label for="oc_next_action_at">次アクション日</label>
+                    <input id="oc_next_action_at" type="date" name="next_action_at">
+                </div>
+            </div>
+            <div class="field" style="margin-bottom:10px;">
+                <label for="oc_next_action">次アクション内容</label>
+                <input id="oc_next_action" type="text" name="next_action" placeholder="例：メール送付、訪問アポ確認">
+            </div>
+            <div class="field" style="margin-bottom:10px;">
+                <label for="oc_memo">メモ</label>
+                <textarea id="oc_memo" name="memo" rows="2" placeholder="商談内容・状況メモ"></textarea>
+            </div>
+            <button class="button small" type="submit">記録を保存</button>
+        </form>
+    </details>
+
+    {{-- 営業履歴 --}}
+    @if ($outreachHistory->isNotEmpty())
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>日時</th>
+                        <th>フェーズ</th>
+                        <th>方法</th>
+                        <th>次アクション</th>
+                        <th>メモ</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach ($outreachHistory as $oc)
+                        <tr>
+                            <td style="white-space:nowrap;font-size:12px;">{{ optional($oc->contacted_at ?? $oc->created_at)->format('Y-m-d H:i') }}</td>
+                            <td><span class="badge {{ $phaseBadgeColors[$oc->phase] ?? 'gray' }}">{{ $phasesMeta[$oc->phase]['label'] ?? $oc->phase }}</span></td>
+                            <td style="font-size:12px;">{{ $contactMethods[$oc->contact_method] ?? '—' }}</td>
+                            <td style="font-size:12px;">
+                                @if ($oc->next_action_at)
+                                    <span style="font-size:11px;color:var(--muted);">{{ $oc->next_action_at->format('m/d') }}</span>
+                                @endif
+                                {{ $oc->next_action ?? '—' }}
+                            </td>
+                            <td style="font-size:12px;max-width:240px;">{{ $oc->memo ?? '—' }}</td>
+                            <td>
+                                <form method="POST" action="{{ route('outreach.contact.destroy', [$company, $oc]) }}" onsubmit="return confirm('削除する？');">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button class="button small danger" type="submit">削除</button>
+                                </form>
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    @else
+        <div style="font-size:13px;color:var(--muted);">営業記録なし。上のフェーズボタンまたはフォームから記録できます。</div>
+    @endif
+</section>
+
 {{-- company基本情報 --}}
 <section class="card">
     <p class="section-label" style="margin-bottom:12px;">company基本情報</p>

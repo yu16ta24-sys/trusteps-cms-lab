@@ -402,6 +402,11 @@
                         </thead>
                         <tbody>
                         @forelse ($companies as $company)
+                            @php
+                                $outreachPhase = $company->latestOutreachContact?->phase;
+                                $outreachColors = ['list'=>'gray','attacked'=>'blue','negotiating'=>'amber','contracted'=>'green','rejected'=>'red','hold'=>'gray'];
+                                $outreachLabels = ['list'=>'未着手','attacked'=>'アタック済','negotiating'=>'商談中','contracted'=>'成約','rejected'=>'見送り','hold'=>'保留'];
+                            @endphp
                             <tr>
                                 <td>
                                     <div class="company-name">{{ $company->display_name }}</div>
@@ -412,6 +417,9 @@
                                         <div class="subtext">法人番号：{{ $company->corporate_number }}</div>
                                     @endif
                                     <div class="subtext">状態：{{ $company->status }}</div>
+                                    @if ($outreachPhase)
+                                        <span class="badge {{ $outreachColors[$outreachPhase] ?? 'gray' }}" style="margin-top:4px;">{{ $outreachLabels[$outreachPhase] ?? $outreachPhase }}</span>
+                                    @endif
                                 </td>
                                 <td>
                                     <div><strong>{{ $company->industry?->name ?? '-' }}</strong></div>

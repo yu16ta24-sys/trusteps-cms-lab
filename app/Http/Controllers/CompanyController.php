@@ -145,7 +145,8 @@ class CompanyController extends Controller
                 'industry',
                 'municipality.prefecture',
                 'primaryDomain',
-                'scores' => fn ($scoreQuery) => $scoreQuery->where('algo_version', 'v1'),
+                'scores'                => fn ($scoreQuery) => $scoreQuery->where('algo_version', 'v1'),
+                'latestOutreachContact',
             ])
             ->withCount(['sourceLinks', 'domains', 'killFlags'])
             ->where('is_killed', false)
@@ -412,6 +413,7 @@ class CompanyController extends Controller
             'mergedChildren',
             'killFlags',
             'scores',
+            'outreachContacts',
         ]);
 
         $scoreAxes = $this->scoreAxisOptions();

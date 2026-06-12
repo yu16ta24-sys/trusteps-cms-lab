@@ -379,6 +379,9 @@
                 <a class="nav-link {{ request()->routeIs('companies.candidates') ? 'active' : '' }}" href="{{ route('companies.candidates') }}">
                     営業候補
                 </a>
+                <a class="nav-link {{ request()->routeIs('outreach.*') ? 'active' : '' }}" href="{{ route('outreach.index') }}">
+                    営業管理
+                </a>
             </nav>
 
             <div class="topbar-right">
