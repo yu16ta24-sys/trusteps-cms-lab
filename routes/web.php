@@ -132,6 +132,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/companies/{company}/edit', [CompanyController::class, 'edit'])->name('companies.edit');
     Route::put('/companies/{company}', [CompanyController::class, 'update'])->name('companies.update');
     Route::post('/companies/{company}/analyze', [CompanyController::class, 'analyze'])->name('companies.analyze');
+    Route::post('/companies/{company}/set-primary-url', [CompanyController::class, 'setPrimaryUrl'])->name('companies.set-primary-url');
     Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
 
     // BIZMAPSインポート

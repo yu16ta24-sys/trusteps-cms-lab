@@ -548,6 +548,9 @@ class CompanyController extends Controller
             if (!$result['success']) {
                 return redirect()->route('companies.show', $company)->with('status', 'HP解析失敗：' . $result['message']);
             }
+            if ($result['js_rendering_required'] ?? false) {
+                return redirect()->route('companies.show', $company)->with('status', 'JSサイトのため自動解析できませんでした。目視で確認してください。');
+            }
             $company->load(['industry', 'domains', 'primaryDomain', 'scores']);
             $suggestions = app(\App\Services\ScoreSuggester::class)->suggest($company);
             $axisKeys    = array_keys($this->scoreAxisOptions());
@@ -583,6 +586,35 @@ class CompanyController extends Controller
             report($e);
             return redirect()->route('companies.show', $company)->with('status', 'HP解析中にエラーが発生しました。');
         }
+    }
+
+    public function setPrimaryUrl(Request $request, Company $company): RedirectResponse
+    {
+        $validated = $request->validate([
+            'primary_url' => ['required', 'string', 'url', 'max:500'],
+        ]);
+
+        $newUrl = trim($validated['primary_url']);
+        $currentUrl = $company->primaryDomain?->url ?? '';
+
+        if ($newUrl !== $currentUrl) {
+            $domain = Domain::create([
+                'company_id'        => $company->id,
+                'url'               => $newUrl,
+                'normalized_domain' => $this->normalizeDomain($newUrl),
+                'role'              => 'official',
+                'is_primary'        => true,
+                'is_portal'         => false,
+            ]);
+
+            if ($company->primary_domain_id) {
+                Domain::where('id', $company->primary_domain_id)->update(['is_primary' => false]);
+            }
+
+            $company->update(['primary_domain_id' => $domain->id]);
+        }
+
+        return redirect()->route('companies.show', $company)->with('status', '公式URLを更新しました。再度「HP解析」を実行してください。');
     }
 
     public function createFromSource(SourceRecord $sourceRecord): View|RedirectResponse

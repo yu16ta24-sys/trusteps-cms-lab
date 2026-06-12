@@ -101,6 +101,27 @@ class HpAnalyzerService
         $html = $fetchResult['html'];
         $headers = $fetchResult['headers'];
 
+        // JSレンダリング判定
+        if ($this->detectJsRendering($html)) {
+            $factData = [
+                'hp_snapshot_id'         => $snapshot->id,
+                'extractor_version'      => self::EXTRACTOR_VERSION,
+                'extracted_at'           => now(),
+                'hp_js_rendering_required' => true,
+            ];
+            DB::transaction(function () use ($snapshot, $factData) {
+                HpFact::where('hp_snapshot_id', $snapshot->id)->delete();
+                HpFact::create($factData);
+            });
+            return [
+                'success'              => true,
+                'js_rendering_required' => true,
+                'message'              => 'JSレンダリングが必要なサイトのため自動解析できませんでした。',
+                'snapshot_id'          => $snapshot->id,
+                'fact'                 => $factData,
+            ];
+        }
+
         // HTML解析
         $factData = $this->analyzeHtml($html, $headers, $url, $fetchResult['final_url']);
         $factData['hp_snapshot_id'] = $snapshot->id;
@@ -679,6 +700,37 @@ class HpAnalyzerService
             }
         }
         return null;
+    }
+
+    private function detectJsRendering(string $html): bool
+    {
+        if (mb_strlen($html) < 1000) {
+            return true;
+        }
+
+        $htmlLower = strtolower($html);
+        $markers = [
+            '<div id="app">',
+            '<div id="root">',
+            'window.__next_data__',
+            'ng-version',
+            '<div id="__nuxt">',
+            'data-reactroot',
+            'data-v-app',
+        ];
+
+        foreach ($markers as $marker) {
+            if (str_contains($htmlLower, $marker)) {
+                $bodyText = preg_replace('/<script[^>]*>.*?<\/script>/is', '', $html);
+                $bodyText = preg_replace('/<style[^>]*>.*?<\/style>/is', '', $bodyText);
+                $bodyText = trim(strip_tags($bodyText));
+                if (mb_strlen($bodyText) < 500) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private function normalizeUrl(string $url): string

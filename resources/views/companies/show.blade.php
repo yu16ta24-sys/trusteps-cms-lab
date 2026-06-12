@@ -150,7 +150,25 @@
             <span style="font-size:11px; color:var(--muted);">{{ optional($latestFact->extracted_at)->format('Y-m-d H:i') }}</span>
         @endif
     </div>
-    @if ($latestFact)
+    @if ($latestFact && ($latestFact->hp_js_rendering_required ?? false))
+        <div style="padding:12px 16px;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;margin-bottom:12px;">
+            <div style="font-size:13px;font-weight:700;color:#92400e;">JSサイトのため自動解析不可。目視で確認してください。</div>
+            <div style="font-size:11px;color:#b45309;margin-top:4px;">JavaScriptで描画されているためHTMLを取得できませんでした。URLが正しければ手動で確認・入力してください。</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+            <form method="POST" action="{{ route('companies.set-primary-url', $company) }}" style="display:flex;gap:6px;align-items:center;flex:1;min-width:260px;">
+                @csrf
+                <input type="url" name="primary_url" placeholder="https://example.com" value="{{ $company->primaryDomain?->url }}" style="flex:1;padding:6px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;" required>
+                <button class="button small" type="submit">公式URLを手動設定</button>
+            </form>
+            <form method="POST" action="{{ route('companies.kill-flags.store', $company) }}">
+                @csrf
+                <input type="hidden" name="flag" value="no_official_site">
+                <input type="hidden" name="note" value="JSサイトのため自動解析不可。公式HPなし判定。">
+                <button class="button small light" type="submit" style="color:#ef4444;border-color:#fca5a5;">HPなし → kill_flag追加（no_official_site）</button>
+            </form>
+        </div>
+    @elseif ($latestFact)
         <div class="cs-hp-grid">
             <div class="cs-hp-item">
                 <div class="cs-hp-k">改善余地スコア</div>

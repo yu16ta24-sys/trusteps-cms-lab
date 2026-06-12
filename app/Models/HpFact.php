@@ -46,6 +46,7 @@ class HpFact extends Model
         'hp_has_suumo',
         'hp_portal_links',
         'hp_improvement_score',
+        'hp_js_rendering_required',
     ];
     protected $casts = [
         'has_ec' => 'boolean',
@@ -61,6 +62,7 @@ class HpFact extends Model
         'mobile_friendly' => 'boolean',
         'ssl_enabled' => 'boolean',
         'extracted_at' => 'datetime',
+        'hp_js_rendering_required' => 'boolean',
     ];
     public function snapshot()
     {
