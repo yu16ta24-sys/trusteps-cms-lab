@@ -321,7 +321,12 @@
     @if (!empty($v2Caps))
         <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;">
             @foreach ($v2Caps as $cap)
-                <span class="badge amber" style="font-size:10px;">cap: {{ $cap }}</span>
+                @php
+                    $capLabel = isset($cap['flag'])
+                        ? ($cap['axis'] ?? '?') . '≤' . $cap['cap'] . ' (' . $cap['flag'] . ')'
+                        : ($cap['gate'] ?? '?') . ' → 上限' . $cap['cap'];
+                @endphp
+                <span class="badge amber" style="font-size:10px;">cap: {{ $capLabel }}</span>
             @endforeach
         </div>
     @endif
