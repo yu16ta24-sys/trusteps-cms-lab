@@ -47,6 +47,17 @@ class HpFact extends Model
         'hp_portal_links',
         'hp_improvement_score',
         'hp_js_rendering_required',
+        // コンテンツ検出（Phase 2-A）
+        'hp_has_case_studies',
+        'hp_has_pricing',
+        'hp_has_testimonials',
+        'hp_has_faq',
+        'hp_has_staff_intro',
+        'hp_has_recruit_page',
+        'hp_has_service_detail',
+        'hp_has_company_profile',
+        'hp_has_owner_name',
+        'hp_has_local_keyword',
     ];
     protected $casts = [
         'has_ec' => 'boolean',
@@ -63,6 +74,16 @@ class HpFact extends Model
         'ssl_enabled' => 'boolean',
         'extracted_at' => 'datetime',
         'hp_js_rendering_required' => 'boolean',
+        'hp_has_case_studies' => 'boolean',
+        'hp_has_pricing' => 'boolean',
+        'hp_has_testimonials' => 'boolean',
+        'hp_has_faq' => 'boolean',
+        'hp_has_staff_intro' => 'boolean',
+        'hp_has_recruit_page' => 'boolean',
+        'hp_has_service_detail' => 'boolean',
+        'hp_has_company_profile' => 'boolean',
+        'hp_has_owner_name' => 'boolean',
+        'hp_has_local_keyword' => 'boolean',
     ];
     public function snapshot()
     {

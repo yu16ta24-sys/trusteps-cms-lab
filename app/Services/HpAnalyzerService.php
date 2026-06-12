@@ -125,8 +125,9 @@ class HpAnalyzerService
             ];
         }
 
-        // HTML解析
-        $factData = $this->analyzeHtml($html, $headers, $url, $fetchResult['final_url'], $fetchResult['ssl_enabled'] ?? null);
+        // HTML解析（地域キーワード検出のため municipality を読み込んで渡す）
+        $company->loadMissing('municipality.prefecture');
+        $factData = $this->analyzeHtml($html, $headers, $url, $fetchResult['final_url'], $fetchResult['ssl_enabled'] ?? null, $company);
         $factData['hp_snapshot_id'] = $snapshot->id;
         $factData['extractor_version'] = self::EXTRACTOR_VERSION;
         $factData['extracted_at'] = now();
@@ -311,7 +312,7 @@ class HpAnalyzerService
     /**
      * HTMLを解析してfactデータを生成する
      */
-    private function analyzeHtml(string $html, array $headers, string $requestedUrl, string $finalUrl, ?bool $sslEnabled = null): array
+    private function analyzeHtml(string $html, array $headers, string $requestedUrl, string $finalUrl, ?bool $sslEnabled = null, ?Company $company = null): array
     {
         $htmlLower = strtolower($html);
 
@@ -374,6 +375,106 @@ class HpAnalyzerService
         // contact_method_type
         $contactMethodType = $this->calcContactMethodType($hasContactForm, $hasPublicEmail, $hasPhone);
 
+        // ====== F: コンテンツ検出（Phase 2-A） ======
+        // 施工事例・実績
+        $hasCaseStudies = (
+            str_contains($htmlLower, '施工事例') ||
+            str_contains($htmlLower, '施工実績') ||
+            str_contains($htmlLower, '工事実績') ||
+            str_contains($htmlLower, '導入事例') ||
+            str_contains($htmlLower, '実績紹介') ||
+            str_contains($htmlLower, 'works') ||
+            str_contains($htmlLower, 'case')
+        );
+
+        // 料金・価格
+        $hasPricing = (
+            str_contains($htmlLower, '料金') ||
+            str_contains($htmlLower, '価格') ||
+            str_contains($htmlLower, '費用') ||
+            str_contains($htmlLower, '見積') ||
+            str_contains($htmlLower, 'price') ||
+            str_contains($htmlLower, '円〜') ||
+            (bool) preg_match('/[0-9,]+円/', $html)
+        );
+
+        // お客様の声・レビュー
+        $hasTestimonials = (
+            str_contains($htmlLower, 'お客様の声') ||
+            str_contains($htmlLower, 'お客さまの声') ||
+            str_contains($htmlLower, '口コミ') ||
+            str_contains($htmlLower, 'レビュー') ||
+            str_contains($htmlLower, '評判') ||
+            str_contains($htmlLower, 'voice') ||
+            str_contains($htmlLower, 'testimonial')
+        );
+
+        // FAQ
+        $hasFaq = (
+            str_contains($htmlLower, 'よくある質問') ||
+            str_contains($htmlLower, 'faq') ||
+            str_contains($htmlLower, 'q&a') ||
+            str_contains($htmlLower, 'よくあるご質問')
+        );
+
+        // スタッフ・代表者紹介
+        $hasStaffIntro = (
+            str_contains($htmlLower, 'スタッフ紹介') ||
+            str_contains($htmlLower, 'スタッフ一覧') ||
+            str_contains($htmlLower, '代表挨拶') ||
+            str_contains($htmlLower, '代表メッセージ') ||
+            str_contains($htmlLower, 'チーム紹介') ||
+            str_contains($htmlLower, 'staff') ||
+            str_contains($htmlLower, 'team') ||
+            str_contains($htmlLower, 'about us')
+        );
+
+        // 採用ページ
+        $hasRecruitPage = (
+            str_contains($htmlLower, '採用情報') ||
+            str_contains($htmlLower, '求人情報') ||
+            str_contains($htmlLower, '採用募集') ||
+            str_contains($htmlLower, '一緒に働く') ||
+            str_contains($htmlLower, 'recruit') ||
+            str_contains($htmlLower, '求人') ||
+            str_contains($htmlLower, '募集要項')
+        );
+
+        // サービス説明の充実度
+        $hasServiceDetail = (
+            str_contains($htmlLower, 'サービス') ||
+            str_contains($htmlLower, '事業内容') ||
+            str_contains($htmlLower, 'service') ||
+            str_contains($htmlLower, '特徴') ||
+            str_contains($htmlLower, '強み') ||
+            str_contains($htmlLower, '選ばれる理由')
+        );
+
+        // 会社概要
+        $hasCompanyProfile = (
+            str_contains($htmlLower, '会社概要') ||
+            str_contains($htmlLower, '会社情報') ||
+            str_contains($htmlLower, 'company') ||
+            str_contains($htmlLower, '企業情報') ||
+            str_contains($htmlLower, '運営会社')
+        );
+
+        // 代表者名（個人名パターン）
+        $hasOwnerName = (bool) preg_match('/代表[取締役社長：: 　]*[\x{3040}-\x{9FFF}]{2,6}/u', $html);
+
+        // 地域密着キーワード（会社の都道府県名・市区町村名がHP内に出現するか）
+        $hasLocalKeyword = false;
+        if ($company && $company->municipality) {
+            $prefName = $company->municipality->prefecture->name ?? '';
+            $cityName = $company->municipality->name ?? '';
+            if ($prefName !== '' && str_contains($html, $prefName)) {
+                $hasLocalKeyword = true;
+            }
+            if ($cityName !== '' && str_contains($html, $cityName)) {
+                $hasLocalKeyword = true;
+            }
+        }
+
         // ====== HP改善余地スコア計算 ======
         $improvementScore = $this->calcImprovementScore([
             'ssl_enabled'       => $sslEnabled,
@@ -425,6 +526,17 @@ class HpAnalyzerService
             'hp_has_suumo'              => $portalResult['suumo'],
             'hp_portal_links'           => !empty($portalResult['links']) ? json_encode($portalResult['links'], JSON_UNESCAPED_UNICODE) : null,
             'hp_improvement_score'      => $improvementScore,
+            // コンテンツ検出（Phase 2-A）
+            'hp_has_case_studies'       => $hasCaseStudies,
+            'hp_has_pricing'            => $hasPricing,
+            'hp_has_testimonials'       => $hasTestimonials,
+            'hp_has_faq'                => $hasFaq,
+            'hp_has_staff_intro'        => $hasStaffIntro,
+            'hp_has_recruit_page'       => $hasRecruitPage,
+            'hp_has_service_detail'     => $hasServiceDetail,
+            'hp_has_company_profile'    => $hasCompanyProfile,
+            'hp_has_owner_name'         => $hasOwnerName,
+            'hp_has_local_keyword'      => $hasLocalKeyword,
         ];
     }
 

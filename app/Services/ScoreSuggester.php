@@ -402,7 +402,7 @@ class ScoreSuggester
         $hasIndustrySig = (bool) ($industrySig['_has_industry_scores'] ?? false);
         unset($industrySig['_has_industry_scores']);
 
-        $hpSub = $this->computeHpSubscores($hasHp ? $hpFact : null);
+        $hpSub = $this->computeHpSubscores($hasHp ? $hpFact : null, $industrySig);
         $s     = array_merge($industrySig, $hpSub);
 
         $flags = $this->collectFlagsV2($company, $hasHp, $hpFact);
@@ -845,7 +845,7 @@ class ScoreSuggester
             || !empty($hpFact->hp_contact_email);
     }
 
-    private function computeHpSubscores(?object $hpFact): array
+    private function computeHpSubscores(?object $hpFact, array $industrySig = []): array
     {
         $n        = 3.0;
         $defaults = $this->placeholderHpSub($n);
@@ -904,13 +904,81 @@ class ScoreSuggester
         $funcComplexity    = min(5.0, $fc);
         $lowFuncComplexity = 6.0 - $funcComplexity; // spec: 6 - value（1〜6）
 
+        // ====== コンテンツ検出ベースのサブスコア（Phase 2-A） ======
+        // content_gap_score: コンテンツ不足度（高いほど不足=改善余地大、最大6.5を0〜5へ正規化）
+        $cgap = 0.0;
+        if (!$hpFact->hp_has_case_studies)   $cgap += 1.5;
+        if (!$hpFact->hp_has_pricing)        $cgap += 1.0;
+        if (!$hpFact->hp_has_testimonials)   $cgap += 0.8;
+        if (!$hpFact->hp_has_faq)            $cgap += 0.5;
+        if (!$hpFact->hp_has_staff_intro)    $cgap += 0.7;
+        if (!$hpFact->hp_has_service_detail) $cgap += 1.0;
+        $contentGap = min(5.0, round($cgap / 6.5 * 5, 1));
+
+        // comparison_material_gap_score: 比較材料不足度（最大5.0を0〜5へ正規化）
+        $cmgap = 0.0;
+        if (!$hpFact->hp_has_case_studies) $cmgap += 2.0;
+        if (!$hpFact->hp_has_pricing)      $cmgap += 1.5;
+        if (!$hpFact->hp_has_testimonials) $cmgap += 1.0;
+        if (!$hpFact->hp_has_faq)          $cmgap += 0.5;
+        $comparisonMaterialGap = min(5.0, round($cmgap / 5.0 * 5, 1));
+
+        // simple_site_fit_score: シンプルサイトで完結するか
+        $fit = 3.0;
+        if ($hpFact->hp_has_service_detail)  $fit += 0.5;
+        if ($hpFact->hp_has_company_profile) $fit += 0.5;
+        if (!$hpFact->has_ec && !$hpFact->has_reservation) $fit += 1.0;
+        $simpleSiteFit = min(5.0, $fit);
+
+        // recurring_content_potential_score: 継続更新ネタ（最大5.0）
+        $pot = 0.0;
+        if ($hpFact->hp_has_case_studies) $pot += 1.5;
+        if ($hpFact->hp_has_recruit_page) $pot += 1.0;
+        if ($hpFact->hp_has_news)         $pot += 1.5;
+        if ($hpFact->hp_has_testimonials) $pot += 0.5;
+        if ($hpFact->hp_has_staff_intro)  $pot += 0.5;
+        $recurringContentPotential = min(5.0, $pot);
+
+        // recruit_content_need_score: 採用コンテンツ需要（業種ベース + HP実態）
+        $recruitBase        = (float) ($industrySig['update_neta_score'] ?? 3.0);
+        $recruitAdjust      = $hpFact->hp_has_recruit_page ? -0.5 : 1.0; // 既にあれば需要低、なければ高
+        $recruitContentNeed = max(1.0, min(5.0, $recruitBase + $recruitAdjust));
+
+        // maintenance_need_score: 保守契約の必要性
+        $need = 2.0;
+        if ($hpFact->cms_type === 'wordpress') $need += 1.5;
+        if ($hpFact->hp_has_news)              $need += 0.5;
+        if ($hpFact->hp_has_case_studies)      $need += 0.5;
+        if ($hpFact->hp_has_recruit_page)      $need += 0.5;
+        $maintenanceNeed = min(5.0, $need);
+
+        // decision_distance_score: 意思決定者との距離（高いほど近い=アプローチ容易）
+        $dd = 3.0;
+        if ($hpFact->hp_has_owner_name)    $dd += 1.0; // 代表者名あり
+        if ($hpFact->hp_has_local_keyword) $dd += 0.5; // 地域密着
+        $decisionDistance = min(5.0, $dd);
+
+        // local_business_score: 地域密着度
+        $lb = 3.0;
+        if ($hpFact->hp_has_local_keyword) $lb += 1.5;
+        $localBusiness = min(5.0, $lb);
+
         return array_merge($defaults, [
-            'site_weakness_score'           => $siteWeakness,
-            'conversion_gap_score'          => $conversionGap,
-            'freshness_gap_score'           => $freshnessGap,
-            'contact_route_score'           => $contactRoute,
-            'function_complexity_score'     => $funcComplexity,
-            'low_function_complexity_score' => $lowFuncComplexity,
+            'site_weakness_score'               => $siteWeakness,
+            'conversion_gap_score'              => $conversionGap,
+            'freshness_gap_score'               => $freshnessGap,
+            'contact_route_score'               => $contactRoute,
+            'function_complexity_score'         => $funcComplexity,
+            'low_function_complexity_score'     => $lowFuncComplexity,
+            // コンテンツ検出ベース（Phase 2-A）
+            'content_gap_score'                 => $contentGap,
+            'comparison_material_gap_score'     => $comparisonMaterialGap,
+            'simple_site_fit_score'             => $simpleSiteFit,
+            'recurring_content_potential_score' => $recurringContentPotential,
+            'recruit_content_need_score'        => $recruitContentNeed,
+            'maintenance_need_score'            => $maintenanceNeed,
+            'decision_distance_score'           => $decisionDistance,
+            'local_business_score'              => $localBusiness,
         ]);
     }
 
