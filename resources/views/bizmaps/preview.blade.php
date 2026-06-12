@@ -111,6 +111,9 @@
     <button type="button" class="button small light" id="selectAll">全選択</button>
     <button type="button" class="button small light" id="selectNone">全解除</button>
     <button type="button" class="button small light" id="selectHpOnly">HP URLありのみ</button>
+    <div style="width:1px;height:20px;background:var(--line);margin:0 2px;flex-shrink:0;"></div>
+    <button type="button" class="button small light" id="excludeSelectAll" style="color:#ef4444;">除外：全選択</button>
+    <button type="button" class="button small light" id="excludeSelectNone">除外：全解除</button>
   </div>
 
   {{-- テーブル --}}
@@ -128,7 +131,8 @@
           <th>HP URL</th>
           <th class="tight">詳細</th>
           <th class="tight">状態</th>
-          <th class="tight">除外</th>
+          <th class="tight">BZ除外</th>
+          <th class="tight" style="color:#ef4444;">除外☑</th>
         </tr>
       </thead>
       <tbody>
@@ -176,6 +180,14 @@
               data-index="{{ $i }}"
               style="font-size:11px;padding:5px 10px;color:var(--danger);">除外</button>
           </td>
+          <td class="tight">
+            @if(!$row['is_duplicate'])
+              <input type="checkbox" class="exclude-check"
+                value="{{ $i }}"
+                data-detail-url="{{ $row['detail_url'] }}"
+                style="accent-color:#ef4444;width:15px;height:15px;cursor:pointer;">
+            @endif
+          </td>
         </tr>
         @endforeach
       </tbody>
@@ -193,6 +205,55 @@
     </button>
     <div id="saveResult"></div>
   </div>
+
+  {{-- 一括実行バー --}}
+  @php $totalNonDup = count(array_filter($mainResults, fn($r) => !$r['is_duplicate'])); @endphp
+  <div class="form-section compact" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px;border-top:1px solid var(--line);padding-top:14px;">
+    <span style="font-size:12px;color:var(--muted);font-weight:700;flex-shrink:0;">一括実行：</span>
+    <span id="excludeSummary" style="font-weight:800;font-size:14px;">除外 0件 / カンパニー化 {{ $totalNonDup }}件</span>
+    <button type="button" class="button" id="execBtn">実行</button>
+    <div id="execResult"></div>
+  </div>
+
+  {{-- 除外済みsource_record アコーディオン --}}
+  @if(!empty($excludedSourceResults))
+  <details style="margin-top:16px;" id="excludedSourcePanel">
+    <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:12px 16px;border:1px solid var(--line);border-radius:10px;background:#f8fafc;">
+      <span style="font-weight:900;font-size:14px;">除外済み（source_record登録済み）</span>
+      <span class="badge gray" style="font-size:11px;">{{ count($excludedSourceResults) }}件</span>
+      <span style="font-size:12px;color:var(--muted);margin-left:4px;">▼ 以前の取得で除外済み — メインカウントから外しています</span>
+    </summary>
+    <div style="margin-top:8px;">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>会社名</th>
+              <th>都道府県</th>
+              <th>市区町村</th>
+              <th>業種</th>
+              <th class="tight">詳細</th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach($excludedSourceResults as $row)
+            <tr>
+              <td style="font-weight:800;opacity:0.6;">{{ $row['name'] ?? '-' }}</td>
+              <td style="opacity:0.6;">{{ $row['pref'] ?? '-' }}</td>
+              <td style="opacity:0.6;">{{ $row['city'] ?? '-' }}</td>
+              <td style="opacity:0.6;"><span style="font-size:12px;color:var(--muted);">{{ Str::limit($row['industry'] ?? '-', 25) }}</span></td>
+              <td class="tight">
+                <a href="{{ $row['detail_url'] }}" target="_blank" class="button small light"
+                  style="font-size:11px;padding:5px 10px;">BIZMAPS</a>
+              </td>
+            </tr>
+            @endforeach
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+  @endif
 
   {{-- 除外リストアコーディオン --}}
   @if(!empty($excludedResults))
@@ -545,6 +606,72 @@ document.addEventListener('DOMContentLoaded', function () {
       doSave('/bizmaps/store-companies', saveCompaniesBtn, 'companies保存完了');
     });
   }
+
+  // ---- 除外チェックボックス（一括実行用） ----
+  function updateExcludeCount() {
+    const all      = document.querySelectorAll('.exclude-check');
+    const excluded = document.querySelectorAll('.exclude-check:checked').length;
+    const company  = all.length - excluded;
+    const el = document.getElementById('excludeSummary');
+    if (el) el.textContent = `除外 ${excluded}件 / カンパニー化 ${company}件`;
+  }
+
+  document.querySelectorAll('.exclude-check').forEach(cb => {
+    cb.addEventListener('change', updateExcludeCount);
+  });
+  updateExcludeCount();
+
+  document.getElementById('excludeSelectAll')?.addEventListener('click', () => {
+    document.querySelectorAll('.exclude-check').forEach(cb => cb.checked = true);
+    updateExcludeCount();
+  });
+  document.getElementById('excludeSelectNone')?.addEventListener('click', () => {
+    document.querySelectorAll('.exclude-check').forEach(cb => cb.checked = false);
+    updateExcludeCount();
+  });
+
+  // ---- 一括実行ボタン ----
+  document.getElementById('execBtn')?.addEventListener('click', function () {
+    const excludedUrls = Array.from(document.querySelectorAll('.exclude-check:checked'))
+      .map(cb => cb.dataset.detailUrl)
+      .filter(Boolean);
+    const total   = document.querySelectorAll('.exclude-check').length;
+    const company = total - excludedUrls.length;
+
+    if (!confirm(`除外 ${excludedUrls.length}件 / カンパニー化 ${company}件 で実行しますか？`)) return;
+
+    this.disabled = true;
+    this.textContent = '処理中...';
+    const execResult = document.getElementById('execResult');
+    if (execResult) execResult.innerHTML = '';
+
+    fetch('/bizmaps/store-with-exclusion', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+      },
+      body: JSON.stringify({
+        items: PREVIEW_DATA,
+        excluded_detail_urls: excludedUrls,
+      }),
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (execResult) {
+        execResult.innerHTML =
+          `<span class="badge green" style="font-size:13px;padding:6px 12px;">カンパニー化 ${data.saved_companies}件</span> ` +
+          `<span class="badge gray" style="font-size:12px;">除外登録 ${data.saved_excluded}件</span>` +
+          (data.skipped > 0 ? ` <span class="badge amber" style="font-size:12px;">スキップ ${data.skipped}件</span>` : '');
+      }
+      this.textContent = '実行完了';
+    })
+    .catch(err => {
+      if (execResult) execResult.innerHTML = `<span class="badge red">エラー: ${err.message}</span>`;
+      this.disabled = false;
+      this.textContent = '実行';
+    });
+  });
 
 });
 </script>

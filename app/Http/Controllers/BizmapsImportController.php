@@ -80,26 +80,38 @@ class BizmapsImportController extends Controller
 
         $results = array_slice($results, 0, $limit);
 
-        // 重複チェック
-        $detailUrls   = array_filter(array_column($results, 'detail_url'));
-        $existingUrls = DB::table('source_records')
+        // 重複チェック（active と is_excluded 済みを分離）
+        $detailUrls = array_filter(array_column($results, 'detail_url'));
+
+        $existingActiveUrls = DB::table('source_records')
             ->whereIn('source_url', $detailUrls)
+            ->where(function ($q) { $q->whereNull('is_excluded')->orWhere('is_excluded', false); })
             ->pluck('source_url')
             ->toArray();
 
-        // 除外リストチェック
+        $existingExcludedUrls = DB::table('source_records')
+            ->whereIn('source_url', $detailUrls)
+            ->where('is_excluded', true)
+            ->pluck('source_url')
+            ->toArray();
+
+        // 除外リストチェック（bizmaps_excluded_companies）
         $excludedUrls = DB::table('bizmaps_excluded_companies')
             ->whereIn('detail_url', $detailUrls)
             ->pluck('detail_url')
             ->toArray();
 
-        $mainResults     = [];
-        $excludedResults = [];
+        $mainResults           = [];
+        $excludedResults       = [];
+        $excludedSourceResults = []; // is_excluded=true の source_record が既存
 
         foreach ($results as &$r) {
-            $r['is_duplicate'] = in_array($r['detail_url'], $existingUrls);
+            $r['is_duplicate']       = in_array($r['detail_url'], $existingActiveUrls);
+            $r['is_excluded_source'] = in_array($r['detail_url'], $existingExcludedUrls);
             if (in_array($r['detail_url'], $excludedUrls)) {
                 $excludedResults[] = $r;
+            } elseif ($r['is_excluded_source']) {
+                $excludedSourceResults[] = $r;
             } else {
                 $mainResults[] = $r;
             }
@@ -125,7 +137,7 @@ class BizmapsImportController extends Controller
 
         $industries = $this->getIndustries();
         $results    = $mainResults; // 後方互換用
-        return view('bizmaps.preview', compact('mainResults', 'excludedResults', 'results', 'prefecture', 'limit', 'searchCondition', 'industries'));
+        return view('bizmaps.preview', compact('mainResults', 'excludedResults', 'excludedSourceResults', 'results', 'prefecture', 'limit', 'searchCondition', 'industries'));
     }
 
     /**
@@ -353,6 +365,145 @@ class BizmapsImportController extends Controller
         }
 
         return response()->json(['saved' => $saved, 'skipped' => $skipped]);
+    }
+
+    /**
+     * チェックした行を is_excluded=true で保存、残りを company として保存
+     */
+    public function storeWithExclusion(Request $request)
+    {
+        $items              = $request->input('items', []);
+        $excludedDetailUrls = $request->input('excluded_detail_urls', []);
+        $excludedSet        = array_flip($excludedDetailUrls);
+        $savedCompanies     = 0;
+        $savedExcluded      = 0;
+        $skipped            = 0;
+        $now                = now();
+        $mapper             = new BizmapsIndustryMapper();
+
+        foreach ($items as $item) {
+            if ($item['is_duplicate'] ?? false) {
+                continue;
+            }
+
+            $hpUrl     = $item['hp_url']     ?? null;
+            $detailUrl = $item['detail_url'] ?? null;
+            $name      = $item['name']       ?? null;
+
+            if (isset($excludedSet[$detailUrl])) {
+                // is_excluded=true で source_record に保存
+                $sourceUrl = $hpUrl ?: $detailUrl;
+                if (!$sourceUrl) { $skipped++; continue; }
+
+                $normalizedDomain = null;
+                if ($hpUrl) {
+                    $host             = parse_url($hpUrl, PHP_URL_HOST);
+                    $normalizedDomain = $host ? preg_replace('/^www\./', '', $host) : null;
+                }
+
+                $existing = DB::table('source_records')->where('source_url', $sourceUrl)->exists();
+                if ($existing) {
+                    DB::table('source_records')
+                        ->where('source_url', $sourceUrl)
+                        ->update(['is_excluded' => true, 'updated_at' => $now]);
+                } else {
+                    DB::table('source_records')->insert([
+                        'source_type'       => 'bizmaps',
+                        'source_url'        => $sourceUrl,
+                        'normalized_domain' => $normalizedDomain,
+                        'name_norm'         => $name,
+                        'pref'              => $item['pref'] ?? null,
+                        'city'              => $item['city'] ?? null,
+                        'raw_json'          => json_encode([
+                            'hp_url'     => $hpUrl,
+                            'detail_url' => $detailUrl,
+                            'industry'   => $item['industry'] ?? null,
+                            'source'     => 'bizmaps',
+                        ], JSON_UNESCAPED_UNICODE),
+                        'is_excluded' => true,
+                        'fetched_at'  => $now,
+                        'created_at'  => $now,
+                        'updated_at'  => $now,
+                    ]);
+                }
+                $savedExcluded++;
+            } else {
+                // 通常の company 作成（storeCompanies と同じロジック）
+                if (!$name) { $skipped++; continue; }
+
+                $checkUrl = $hpUrl ?: $detailUrl;
+                if ($checkUrl && DB::table('domains')->where('url', $checkUrl)->exists()) {
+                    $skipped++;
+                    continue;
+                }
+
+                $industryText = $item['industry'] ?? null;
+                $industryId   = null;
+                if ($industryText) {
+                    $parts      = array_map('trim', explode(',', $industryText));
+                    $bigCat     = $parts[0] ?? '';
+                    $subCat     = $parts[1] ?? null;
+                    $industryId = $mapper->resolveId($bigCat, $subCat);
+                }
+
+                $municipalityId = null;
+                if (!empty($item['pref']) && !empty($item['city'])) {
+                    $municipality   = DB::table('municipalities')->where('name', $item['city'])->first();
+                    $municipalityId = $municipality?->id;
+                }
+
+                $normalizedDomain = null;
+                if ($hpUrl) {
+                    $host             = parse_url($hpUrl, PHP_URL_HOST);
+                    $normalizedDomain = $host ? preg_replace('/^www\./', '', $host) : null;
+                }
+
+                DB::transaction(function () use (
+                    $item, $hpUrl, $detailUrl, $name, $industryId,
+                    $municipalityId, $normalizedDomain, $now, &$savedCompanies
+                ) {
+                    $companyId = DB::table('companies')->insertGetId([
+                        'status'            => 'candidate',
+                        'municipality_id'   => $municipalityId,
+                        'industry_id'       => $industryId,
+                        'primary_domain_id' => null,
+                        'legal_name'        => null,
+                        'display_name'      => $name,
+                        'name_norm'         => mb_strtolower(preg_replace('/[\s　]+/u', '', $name)),
+                        'alias_names_json'  => null,
+                        'corporate_number'  => null,
+                        'pref'              => $municipalityId ? null : ($item['pref'] ?? null),
+                        'city'              => $municipalityId ? null : ($item['city'] ?? null),
+                        'is_killed'         => false,
+                        'created_at'        => $now,
+                        'updated_at'        => $now,
+                    ]);
+
+                    if ($hpUrl) {
+                        $domainId = DB::table('domains')->insertGetId([
+                            'company_id'        => $companyId,
+                            'url'               => $hpUrl,
+                            'normalized_domain' => $normalizedDomain,
+                            'role'              => 'official',
+                            'is_primary'        => true,
+                            'is_portal'         => false,
+                            'created_at'        => $now,
+                            'updated_at'        => $now,
+                        ]);
+                        DB::table('companies')->where('id', $companyId)
+                            ->update(['primary_domain_id' => $domainId]);
+                    }
+
+                    $savedCompanies++;
+                });
+            }
+        }
+
+        return response()->json([
+            'saved_companies' => $savedCompanies,
+            'saved_excluded'  => $savedExcluded,
+            'skipped'         => $skipped,
+        ]);
     }
 
     private function buildUrls(int $prefectureId, array $cityCodes, string $industryType, ?int $industryId): array
