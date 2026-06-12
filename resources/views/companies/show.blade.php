@@ -355,7 +355,10 @@
                     {{ ($ev['has_industry_scores'] ?? false) ? '（業種スコアあり）' : '（業種スコアなし・中央値）' }}
                     &nbsp;|&nbsp;
                     <span style="font-weight:600;">HP入口:</span>
-                    {{ ($ev['site_analysis']['has_hp'] ?? false) ? 'HPあり' : 'HPなし' }}@if ($ev['site_analysis']['has_form'] ?? false)・フォームあり@endif@if ($ev['site_analysis']['has_email'] ?? false)・メールあり@endif@if ($ev['site_analysis']['has_phone'] ?? false)・電話あり@endif
+                    {{ ($ev['site_analysis']['has_hp'] ?? false) ? 'HPあり' : 'HPなし' }}
+                    @if ($ev['site_analysis']['has_form'] ?? false) ・フォームあり @endif
+                    @if ($ev['site_analysis']['has_email'] ?? false) ・メールあり @endif
+                    @if ($ev['site_analysis']['has_phone'] ?? false) ・電話あり @endif
                     <br>
                     @if (!empty($ev['normalized']))
                         <span style="font-weight:600;">主要シグナル:</span>
