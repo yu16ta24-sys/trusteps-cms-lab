@@ -111,9 +111,6 @@
     <button type="button" class="button small light" id="selectAll">全選択</button>
     <button type="button" class="button small light" id="selectNone">全解除</button>
     <button type="button" class="button small light" id="selectHpOnly">HP URLありのみ</button>
-    <div style="width:1px;height:20px;background:var(--line);margin:0 2px;flex-shrink:0;"></div>
-    <button type="button" class="button small light" id="excludeSelectAll" style="color:#ef4444;">除外：全選択</button>
-    <button type="button" class="button small light" id="excludeSelectNone">除外：全解除</button>
   </div>
 
   {{-- テーブル --}}
@@ -131,8 +128,7 @@
           <th>HP URL</th>
           <th class="tight">詳細</th>
           <th class="tight">状態</th>
-          <th class="tight">BZ除外</th>
-          <th class="tight" style="color:#ef4444;">除外☑</th>
+          <th class="tight">除外</th>
         </tr>
       </thead>
       <tbody>
@@ -180,39 +176,23 @@
               data-index="{{ $i }}"
               style="font-size:11px;padding:5px 10px;color:var(--danger);">除外</button>
           </td>
-          <td class="tight">
-            @if(!$row['is_duplicate'])
-              <input type="checkbox" class="exclude-check"
-                value="{{ $i }}"
-                data-detail-url="{{ $row['detail_url'] }}"
-                style="accent-color:#ef4444;width:15px;height:15px;cursor:pointer;">
-            @endif
-          </td>
         </tr>
         @endforeach
       </tbody>
     </table>
   </div>
 
-  {{-- 保存バー --}}
+  {{-- アクションバー --}}
   <div class="form-section compact" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
     <span id="selectedCount" style="font-weight:800;font-size:14px;color:var(--muted);">0件選択中</span>
-    <button type="button" class="button light" id="saveBtn" disabled style="min-width:200px;">
-      source_recordsに保存
+    <button type="button" class="button" id="saveCompaniesBtn" disabled>
+      選択した0件をカンパニー化
     </button>
-    <button type="button" class="button" id="saveCompaniesBtn" disabled style="min-width:200px;">
-      companiesに直接保存
+    <button type="button" class="button light" id="saveExcludeBtn" disabled
+      style="color:#ef4444;border-color:#fca5a5;">
+      選択した0件を除外
     </button>
     <div id="saveResult"></div>
-  </div>
-
-  {{-- 一括実行バー --}}
-  @php $totalNonDup = count(array_filter($mainResults, fn($r) => !$r['is_duplicate'])); @endphp
-  <div class="form-section compact" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px;border-top:1px solid var(--line);padding-top:14px;">
-    <span style="font-size:12px;color:var(--muted);font-weight:700;flex-shrink:0;">一括実行：</span>
-    <span id="excludeSummary" style="font-weight:800;font-size:14px;">除外 0件 / カンパニー化 {{ $totalNonDup }}件</span>
-    <button type="button" class="button" id="execBtn">実行</button>
-    <div id="execResult"></div>
   </div>
 
   {{-- 除外済みsource_record アコーディオン --}}
@@ -393,10 +373,16 @@ document.addEventListener('DOMContentLoaded', function () {
     const count = document.querySelectorAll('.row-check:checked').length;
     const el = document.getElementById('selectedCount');
     if (el) el.textContent = count + '件選択中';
-    const saveBtn = document.getElementById('saveBtn');
-    if (saveBtn) saveBtn.disabled = count === 0;
     const saveCompaniesBtn = document.getElementById('saveCompaniesBtn');
-    if (saveCompaniesBtn) saveCompaniesBtn.disabled = count === 0;
+    if (saveCompaniesBtn) {
+      saveCompaniesBtn.disabled = count === 0;
+      saveCompaniesBtn.textContent = `選択した${count}件をカンパニー化`;
+    }
+    const saveExcludeBtn = document.getElementById('saveExcludeBtn');
+    if (saveExcludeBtn) {
+      saveExcludeBtn.disabled = count === 0;
+      saveExcludeBtn.textContent = `選択した${count}件を除外`;
+    }
   }
 
   // ---- 除外ボタン ----
@@ -545,133 +531,94 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // ---- 保存 ----
-  const saveBtn          = document.getElementById('saveBtn');
+  // ---- カンパニー化・除外 ----
   const saveCompaniesBtn = document.getElementById('saveCompaniesBtn');
+  const saveExcludeBtn   = document.getElementById('saveExcludeBtn');
   const saveResult       = document.getElementById('saveResult');
 
-  function doSave(url, btnEl, labelText) {
+  function getCheckedItems() {
     const checked = document.querySelectorAll('.row-check:checked');
-    if (checked.length === 0) return;
-
-    const items = Array.from(checked).map(cb => PREVIEW_DATA[parseInt(cb.value)]);
-
-    btnEl.disabled = true;
-    btnEl.textContent = '保存中...';
-    saveResult.innerHTML = '';
-
-    fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-      },
-      body: JSON.stringify({ items }),
-    })
-    .then(r => r.json())
-    .then(data => {
-      saveResult.innerHTML =
-        `<span class="badge green" style="font-size:13px;padding:8px 14px;">${labelText} ${data.saved}件</span>` +
-        (data.skipped > 0 ? ` <span class="badge gray" style="font-size:12px;">スキップ ${data.skipped}件</span>` : '');
-
-      checked.forEach(cb => {
-        const row = document.getElementById('row-' + cb.value);
-        if (row) row.style.opacity = '0.45';
-        const span = document.createElement('span');
-        span.className = 'badge gray';
-        span.style.fontSize = '11px';
-        span.textContent = '保存済';
-        cb.replaceWith(span);
-      });
-
-      btnEl.disabled = false;
-      btnEl.textContent = labelText.replace('保存完了', '').trim() + 'に保存';
-      updateCount();
-    })
-    .catch(err => {
-      saveResult.innerHTML = `<span class="badge red">保存失敗: ${err.message}</span>`;
-      btnEl.disabled = false;
-      btnEl.textContent = labelText.replace('保存完了', '').trim() + 'に保存';
-    });
+    return { checked, items: Array.from(checked).map(cb => PREVIEW_DATA[parseInt(cb.value)]) };
   }
 
-  if (saveBtn) {
-    saveBtn.addEventListener('click', function () {
-      doSave('/bizmaps/store', saveBtn, 'source_records保存完了');
+  function markRowsDone(checked, badgeText) {
+    checked.forEach(cb => {
+      const row = document.getElementById('row-' + cb.value);
+      if (row) row.style.opacity = '0.45';
+      const span = document.createElement('span');
+      span.className = 'badge gray';
+      span.style.fontSize = '11px';
+      span.textContent = badgeText;
+      cb.replaceWith(span);
     });
+    updateCount();
   }
 
   if (saveCompaniesBtn) {
     saveCompaniesBtn.addEventListener('click', function () {
-      doSave('/bizmaps/store-companies', saveCompaniesBtn, 'companies保存完了');
+      const { checked, items } = getCheckedItems();
+      if (items.length === 0) return;
+
+      this.disabled = true;
+      this.textContent = '処理中...';
+      saveResult.innerHTML = '';
+
+      fetch('/bizmaps/store-companies', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+        },
+        body: JSON.stringify({ items }),
+      })
+      .then(r => r.json())
+      .then(data => {
+        saveResult.innerHTML =
+          `<span class="badge green" style="font-size:13px;padding:8px 14px;">カンパニー化 ${data.saved}件</span>` +
+          (data.skipped > 0 ? ` <span class="badge gray" style="font-size:12px;">スキップ ${data.skipped}件</span>` : '');
+        markRowsDone(checked, '登録済');
+      })
+      .catch(err => {
+        saveResult.innerHTML = `<span class="badge red">失敗: ${err.message}</span>`;
+        this.disabled = false;
+        updateCount();
+      });
     });
   }
 
-  // ---- 除外チェックボックス（一括実行用） ----
-  function updateExcludeCount() {
-    const all      = document.querySelectorAll('.exclude-check');
-    const excluded = document.querySelectorAll('.exclude-check:checked').length;
-    const company  = all.length - excluded;
-    const el = document.getElementById('excludeSummary');
-    if (el) el.textContent = `除外 ${excluded}件 / カンパニー化 ${company}件`;
-  }
+  if (saveExcludeBtn) {
+    saveExcludeBtn.addEventListener('click', function () {
+      const { checked, items } = getCheckedItems();
+      if (items.length === 0) return;
 
-  document.querySelectorAll('.exclude-check').forEach(cb => {
-    cb.addEventListener('change', updateExcludeCount);
-  });
-  updateExcludeCount();
+      const excludedDetailUrls = items.map(item => item.detail_url).filter(Boolean);
 
-  document.getElementById('excludeSelectAll')?.addEventListener('click', () => {
-    document.querySelectorAll('.exclude-check').forEach(cb => cb.checked = true);
-    updateExcludeCount();
-  });
-  document.getElementById('excludeSelectNone')?.addEventListener('click', () => {
-    document.querySelectorAll('.exclude-check').forEach(cb => cb.checked = false);
-    updateExcludeCount();
-  });
+      this.disabled = true;
+      this.textContent = '処理中...';
+      saveResult.innerHTML = '';
 
-  // ---- 一括実行ボタン ----
-  document.getElementById('execBtn')?.addEventListener('click', function () {
-    const excludedUrls = Array.from(document.querySelectorAll('.exclude-check:checked'))
-      .map(cb => cb.dataset.detailUrl)
-      .filter(Boolean);
-    const total   = document.querySelectorAll('.exclude-check').length;
-    const company = total - excludedUrls.length;
-
-    if (!confirm(`除外 ${excludedUrls.length}件 / カンパニー化 ${company}件 で実行しますか？`)) return;
-
-    this.disabled = true;
-    this.textContent = '処理中...';
-    const execResult = document.getElementById('execResult');
-    if (execResult) execResult.innerHTML = '';
-
-    fetch('/bizmaps/store-with-exclusion', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-      },
-      body: JSON.stringify({
-        items: PREVIEW_DATA,
-        excluded_detail_urls: excludedUrls,
-      }),
-    })
-    .then(r => r.json())
-    .then(data => {
-      if (execResult) {
-        execResult.innerHTML =
-          `<span class="badge green" style="font-size:13px;padding:6px 12px;">カンパニー化 ${data.saved_companies}件</span> ` +
-          `<span class="badge gray" style="font-size:12px;">除外登録 ${data.saved_excluded}件</span>` +
+      fetch('/bizmaps/store-with-exclusion', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+        },
+        body: JSON.stringify({ items, excluded_detail_urls: excludedDetailUrls }),
+      })
+      .then(r => r.json())
+      .then(data => {
+        saveResult.innerHTML =
+          `<span class="badge gray" style="font-size:13px;padding:8px 14px;">除外登録 ${data.saved_excluded}件</span>` +
           (data.skipped > 0 ? ` <span class="badge amber" style="font-size:12px;">スキップ ${data.skipped}件</span>` : '');
-      }
-      this.textContent = '実行完了';
-    })
-    .catch(err => {
-      if (execResult) execResult.innerHTML = `<span class="badge red">エラー: ${err.message}</span>`;
-      this.disabled = false;
-      this.textContent = '実行';
+        markRowsDone(checked, '除外済');
+      })
+      .catch(err => {
+        saveResult.innerHTML = `<span class="badge red">失敗: ${err.message}</span>`;
+        this.disabled = false;
+        updateCount();
+      });
     });
-  });
+  }
 
 });
 </script>
