@@ -437,6 +437,7 @@ class CompanyController extends Controller
             ->keyBy('axis');
         $scoreSummary = $company->scoreSummary;
         $scoresV2 = $company->scores->where('score_version', 'scoring_v1.0')->keyBy('axis');
+        $reasonJson = $scoreSummary?->reason_json;
 
         try {
             $scoreSuggestions = app(\App\Services\ScoreSuggester::class)->suggest($company);
@@ -475,7 +476,8 @@ class CompanyController extends Controller
             'previousScoringCompany',
             'nextScoringCompany',
             'scoreSummary',
-            'scoresV2'
+            'scoresV2',
+            'reasonJson'
         ));
     }
 

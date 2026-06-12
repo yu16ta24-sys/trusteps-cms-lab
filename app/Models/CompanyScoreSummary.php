@@ -15,14 +15,16 @@ class CompanyScoreSummary extends Model
         'flags_json',
         'caps_applied_json',
         'reason_summary',
+        'reason_json',
         'score_version',
     ];
 
     protected $casts = [
-        'total_score'      => 'float',
-        'confidence'       => 'float',
-        'flags_json'       => 'array',
+        'total_score'       => 'float',
+        'confidence'        => 'float',
+        'flags_json'        => 'array',
         'caps_applied_json' => 'array',
+        'reason_json'       => 'array',
     ];
 
     public function company()

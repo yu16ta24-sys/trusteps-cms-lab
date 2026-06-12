@@ -128,6 +128,7 @@ class RecalculateScores extends Command
                     'flags_json'        => $result['flags'],
                     'caps_applied_json' => $result['caps_applied'],
                     'reason_summary'    => $result['reason_summary'],
+                    'reason_json'       => $result['reason_json'],
                 ]
             );
         });

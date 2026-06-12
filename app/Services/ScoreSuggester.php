@@ -503,6 +503,27 @@ class ScoreSuggester
             $confidence,
             $flags
         );
+        $reason['evidence'] = [
+            'industry_key'        => $company->industry?->slug,
+            'has_industry_scores' => $hasIndustrySig,
+            'normalized'          => [
+                'site_weakness'           => round($g('site_weakness_score'), 1),
+                'trust_hp_importance'     => round($g('trust_hp_importance_score'), 1),
+                'portal_independence'     => round($g('portal_independence_score'), 1),
+                'customer_research_depth' => round($g('customer_research_depth_score'), 1),
+                'conversion_value'        => round($g('conversion_value_score'), 1),
+                'contact_route'           => round($g('contact_route_score'), 1),
+                'simple_site_fit'         => round($g('simple_site_fit_score'), 1),
+                'sales_reachability'      => round($g('sales_reachability_score'), 1),
+                'company_size_fit'        => round($g('company_size_fit_score'), 1),
+            ],
+            'site_analysis' => [
+                'has_hp'    => $hasHp,
+                'has_form'  => $hpFact?->hp_contact_form_url !== null,
+                'has_email' => $hpFact?->hp_contact_email !== null,
+                'has_phone' => $hpFact?->hp_contact_phone !== null,
+            ],
+        ];
 
         $axes = [
             'opportunity_score' => [

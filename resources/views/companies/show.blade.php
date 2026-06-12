@@ -312,111 +312,61 @@
         @endforeach
     </div>
 
-    @if ($scoreSummary?->reason_summary)
-        <div style="font-size:12px;color:var(--muted);padding:8px 0;border-top:1px solid var(--border);">
-            {{ $scoreSummary->reason_summary }}
-        </div>
-    @endif
+    {{-- 採点根拠 --}}
+    @if ($reasonJson)
+        <div style="border-top:1px solid var(--border); margin-top:14px; padding-top:14px;">
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">採点根拠</div>
 
-    @if (!empty($v2Caps))
-        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;">
-            @foreach ($v2Caps as $cap)
-                @php
-                    $capLabel = isset($cap['flag'])
-                        ? ($cap['axis'] ?? '?') . '≤' . $cap['cap'] . ' (' . $cap['flag'] . ')'
-                        : ($cap['gate'] ?? '?') . ' → 上限' . $cap['cap'];
-                @endphp
-                <span class="badge amber" style="font-size:10px;">cap: {{ $capLabel }}</span>
-            @endforeach
-        </div>
-    @endif
-
-    <details style="margin-top:16px;">
-        <summary style="font-size:12px;color:var(--muted);cursor:pointer;padding:4px 0;">旧4軸スコア入力（legacy）▶</summary>
-        <div style="margin-top:10px;">
-            <form method="POST" action="{{ route('companies.scores.store', $company) }}">
-                @csrf
-
-                <div class="cs-score-row">
-                    @foreach ($scoreAxes as $axis => $meta)
-                        @php
-                            $currentScore       = $scoresByAxis->get($axis);
-                            $currentReason      = $currentScore?->reason_json ?? [];
-                            $currentNote        = old("scores.$axis.note", $currentReason['note'] ?? '');
-                            $currentValue       = old("scores.$axis.value", $currentScore?->value ?? 0);
-                            $currentConfidence  = old("scores.$axis.confidence", $currentScore?->confidence ?? '0.6');
-                            $suggestion         = $scoreSuggestions[$axis] ?? null;
-                            $autoSuggestedValue = $currentScore?->auto_suggested_value;
-                            $suggestionDelta    = ($autoSuggestedValue !== null && $currentScore)
-                                ? ((int)$currentScore->value - (int)$autoSuggestedValue) : null;
-                        @endphp
-
-                        <div class="cs-score-card opp">
-                            <div class="cs-score-card-top">
-                                <div>
-                                    <div class="cs-axis-key">{{ $axis }}</div>
-                                    <div class="cs-axis-label">{{ $meta['label'] }}</div>
-                                </div>
-                                <span class="badge green" style="font-size:10px;">{{ $meta['group'] }}</span>
-                            </div>
-
-                            <div class="cs-score-val" style="color:#166534;">
-                                {{ $currentScore ? $currentScore->value : '—' }}<span style="font-size:14px;font-weight:400;color:var(--muted);">/5</span>
-                            </div>
-                            <div class="cs-score-sub">{{ $meta['polarity'] }}</div>
-
-                            @if ($suggestion && $suggestion['value'] !== null)
-                                <div class="cs-suggestion-bar">自動提案：{{ $suggestion['value'] }}点（{{ $suggestion['confidence'] }}）</div>
-                                <input type="hidden" name="score_suggestions[{{ $axis }}][value]"        value="{{ $suggestion['value'] }}">
-                                <input type="hidden" name="score_suggestions[{{ $axis }}][confidence]"   value="{{ $suggestion['confidence'] }}">
-                                <input type="hidden" name="score_suggestions[{{ $axis }}][basis]"        value="{{ $suggestion['basis'] ?? 'auto' }}">
-                                <input type="hidden" name="score_suggestions[{{ $axis }}][algo_version]" value="{{ \App\Services\ScoreSuggester::ALGO }}">
-                                <input type="hidden" name="score_suggestions[{{ $axis }}][drivers_json]" value="{{ e(json_encode($suggestion['drivers'] ?? [], JSON_UNESCAPED_UNICODE)) }}">
-                                <input type="hidden" name="score_suggestions[{{ $axis }}][note]"         value="{{ $suggestion['note'] }}">
-                            @endif
-
-                            <div class="field" style="margin-top:10px;margin-bottom:6px;">
-                                <label for="score_{{ $axis }}_value" style="font-size:11px;">value 0〜5</label>
-                                <select id="score_{{ $axis }}_value" name="scores[{{ $axis }}][value]" data-scored="{{ $currentScore ? '1' : '0' }}" required>
-                                    @for ($i = 0; $i <= 5; $i++)
-                                        <option value="{{ $i }}" @selected((string)$currentValue === (string)$i)>{{ $i }}</option>
-                                    @endfor
-                                </select>
-                            </div>
-                            <div class="field" style="margin-bottom:6px;">
-                                <label for="score_{{ $axis }}_confidence" style="font-size:11px;">confidence</label>
-                                <select id="score_{{ $axis }}_confidence" name="scores[{{ $axis }}][confidence]" required>
-                                    <option value="0.3" @selected((string)$currentConfidence === '0.3')>0.3 推測</option>
-                                    <option value="0.6" @selected((string)$currentConfidence === '0.6')>0.6 一部確認</option>
-                                    <option value="0.9" @selected((string)$currentConfidence === '0.9')>0.9 直接確認</option>
-                                </select>
-                            </div>
-                            <div class="field" style="margin-bottom:0;">
-                                <label for="score_{{ $axis }}_note" style="font-size:11px;">メモ</label>
-                                <textarea id="score_{{ $axis }}_note" name="scores[{{ $axis }}][note]" rows="1" placeholder="判断メモ">{{ $currentNote }}</textarea>
-                            </div>
-
-                            @if ($currentScore && $autoSuggestedValue !== null)
-                                <div class="cs-current-bar">
-                                    auto提案 {{ $autoSuggestedValue }}点
-                                    @if ($suggestionDelta === 0)
-                                        <span class="badge green" style="font-size:10px;">提案どおり</span>
-                                    @else
-                                        <span class="badge blue" style="font-size:10px;">手動 {{ $suggestionDelta > 0 ? '+' : '' }}{{ $suggestionDelta }}</span>
-                                    @endif
-                                </div>
-                            @endif
-                        </div>
+            @if (!empty($reasonJson['positive']))
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+                    @foreach ($reasonJson['positive'] as $item)
+                        <span class="badge green" style="font-size:11px;">✓ {{ $item }}</span>
                     @endforeach
                 </div>
+            @endif
 
-                <div class="actions" style="margin-top:14px;">
-                    <button class="button" type="submit">4軸スコアを保存</button>
-                    <button class="button light" type="submit" name="after_action" value="next_scoring">保存して次の未採点へ</button>
+            @if (!empty($reasonJson['negative']))
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+                    @foreach ($reasonJson['negative'] as $item)
+                        <span class="badge amber" style="font-size:11px;">✗ {{ $item }}</span>
+                    @endforeach
                 </div>
-            </form>
+            @endif
+
+            @if (!empty($v2Caps))
+                <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">
+                    <span style="font-weight:600;">スコア上限補正あり：</span>
+                    @foreach ($v2Caps as $cap)
+                        @php
+                            $capLabel = isset($cap['flag'])
+                                ? ($cap['axis'] ?? '?') . '≤' . $cap['cap'] . ' (' . $cap['flag'] . ')'
+                                : ($cap['gate'] ?? '?') . ' → 上限' . $cap['cap'];
+                        @endphp
+                        <span class="badge amber" style="font-size:10px;">{{ $capLabel }}</span>
+                    @endforeach
+                </div>
+            @endif
+
+            @if (!empty($reasonJson['evidence']))
+                @php $ev = $reasonJson['evidence']; @endphp
+                <div style="font-size:10px;color:var(--muted);line-height:1.9;margin-top:6px;padding:8px 10px;background:var(--bg2,#f8fafc);border-radius:8px;">
+                    <span style="font-weight:600;">業種:</span>
+                    {{ $ev['industry_key'] ?? '—' }}
+                    {{ ($ev['has_industry_scores'] ?? false) ? '（業種スコアあり）' : '（業種スコアなし・中央値）' }}
+                    &nbsp;|&nbsp;
+                    <span style="font-weight:600;">HP入口:</span>
+                    {{ ($ev['site_analysis']['has_hp'] ?? false) ? 'HPあり' : 'HPなし' }}@if ($ev['site_analysis']['has_form'] ?? false)・フォームあり@endif@if ($ev['site_analysis']['has_email'] ?? false)・メールあり@endif@if ($ev['site_analysis']['has_phone'] ?? false)・電話あり@endif
+                    <br>
+                    @if (!empty($ev['normalized']))
+                        <span style="font-weight:600;">主要シグナル:</span>
+                        @foreach ($ev['normalized'] as $sigKey => $sigVal)
+                            <span style="background:#e5e7eb;border-radius:3px;padding:1px 5px;display:inline-block;margin:1px 2px;">{{ $sigKey }}&nbsp;{{ number_format((float)$sigVal, 1) }}</span>
+                        @endforeach
+                    @endif
+                </div>
+            @endif
         </div>
-    </details>
+    @endif
 </section>
 
 {{-- kill_flags --}}
