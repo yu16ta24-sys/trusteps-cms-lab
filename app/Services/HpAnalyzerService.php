@@ -586,11 +586,14 @@ class HpAnalyzerService
 
     private function extractContactEmail(string $html): ?string
     {
-        // mailto: リンクを最優先
-        if (preg_match('/href=["\']mailto:([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i', $html, $m)) {
-            return $m[1];
+        // 1. mailto: リンクを最優先（%40 等URLエンコード対応）
+        if (preg_match('/href=["\']mailto:([^"\'?\s]+)/i', $html, $m)) {
+            $decoded = urldecode($m[1]);
+            if (preg_match('/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/', $decoded, $em)) {
+                return $em[0];
+            }
         }
-        // fallback: script/style除去 → HTMLエンティティデコード → テキスト検索
+        // 2. fallback: script/style除去 → HTMLエンティティデコード → テキスト検索
         $text = preg_replace('/<script[^>]*>.*?<\/script>/is', '', $html);
         $text = preg_replace('/<style[^>]*>.*?<\/style>/is', '', $text);
         $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -648,11 +651,28 @@ class HpAnalyzerService
 
     private function extractContactPhone(string $html): ?string
     {
+        // 1. tel: リンクを優先（数字10〜11桁であることを検証）
         if (preg_match('/href=["\']tel:([+\d\-\s().]+)["\']/', $html, $m)) {
-            return preg_replace('/[^\d\-+]/', '', trim($m[1]));
+            $digits = preg_replace('/[^\d]/', '', $m[1]);
+            if (strlen($digits) >= 10 && strlen($digits) <= 11) {
+                return preg_replace('/[^\d\-+]/', '', trim($m[1]));
+            }
         }
-        if (preg_match('/0\d{1,4}[-\s]?\d{1,4}[-\s]?\d{3,4}/', $html, $m)) {
-            return $m[0];
+        // 2. テキスト検索: 日本の電話番号パターンに限定（日付誤検出を排除）
+        //    各パターンは合計桁数が確定しているため YYYY-MM-DD 形式とは一致しない
+        $patterns = [
+            '/(?<!\d)0[2-9][-\s]\d{4}[-\s]\d{4}(?!\d)/',      // 03-XXXX-XXXX, 06-XXXX-XXXX (10桁)
+            '/(?<!\d)0\d{2}[-\s]\d{3}[-\s]\d{4}(?!\d)/',       // 045-XXX-XXXX (10桁)
+            '/(?<!\d)0\d{3}[-\s]\d{2}[-\s]\d{4}(?!\d)/',       // 0266-XX-XXXX (10桁)
+            '/(?<!\d)0\d{4}[-\s]\d[-\s]\d{4}(?!\d)/',          // 01234-X-XXXX (10桁)
+            '/(?<!\d)0[789]0[-\s]\d{4}[-\s]\d{4}(?!\d)/',      // 070/080/090-XXXX-XXXX (11桁)
+            '/(?<!\d)0120[-\s]\d{3}[-\s]\d{3}(?!\d)/',         // フリーダイヤル0120 (10桁)
+            '/(?<!\d)0800[-\s]\d{3}[-\s]\d{4}(?!\d)/',         // フリーダイヤル0800 (11桁)
+        ];
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $html, $m)) {
+                return $m[0];
+            }
         }
         return null;
     }
