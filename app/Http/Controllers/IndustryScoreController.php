@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Industry;
 use App\Models\IndustryScore;
 use App\Models\IndustryScoreAxis;
+use App\Models\Prefecture;
+use App\Models\Region;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -22,8 +24,11 @@ class IndustryScoreController extends Controller
         'risk'        => 'リスク系',
     ];
 
-    public function index(): View
+    public function index(Request $request): View
     {
+        $regionId     = $request->integer('region_id') ?: null;
+        $prefectureId = $request->integer('prefecture_id') ?: null;
+
         $parents = Industry::query()
             ->whereNull('parent_id')
             ->where('is_active', true)
@@ -77,20 +82,34 @@ class IndustryScoreController extends Controller
             }
         }
 
-        $observationStats = DB::table('industry_score_observations')
+        $observationQuery = DB::table('industry_score_observations')
             ->select('industry_id', 'axis_key', DB::raw('ROUND(AVG(value), 1) as avg_value'), DB::raw('COUNT(*) as obs_count'))
-            ->groupBy('industry_id', 'axis_key')
-            ->get()
+            ->groupBy('industry_id', 'axis_key');
+
+        if ($prefectureId) {
+            $observationQuery->where('prefecture_id', $prefectureId);
+        } elseif ($regionId) {
+            $observationQuery->where('region_id', $regionId);
+        }
+
+        $observationStats = $observationQuery->get()
             ->keyBy(fn($row) => $row->industry_id . '_' . $row->axis_key);
 
+        $regions     = Region::query()->orderBy('sort_order')->get();
+        $prefectures = Prefecture::query()->orderBy('code')->get();
+
         return view('industries.scores.index', [
-            'parents'          => $parents,
-            'children'         => $children,
-            'axes'             => $axes,
-            'categoryLabels'   => $this->categoryLabels,
-            'categoryKeys'     => $categoryKeys,
-            'summaries'        => $summaries,
-            'observationStats' => $observationStats,
+            'parents'              => $parents,
+            'children'             => $children,
+            'axes'                 => $axes,
+            'categoryLabels'       => $this->categoryLabels,
+            'categoryKeys'         => $categoryKeys,
+            'summaries'            => $summaries,
+            'observationStats'     => $observationStats,
+            'regions'              => $regions,
+            'prefectures'          => $prefectures,
+            'selectedRegionId'     => $regionId,
+            'selectedPrefectureId' => $prefectureId,
         ]);
     }
 

@@ -46,6 +46,15 @@
 .isc-score-cell--amber { background:#fef3c7 !important; }
 .isc-obs { font-size:10px; color:#6b7280; margin-top:3px; white-space:nowrap; line-height:1.3; }
 .isc-obs--ref { color:#d1d5db; }
+.isc-filter { display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:#fff; border:1px solid var(--line); border-radius:16px; padding:10px 14px; }
+.isc-filter-label { font-size:10px; font-weight:900; letter-spacing:.08em; color:var(--muted); text-transform:uppercase; white-space:nowrap; }
+.isc-filter-regions { display:flex; gap:5px; flex-wrap:wrap; flex:1; }
+.isc-filter-btn { padding:5px 12px; border-radius:999px; font-size:12px; font-weight:700; color:#6b7280; background:#f3f4f6; text-decoration:none; transition:background .12s,color .12s; white-space:nowrap; }
+.isc-filter-btn:hover { background:#e5e7eb; color:#111827; }
+.isc-filter-btn.active { background:#1f5eff; color:#fff; }
+.isc-pref-select { height:32px; border:1px solid #d9e2ee; border-radius:8px; padding:0 8px; font-size:12px; color:var(--text); background:#fff; cursor:pointer; }
+.isc-filter-clear { font-size:11px; font-weight:900; color:#ef4444; text-decoration:none; white-space:nowrap; padding:4px 8px; border-radius:6px; background:#fee2e2; }
+.isc-filter-clear:hover { background:#fecaca; }
 </style>
 
 <div class="isc-topbar">
@@ -69,6 +78,37 @@
 @if(session('status'))
     <div class="status">{{ session('status') }}</div>
 @endif
+
+{{-- 地域フィルター --}}
+<div class="isc-filter">
+    <span class="isc-filter-label">実績絞り込み</span>
+    <div class="isc-filter-regions">
+        <a href="{{ route('industries.scores.index') }}"
+           class="isc-filter-btn{{ (!$selectedRegionId && !$selectedPrefectureId) ? ' active' : '' }}">全国</a>
+        @foreach($regions as $region)
+            <a href="{{ route('industries.scores.index', ['region_id' => $region->id]) }}"
+               class="isc-filter-btn{{ $selectedRegionId === $region->id ? ' active' : '' }}">
+                {{ $region->name }}
+            </a>
+        @endforeach
+    </div>
+    <select class="isc-pref-select"
+            onchange="this.value ? location.href='{{ route('industries.scores.index') }}?prefecture_id='+this.value : location.href='{{ route('industries.scores.index') }}'">
+        <option value="">都道府県▾</option>
+        @foreach($regions as $region)
+            <optgroup label="{{ $region->name }}">
+                @foreach($prefectures->where('region_id', $region->id) as $pref)
+                    <option value="{{ $pref->id }}"{{ $selectedPrefectureId === $pref->id ? ' selected' : '' }}>
+                        {{ $pref->name }}
+                    </option>
+                @endforeach
+            </optgroup>
+        @endforeach
+    </select>
+    @if($selectedRegionId || $selectedPrefectureId)
+        <a href="{{ route('industries.scores.index') }}" class="isc-filter-clear">✕ 解除</a>
+    @endif
+</div>
 
 {{-- 凡例 --}}
 <div class="isc-legend">
