@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
+use App\Models\CompanyKillFlag;
 use App\Models\CompanySourceLink;
 use App\Models\Domain;
 use App\Models\Municipality;
@@ -14,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -247,6 +249,59 @@ class SourceRecordController extends Controller
             ->with('status', "一括company化完了。作成 {$created} 件 / リンク済みスキップ {$skipped} 件 / 名簿元スキップ {$directorySkipped} 件。directory_source_candidateはcompany化対象外。");
     }
 
+
+    public function bulkKill(Request $request): RedirectResponse
+    {
+        $allowedFlags = ['no_official_site', 'defunct', 'out_of_scope_size'];
+
+        $validated = $request->validate([
+            'source_record_ids'   => ['required', 'array', 'min:1', 'max:200'],
+            'source_record_ids.*' => ['integer', 'exists:source_records,id'],
+            'kill_flag'           => ['required', 'string', Rule::in($allowedFlags)],
+        ]);
+
+        $records = SourceRecord::query()
+            ->with('sourceLink.company')
+            ->whereIn('id', $validated['source_record_ids'])
+            ->get();
+
+        $killedCompanyCount  = 0;
+        $excludedSourceCount = 0;
+
+        DB::transaction(function () use ($records, $validated, &$killedCompanyCount, &$excludedSourceCount) {
+            foreach ($records as $record) {
+                $company = $record->sourceLink?->company;
+
+                if ($company) {
+                    $exists = CompanyKillFlag::query()
+                        ->where('company_id', $company->id)
+                        ->where('flag', $validated['kill_flag'])
+                        ->exists();
+
+                    if (!$exists) {
+                        CompanyKillFlag::create([
+                            'company_id' => $company->id,
+                            'flag'       => $validated['kill_flag'],
+                            'note'       => 'source_records一括除外',
+                            'source'     => 'bulk_kill',
+                            'flagged_by' => auth()->user()?->email ?? 'manual',
+                            'flagged_at' => now(),
+                        ]);
+                    }
+
+                    $company->update(['is_killed' => true]);
+                    $killedCompanyCount++;
+                } else {
+                    $record->update(['is_excluded' => true]);
+                    $excludedSourceCount++;
+                }
+            }
+        });
+
+        return redirect()
+            ->route('source-records.index', $request->except(['source_record_ids', '_token', 'kill_flag']))
+            ->with('status', "一括除外完了。company kill {$killedCompanyCount} 件 / source_record除外 {$excludedSourceCount} 件。");
+    }
 
     public function cleanupDirectorySourceCompanies(Request $request): RedirectResponse
     {

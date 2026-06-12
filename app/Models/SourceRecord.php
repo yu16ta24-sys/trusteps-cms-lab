@@ -20,11 +20,13 @@ class SourceRecord extends Model
         'pref',
         'city',
         'fetched_at',
+        'is_excluded',
     ];
 
     protected $casts = [
-        'raw_json' => 'array',
-        'fetched_at' => 'datetime',
+        'raw_json'    => 'array',
+        'fetched_at'  => 'datetime',
+        'is_excluded' => 'boolean',
     ];
 
     public function sourceLink()

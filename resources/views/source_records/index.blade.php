@@ -31,6 +31,21 @@
 .compact-pagination .page-link.disabled { opacity:.45; cursor:not-allowed; }
 .compact-pagination .page-ellipsis { border-color:transparent; background:transparent; min-width:20px; padding:0 2px; }
 .compact-pagination .pagination-count { color:#667085; font-weight:700; }
+.sr-bulk-bar {
+    position:fixed; bottom:0; left:0; right:0; z-index:50;
+    background:#0f172a; color:#fff;
+    padding:10px 24px;
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    box-shadow:0 -3px 10px rgba(0,0,0,.22);
+    font-size:13px;
+}
+.sr-bulk-bar select {
+    height:30px; padding:0 8px; border-radius:6px;
+    border:1px solid rgba(255,255,255,.2);
+    background:rgba(255,255,255,.1); color:#fff;
+    font-size:12px; font-weight:600; cursor:pointer; outline:none;
+}
+.sr-bulk-bar select option { background:#1e293b; color:#fff; }
 </style>
 
 {{-- ヘッダー --}}
@@ -399,18 +414,87 @@
     @endif
 </section>
 
+{{-- 一括処理バー（チェック時に画面下部に固定表示） --}}
+<form id="sr-bulk-kill-form" method="POST" action="{{ route('source-records.bulk-kill') }}">
+    @csrf
+    <div id="sr-bulk-bar" class="sr-bulk-bar" style="display:none;">
+        <strong id="sr-bulk-count">0件選択中</strong>
+        <select name="kill_flag" id="sr-bulk-flag" required>
+            <option value="">kill_flag を選択...</option>
+            <option value="no_official_site">no_official_site（公式HPなし）</option>
+            <option value="defunct">defunct（活動停止・閉業）</option>
+            <option value="out_of_scope_size">out_of_scope_size（対象外規模）</option>
+        </select>
+        <button class="button small danger" type="submit">除外実行</button>
+        <button class="button small" type="button" id="sr-bulk-deselect"
+            style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;">
+            選択解除
+        </button>
+    </div>
+</form>
+
 </main>
 
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const checkAll = document.getElementById('check-all-source-records');
-    if (!checkAll) return;
-    checkAll.addEventListener('change', function () {
-        document.querySelectorAll('.source-record-check:not(:disabled)').forEach(function (cb) {
-            cb.checked = checkAll.checked;
+    const checkAll   = document.getElementById('check-all-source-records');
+    const bar        = document.getElementById('sr-bulk-bar');
+    const countLabel = document.getElementById('sr-bulk-count');
+    const killForm   = document.getElementById('sr-bulk-kill-form');
+    const deselect   = document.getElementById('sr-bulk-deselect');
+
+    function getChecked()  { return Array.from(document.querySelectorAll('.source-record-check:checked')); }
+    function getEnabled()  { return Array.from(document.querySelectorAll('.source-record-check:not(:disabled)')); }
+
+    function updateBar() {
+        const checked = getChecked();
+        bar.style.display = checked.length > 0 ? 'flex' : 'none';
+        countLabel.textContent = checked.length + '件選択中';
+        if (checkAll) {
+            const enabled = getEnabled();
+            checkAll.checked       = enabled.length > 0 && enabled.every(cb => cb.checked);
+            checkAll.indeterminate = checked.length > 0 && !checkAll.checked;
+        }
+    }
+
+    if (checkAll) {
+        checkAll.addEventListener('change', function () {
+            getEnabled().forEach(cb => { cb.checked = checkAll.checked; });
+            updateBar();
         });
+    }
+
+    document.querySelectorAll('.source-record-check').forEach(cb => {
+        cb.addEventListener('change', updateBar);
     });
+
+    if (deselect) {
+        deselect.addEventListener('click', function () {
+            getEnabled().forEach(cb => { cb.checked = false; });
+            if (checkAll) { checkAll.checked = false; checkAll.indeterminate = false; }
+            updateBar();
+        });
+    }
+
+    if (killForm) {
+        killForm.addEventListener('submit', function (e) {
+            const checked = getChecked();
+            const flag    = document.getElementById('sr-bulk-flag')?.value;
+            if (!checked.length) { e.preventDefault(); return; }
+            if (!flag) { e.preventDefault(); alert('kill_flagを選択してください。'); return; }
+            if (!confirm(checked.length + '件を一括除外する？（company化済みはkill_flag付与、未リンクはsource_record除外）')) {
+                e.preventDefault(); return;
+            }
+            killForm.querySelectorAll('.sr-injected-id').forEach(el => el.remove());
+            checked.forEach(function (cb) {
+                const input = document.createElement('input');
+                input.type = 'hidden'; input.name = 'source_record_ids[]';
+                input.value = cb.value; input.className = 'sr-injected-id';
+                killForm.appendChild(input);
+            });
+        });
+    }
 });
 </script>
 @endpush
