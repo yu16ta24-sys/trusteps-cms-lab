@@ -52,6 +52,7 @@
         <p class="page-kicker">Industry Scores · Layer 1</p>
         <h1 class="page-title">業界スコア</h1>
         <p class="page-subtitle">業種ごとのCMS事業適性・参入余白を仮説値として管理する。大分類ごとに編集モードで一括入力できる。</p>
+        <p class="page-subtitle" style="font-size:11px;color:var(--muted);margin-top:4px;">industry_scores は業種特性の素材データ。company_scores 算出時（suggestV2）に方向性定義に従い正規化される。</p>
     </div>
     <div class="page-header-right">
         <div class="mini-card" style="text-align:center;padding:12px 18px;">
@@ -105,7 +106,7 @@
     <span class="isc-legend-item"><span class="isc-score-badge mid"  style="width:24px;height:24px;font-size:11px;">2-3</span> 中</span>
     <span class="isc-legend-item"><span class="isc-score-badge low"  style="width:24px;height:24px;font-size:11px;">0-1</span> 低い</span>
     <span class="isc-legend-item"><span class="isc-score-badge none" style="width:24px;height:24px;font-size:10px;">—</span> 未設定</span>
-    <span style="margin-left:8px;font-size:11px;color:var(--muted);">※ portal_dependency / wp_penetration は高いほどネガティブ</span>
+    <span style="margin-left:8px;font-size:11px;color:var(--muted);">※ existing_hp_maturity / wp_penetration / active_update_rate / portal_dependency は高いほどネガティブ（バッジ色反転）</span>
 </div>
 
 {{-- 大分類ループ --}}
@@ -177,7 +178,11 @@
                                             @php
                                                 $score = $industryScores->get($axis->key);
                                                 $val = $score?->value;
-                                                $badgeClass = $val === null ? 'none' : ($val >= 4 ? 'high' : ($val >= 2 ? 'mid' : 'low'));
+                                                $isInverted = \App\Config\IndustryScoreAxes::isInvertedForDisplay($axis->key);
+                                                $badgeClass = $val === null ? 'none'
+                                                    : ($isInverted
+                                                        ? ($val >= 4 ? 'low' : ($val >= 2 ? 'mid' : 'high'))
+                                                        : ($val >= 4 ? 'high' : ($val >= 2 ? 'mid' : 'low')));
                                                 $obs = $observationStats->get($child->id . '_' . $axis->key);
                                                 $obsAvg = $obs ? (float)$obs->avg_value : null;
                                                 $obsCount = $obs ? (int)$obs->obs_count : 0;
