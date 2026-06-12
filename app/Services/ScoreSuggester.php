@@ -8,6 +8,39 @@ class ScoreSuggester
 {
     public const ALGO = 'suggest_v2';
 
+    /** rank=D へ強制除外する critical kill flags */
+    private const CRITICAL_FLAGS = [
+        'already_strong_site',
+        'portal_only_business',
+        'requires_ec_core',
+        'requires_booking_core',
+        'requires_member_system_core',
+        'requires_inventory_core',
+        'requires_external_system_core',
+        'enterprise_decision',
+        'no_contact_route',
+    ];
+
+    /** reason_json / negative 用のフラグ日本語ラベル */
+    private const FLAG_LABELS = [
+        'already_strong_site'           => '既に十分なHPがある',
+        'portal_only_business'          => 'ポータル集客中心のビジネス',
+        'requires_ec_core'              => 'EC構築が中核で難易度が高い',
+        'requires_booking_core'         => '予約システムが中核で難易度が高い',
+        'requires_member_system_core'   => '会員システムが中核で難易度が高い',
+        'requires_inventory_core'       => '在庫管理が中核で難易度が高い',
+        'requires_external_system_core' => '外部システム連携が中核で難易度が高い',
+        'enterprise_decision'           => '意思決定が大企業型で到達が困難',
+        'no_contact_route'              => '連絡経路が確認できない',
+        'sns_only_sufficient'           => 'SNSで完結しており公式HP需要が低い',
+        'legal_or_medical_high_risk'    => '法務・医療系で表現規制リスクが高い',
+        'franchise_or_chain'            => 'FC/チェーンで本部決裁の可能性',
+        'no_official_site'              => '公式サイト未確認',
+        'no_hp_analysis'                => 'HP解析未実施',
+        'js_site'                       => 'JS描画サイトで自動解析不可',
+        'rank_a_provisional'            => '高評価だがデータ不足のため要確認',
+    ];
+
     private const DEV_DIFFICULTY = [
         'lodging'         => 1,
         'lodging_leisure' => 1,
@@ -328,45 +361,339 @@ class ScoreSuggester
      */
     public function suggestV2(Company $company): array
     {
+        $company->loadMissing('killFlags', 'industry.parent', 'primaryDomain');
+
         $hpFact = $this->getLatestHpFact($company);
         $hasHp  = $hpFact !== null && !($hpFact->hp_js_rendering_required ?? false);
 
-        $industrySig       = $this->loadIndustrySignals($company);
-        $hasIndustrySig    = (bool) ($industrySig['_has_industry_scores'] ?? false);
+        $industrySig    = $this->loadIndustrySignals($company);
+        $hasIndustrySig = (bool) ($industrySig['_has_industry_scores'] ?? false);
         unset($industrySig['_has_industry_scores']);
 
-        $hpSub   = $this->computeHpSubscores($hasHp ? $hpFact : null);
-        $signals = array_merge($industrySig, $hpSub);
+        $hpSub = $this->computeHpSubscores($hasHp ? $hpFact : null);
+        $s     = array_merge($industrySig, $hpSub);
 
-        $axes = $this->composeAxesV2($signals, $hasHp);
+        $flags = $this->collectFlagsV2($company, $hasHp, $hpFact);
 
-        $totalScore = round(
-            array_sum(array_column($axes, 'score')) / count($axes),
-            2
+        $clamp = fn (float $v): float => max(0.0, min(5.0, round($v, 2)));
+        $g     = fn (string $k): float => (float) ($s[$k] ?? 3.0);
+
+        // === 5軸算出（加重） ===
+        $opportunity = $clamp(
+            $g('site_weakness_score') * 0.40
+            + $g('content_gap_score') * 0.20
+            + $g('conversion_gap_score') * 0.15
+            + $g('freshness_gap_score') * 0.10
+            + $g('comparison_material_gap_score') * 0.10
+            + $g('improvement_room_score') * 0.05
         );
 
-        $flags       = $this->buildFlagsV2($company, $hasHp, $hpFact);
-        $capsApplied = [];
+        $comparisonLeverage =
+            $g('customer_research_depth_score') * 0.60
+            + $g('comparison_material_gap_score') * 0.40;
 
-        if (in_array('kill_flag_active', $flags, true) && $totalScore > 2.0) {
-            $totalScore    = 2.0;
-            $capsApplied[] = 'kill_flag_cap';
+        $impact = $clamp(
+            $g('trust_hp_importance_score') * 0.25
+            + $g('portal_independence_score') * 0.20
+            + $g('customer_research_depth_score') * 0.20
+            + $g('conversion_value_score') * 0.15
+            + $g('market_white_space_score') * 0.10
+            + $comparisonLeverage * 0.10
+        );
+
+        $feasibility = $clamp(
+            $g('simple_site_fit_score') * 0.30
+            + $g('low_function_complexity_score') * 0.30
+            + $g('addon_fit_score') * 0.20
+            + $g('low_regulation_risk_score') * 0.10
+            + $g('migration_ease_score') * 0.10
+        );
+
+        $reachability = $clamp(
+            $g('sales_reachability_score') * 0.25
+            + $g('contact_route_score') * 0.25
+            + $g('decision_distance_score') * 0.25
+            + $g('company_size_fit_score') * 0.15
+            + $g('local_business_score') * 0.10
+        );
+
+        $recurring = $clamp(
+            $g('update_neta_score') * 0.20
+            + $g('self_update_fit_score') * 0.15
+            + $g('update_literacy_score') * 0.10
+            + $g('recurring_content_potential_score') * 0.20
+            + $g('recruit_content_need_score') * 0.15
+            + $g('maintenance_need_score') * 0.20
+        );
+
+        // === kill_flags補正（軸キャップ） ===
+        $capsApplied = [];
+        $capMap = [
+            'already_strong_site'           => ['opportunity',  2.0],
+            'portal_only_business'          => ['impact',       2.0],
+            'requires_ec_core'              => ['feasibility',  2.0],
+            'requires_booking_core'         => ['feasibility',  2.0],
+            'requires_member_system_core'   => ['feasibility',  2.0],
+            'requires_inventory_core'       => ['feasibility',  2.0],
+            'requires_external_system_core' => ['feasibility',  2.0],
+            'enterprise_decision'           => ['reachability', 2.0],
+            'no_contact_route'              => ['reachability', 1.5],
+            'sns_only_sufficient'           => ['impact',       3.0],
+            'legal_or_medical_high_risk'    => ['feasibility',  3.0],
+            'franchise_or_chain'            => ['reachability', 2.5],
+        ];
+        foreach ($flags as $flag) {
+            if (!isset($capMap[$flag])) {
+                continue;
+            }
+            [$axisName, $cap] = $capMap[$flag];
+            $applied = false;
+            switch ($axisName) {
+                case 'opportunity':  if ($opportunity  > $cap) { $opportunity  = $cap; $applied = true; } break;
+                case 'impact':       if ($impact       > $cap) { $impact       = $cap; $applied = true; } break;
+                case 'feasibility':  if ($feasibility  > $cap) { $feasibility  = $cap; $applied = true; } break;
+                case 'reachability': if ($reachability > $cap) { $reachability = $cap; $applied = true; } break;
+            }
+            if ($applied) {
+                $capsApplied[] = ['flag' => $flag, 'axis' => $axisName . '_score', 'cap' => $cap];
+            }
         }
 
-        $rank          = $this->rankFromTotal($totalScore);
-        $candidateType = $this->candidateTypeV2($axes, $flags, $totalScore, $hasHp, $hasIndustrySig);
-        $confidence    = $this->overallConfidence($hasHp, $hasIndustrySig);
+        // === total_score（加重平均） ===
+        $total = $opportunity * 0.20
+            + $impact * 0.30
+            + $feasibility * 0.20
+            + $reachability * 0.15
+            + $recurring * 0.15;
+
+        // === ゲート補正 ===
+        if ($impact < 2.5)       { $total = min($total, 3.2); $capsApplied[] = ['gate' => 'impact_lt_2.5',       'cap' => 3.2]; }
+        if ($feasibility < 2.5)  { $total = min($total, 3.0); $capsApplied[] = ['gate' => 'feasibility_lt_2.5',  'cap' => 3.0]; }
+        if ($reachability < 2.0) { $total = min($total, 2.8); $capsApplied[] = ['gate' => 'reachability_lt_2.0', 'cap' => 2.8]; }
+        if ($opportunity < 2.0)  { $total = min($total, 3.0); $capsApplied[] = ['gate' => 'opportunity_lt_2.0',  'cap' => 3.0]; }
+        $total = round($total, 2);
+
+        // === confidence ===
+        $confidence = $this->computeConfidenceV2($company, $hpFact, $hasIndustrySig, $s);
+
+        // === rank判定 ===
+        $hasCritical = count(array_intersect($flags, self::CRITICAL_FLAGS)) > 0;
+        if ($hasCritical || $total < 2.8) {
+            $rank = 'D';
+        } elseif ($total >= 4.2) {
+            $rank = 'A';
+            if ($confidence < 0.70) {
+                $flags[] = 'rank_a_provisional'; // A候補（確定でなく要確認）
+            }
+        } elseif ($total >= 3.5) {
+            $rank = 'B';
+        } else {
+            $rank = 'C';
+        }
+
+        // === candidate_type判定 ===
+        $candidateType = $this->candidateTypeV2(
+            $opportunity, $impact, $feasibility, $reachability, $recurring, $flags
+        );
+
+        // === reason生成 ===
+        $reason = $this->buildReasonV2(
+            $s,
+            compact('opportunity', 'impact', 'feasibility', 'reachability', 'recurring'),
+            $confidence,
+            $flags
+        );
+
+        $axes = [
+            'opportunity_score' => [
+                'score' => $opportunity, 'confidence' => $confidence,
+                'reason_json' => ['signals' => [
+                    'site_weakness_score'           => $g('site_weakness_score'),
+                    'content_gap_score'             => $g('content_gap_score'),
+                    'conversion_gap_score'          => $g('conversion_gap_score'),
+                    'freshness_gap_score'           => $g('freshness_gap_score'),
+                    'comparison_material_gap_score' => $g('comparison_material_gap_score'),
+                    'improvement_room_score'        => $g('improvement_room_score'),
+                ]],
+            ],
+            'impact_score' => [
+                'score' => $impact, 'confidence' => $confidence,
+                'reason_json' => ['signals' => [
+                    'trust_hp_importance_score'     => $g('trust_hp_importance_score'),
+                    'portal_independence_score'     => $g('portal_independence_score'),
+                    'customer_research_depth_score' => $g('customer_research_depth_score'),
+                    'conversion_value_score'        => $g('conversion_value_score'),
+                    'market_white_space_score'      => $g('market_white_space_score'),
+                    'comparison_leverage_score'     => round($comparisonLeverage, 2),
+                ]],
+            ],
+            'feasibility_score' => [
+                'score' => $feasibility, 'confidence' => $confidence,
+                'reason_json' => ['signals' => [
+                    'simple_site_fit_score'         => $g('simple_site_fit_score'),
+                    'low_function_complexity_score' => $g('low_function_complexity_score'),
+                    'addon_fit_score'               => $g('addon_fit_score'),
+                    'low_regulation_risk_score'     => $g('low_regulation_risk_score'),
+                    'migration_ease_score'          => $g('migration_ease_score'),
+                ]],
+            ],
+            'reachability_score' => [
+                'score' => $reachability, 'confidence' => $confidence,
+                'reason_json' => ['signals' => [
+                    'sales_reachability_score' => $g('sales_reachability_score'),
+                    'contact_route_score'      => $g('contact_route_score'),
+                    'decision_distance_score'  => $g('decision_distance_score'),
+                    'company_size_fit_score'   => $g('company_size_fit_score'),
+                    'local_business_score'     => $g('local_business_score'),
+                ]],
+            ],
+            'recurring_score' => [
+                'score' => $recurring, 'confidence' => $confidence,
+                'reason_json' => ['signals' => [
+                    'update_neta_score'                 => $g('update_neta_score'),
+                    'self_update_fit_score'             => $g('self_update_fit_score'),
+                    'update_literacy_score'             => $g('update_literacy_score'),
+                    'recurring_content_potential_score' => $g('recurring_content_potential_score'),
+                    'recruit_content_need_score'        => $g('recruit_content_need_score'),
+                    'maintenance_need_score'            => $g('maintenance_need_score'),
+                ]],
+            ],
+        ];
 
         return [
             'score_version'  => 'scoring_v1.0',
             'axes'           => $axes,
-            'total_score'    => $totalScore,
+            'total_score'    => $total,
             'rank'           => $rank,
             'candidate_type' => $candidateType,
             'confidence'     => $confidence,
-            'flags'          => $flags,
+            'flags'          => array_values(array_unique($flags)),
             'caps_applied'   => $capsApplied,
-            'reason_summary' => $this->buildReasonSummaryV2($axes, $totalScore, $rank, $candidateType, $flags),
+            'reason_summary' => $reason['summary'],
+            'reason_json'    => $reason,
+        ];
+    }
+
+    /**
+     * 評価対象フラグを収集（人手の kill_flags + 派生フラグ）。
+     */
+    private function collectFlagsV2(Company $company, bool $hasHp, ?object $hpFact): array
+    {
+        $flags = $company->killFlags->pluck('flag')->filter()->values()->all();
+
+        if (!$company->primaryDomain) {
+            $flags[] = 'no_official_site';
+        }
+        if (!$hasHp) {
+            $flags[] = 'no_hp_analysis';
+        }
+        if ($hpFact && ($hpFact->hp_js_rendering_required ?? false)) {
+            $flags[] = 'js_site';
+        }
+
+        return array_values(array_unique($flags));
+    }
+
+    /**
+     * confidence を算出（最大 1.0）。
+     */
+    private function computeConfidenceV2(Company $company, ?object $hpFact, bool $hasIndustrySig, array $s): float
+    {
+        $c = 0.0;
+
+        if ($hpFact !== null) {
+            $c += 0.30; // URL解析済み（latestFact存在）
+        }
+        if ($hasIndustrySig) {
+            $c += 0.20; // 業種スコアあり
+        }
+        if ($hpFact && ($hpFact->hp_contact_email || $hpFact->hp_contact_form_url || $hpFact->hp_contact_phone)) {
+            $c += 0.15; // 連絡先確認済み
+        }
+        if (abs(((float) ($s['company_size_fit_score'] ?? 3.0)) - 3.0) > 0.001) {
+            $c += 0.15; // 会社規模推定あり（中立値以外）
+        }
+        if ($company->industry) {
+            $c += 0.10; // 事業内容判定あり
+        }
+        if ($hpFact && $hpFact->hp_update_staleness_days !== null) {
+            $c += 0.10; // 最終更新日推定あり
+        }
+
+        return round(min(1.0, $c), 2);
+    }
+
+    /**
+     * candidate_type を判定（最初に一致したものを返す）。
+     */
+    private function candidateTypeV2(float $opp, float $imp, float $feas, float $reach, float $rec, array $flags): string
+    {
+        // 除外条件を最優先
+        if ($imp < 2.5 || $feas < 2.5 || $reach < 2.0) {
+            return 'reject';
+        }
+        if (in_array('no_official_site', $flags, true) && $imp >= 3.0 && $reach >= 3.0) {
+            return 'new_site_candidate';
+        }
+        if ($opp >= 3.5 && $imp >= 3.5 && $feas >= 3.0) {
+            return 'renewal_candidate';
+        }
+        if ($feas >= 3.5 && $rec >= 3.5) {
+            return 'cms_conversion_candidate';
+        }
+        if ($rec >= 3.5 && $opp >= 2.5 && $opp <= 4.0) {
+            return 'maintenance_candidate';
+        }
+
+        return 'unclassified';
+    }
+
+    /**
+     * reason_json（positive/negative/summary）をルールベースで生成。
+     */
+    private function buildReasonV2(array $s, array $axes, float $confidence, array $flags): array
+    {
+        $g = fn (string $k): float => (float) ($s[$k] ?? 3.0);
+
+        // === positive（最大3件） ===
+        $positive = [];
+        if ($g('portal_independence_score') >= 4)    $positive[] = 'ポータル依存が低い';
+        if ($g('trust_hp_importance_score') >= 4)     $positive[] = '公式HPの信用重要度が高い業種';
+        if ($g('customer_research_depth_score') >= 4) $positive[] = '比較検討されやすい業種';
+        if ($g('conversion_value_score') >= 4)        $positive[] = '問い合わせ1件の価値が高い業種';
+        if ($g('site_weakness_score') >= 4)           $positive[] = 'HPに明確な改善余地がある';
+        if ($g('contact_route_score') >= 4)           $positive[] = '営業連絡の入口がある';
+        if ($axes['recurring'] >= 4)                  $positive[] = '継続更新ネタが豊富';
+        $positive = array_slice($positive, 0, 3);
+
+        // === negative（最大3件） ===
+        $negative = [];
+        if ($g('contact_route_score') <= 2)  $negative[] = '問い合わせ導線が弱い';
+        if ($axes['impact'] < 2.5)           $negative[] = 'HP改善の業種効果が低い';
+        if ($axes['feasibility'] < 2.5)      $negative[] = '制作難易度が高い可能性';
+        foreach ($flags as $flag) {
+            if (isset(self::FLAG_LABELS[$flag])) {
+                $negative[] = self::FLAG_LABELS[$flag];
+            }
+        }
+        if ($confidence < 0.70) {
+            $negative[] = '一部データ未取得のため目視確認推奨';
+        }
+        $negative = array_slice($negative, 0, 3);
+
+        // === summary（positive上位2 + negative上位1） ===
+        $parts = array_slice($positive, 0, 2);
+        if (!empty($negative)) {
+            $parts[] = '一方で' . $negative[0];
+        }
+        $summary = empty($parts)
+            ? '特筆すべき特徴は検出されませんでした。'
+            : implode('。', $parts) . '。';
+
+        return [
+            'positive' => $positive,
+            'negative' => $negative,
+            'summary'  => $summary,
         ];
     }
 
@@ -519,174 +846,4 @@ class ScoreSuggester
         ];
     }
 
-    /**
-     * 全シグナルを 5 軸スコアに合成する。
-     * 各軸は構成サブスコアの単純平均。
-     */
-    private function composeAxesV2(array $s, bool $hasHp): array
-    {
-        $g   = fn(string $k) => (float) ($s[$k] ?? 3.0);
-        $avg = fn(array $sub) => round(array_sum($sub) / count($sub), 2);
-
-        // opportunity_score: HP改善機会の大きさ
-        $oppSub = [
-            'site_weakness_score'      => $g('site_weakness_score'),
-            'freshness_gap_score'      => $g('freshness_gap_score'),
-            'improvement_room_score'   => $g('improvement_room_score'),
-            'update_room_score'        => $g('update_room_score'),
-            'market_white_space_score' => $g('market_white_space_score'),
-        ];
-
-        // impact_score: 成約したときのビジネスインパクト
-        $impSub = [
-            'trust_hp_importance_score'     => $g('trust_hp_importance_score'),
-            'conversion_gap_score'          => $g('conversion_gap_score'),
-            'conversion_value_score'        => $g('conversion_value_score'),
-            'customer_research_depth_score' => $g('customer_research_depth_score'),
-        ];
-
-        // feasibility_score: 実装・提案の容易さ
-        $feasSub = [
-            'low_function_complexity_score' => $g('low_function_complexity_score'),
-            'wp_white_space_score'          => $g('wp_white_space_score'),
-            'addon_fit_score'               => $g('addon_fit_score'),
-            'low_regulation_risk_score'     => $g('low_regulation_risk_score'),
-            'migration_ease_score'          => $g('migration_ease_score'),
-        ];
-
-        // reachability_score: 営業到達性
-        $reachSub = [
-            'sales_reachability_score'  => $g('sales_reachability_score'),
-            'contact_route_score'       => $g('contact_route_score'),
-            'portal_independence_score' => $g('portal_independence_score'),
-        ];
-
-        // recurring_score: 継続・自走運用の余地
-        $recSub = [
-            'self_update_fit_score'             => $g('self_update_fit_score'),
-            'update_neta_score'                 => $g('update_neta_score'),
-            'update_literacy_score'             => $g('update_literacy_score'),
-            'recurring_content_potential_score' => $g('recurring_content_potential_score'),
-        ];
-
-        return [
-            'opportunity_score' => [
-                'score'       => $avg($oppSub),
-                'confidence'  => $hasHp ? 0.55 : 0.35,
-                'reason_json' => ['subscores' => $oppSub],
-            ],
-            'impact_score' => [
-                'score'       => $avg($impSub),
-                'confidence'  => $hasHp ? 0.50 : 0.35,
-                'reason_json' => ['subscores' => $impSub],
-            ],
-            'feasibility_score' => [
-                'score'       => $avg($feasSub),
-                'confidence'  => $hasHp ? 0.50 : 0.35,
-                'reason_json' => ['subscores' => $feasSub],
-            ],
-            'reachability_score' => [
-                'score'       => $avg($reachSub),
-                'confidence'  => $hasHp ? 0.60 : 0.30,
-                'reason_json' => ['subscores' => $reachSub],
-            ],
-            'recurring_score' => [
-                'score'       => $avg($recSub),
-                'confidence'  => 0.40,
-                'reason_json' => ['subscores' => $recSub],
-            ],
-        ];
-    }
-
-    private function rankFromTotal(float $total): string
-    {
-        return match (true) {
-            $total >= 4.0 => 'A',
-            $total >= 3.0 => 'B',
-            $total >= 2.0 => 'C',
-            default       => 'D',
-        };
-    }
-
-    private function candidateTypeV2(array $axes, array $flags, float $total, bool $hasHp, bool $hasIndustrySig): string
-    {
-        if (!$hasHp && !$hasIndustrySig) {
-            return 'pending_analysis';
-        }
-        if ($total < 2.5) {
-            return 'low_priority';
-        }
-
-        $opp   = $axes['opportunity_score']['score']   ?? 3.0;
-        $imp   = $axes['impact_score']['score']        ?? 3.0;
-        $feas  = $axes['feasibility_score']['score']   ?? 3.0;
-        $reach = $axes['reachability_score']['score']  ?? 3.0;
-
-        if ($feas >= 4.0 && $reach >= 3.5 && $opp >= 3.0) {
-            return 'quick_win';
-        }
-        if ($imp >= 3.5 && $total >= 3.0 && $feas < 3.0) {
-            return 'strategic';
-        }
-        return 'renewal_candidate';
-    }
-
-    private function buildFlagsV2(Company $company, bool $hasHp, ?object $hpFact): array
-    {
-        $flags = [];
-
-        if ($company->is_killed ||
-            ($company->relationLoaded('killFlags') && $company->killFlags->isNotEmpty())) {
-            $flags[] = 'kill_flag_active';
-        }
-        if (!$company->primaryDomain) {
-            $flags[] = 'no_primary_domain';
-        }
-        if (!$hasHp) {
-            $flags[] = 'no_hp_analysis';
-        }
-        if ($hpFact && ($hpFact->hp_js_rendering_required ?? false)) {
-            $flags[] = 'js_site';
-        }
-
-        return $flags;
-    }
-
-    private function overallConfidence(bool $hasHp, bool $hasIndustrySig): float
-    {
-        $c = 0.3;
-        if ($hasHp)         $c += 0.2;
-        if ($hasIndustrySig) $c += 0.1;
-        return round($c, 2);
-    }
-
-    private function buildReasonSummaryV2(array $axes, float $total, string $rank, string $type, array $flags): string
-    {
-        $typeLabel = [
-            'renewal_candidate' => '更新リニューアル候補',
-            'quick_win'         => 'クイックウィン候補',
-            'strategic'         => '戦略案件候補',
-            'low_priority'      => '優先度低',
-            'pending_analysis'  => '要解析',
-        ][$type] ?? $type;
-
-        $axisLabels = [
-            'opportunity_score'  => '機会',
-            'impact_score'       => 'インパクト',
-            'feasibility_score'  => '実行可能性',
-            'reachability_score' => '営業到達性',
-            'recurring_score'    => '継続性',
-        ];
-
-        $parts = ["総合{$total}点（{$rank}ランク / {$typeLabel}）。"];
-        foreach ($axes as $key => $ax) {
-            $label   = $axisLabels[$key] ?? $key;
-            $parts[] = "{$label}:{$ax['score']}";
-        }
-        if (!empty($flags)) {
-            $parts[] = 'フラグ:' . implode(',', $flags);
-        }
-
-        return implode(' ', $parts);
-    }
 }
