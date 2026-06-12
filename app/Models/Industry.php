@@ -26,4 +26,9 @@ class Industry extends Model
     {
         return $this->hasMany(Industry::class, 'parent_id')->orderBy('sort_order');
     }
+
+    public function scoreObservations()
+    {
+        return $this->hasMany(IndustryScoreObservation::class);
+    }
 }
