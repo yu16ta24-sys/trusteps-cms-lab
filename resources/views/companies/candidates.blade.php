@@ -61,6 +61,24 @@
             .candidates-index .table-wrap table { min-width:900px; }
             .candidates-index th a { text-decoration:none; color:inherit; }
             .candidates-index th a:hover { color:#1f5eff; }
+            .candidates-index .pagination nav { display:flex; align-items:center; justify-content:center; gap:0; }
+            .candidates-index .pagination span[aria-current] span,
+            .candidates-index .pagination a {
+                display:inline-flex; align-items:center; justify-content:center;
+                min-width:28px; height:28px; padding:0 6px;
+                font-size:12px; font-weight:700; line-height:1;
+                border:1px solid #d9e2ee; background:#fff; color:#344054;
+                text-decoration:none; transition:background .15s;
+            }
+            .candidates-index .pagination a:hover { background:#f1f5f9; color:#1f5eff; }
+            .candidates-index .pagination span[aria-current] span {
+                background:#0f172a; color:#fff; border-color:#0f172a;
+            }
+            .candidates-index .pagination span[aria-disabled] span {
+                display:inline-flex; align-items:center; justify-content:center;
+                min-width:28px; height:28px; padding:0 6px;
+                font-size:12px; color:#c0cada; border:1px solid #e4e7ec; background:#f8fafc;
+            }
         </style>
 
         @php
