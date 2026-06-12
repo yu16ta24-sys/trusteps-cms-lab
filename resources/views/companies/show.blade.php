@@ -246,97 +246,172 @@
     @endif
 </section>
 
-{{-- 4軸スコア --}}
+{{-- 5軸スコア (scoring_v1.0) --}}
 <section class="card">
+    @php
+        $v2Axes = [
+            'opportunity_score'  => 'HP改善機会',
+            'impact_score'       => '案件インパクト',
+            'feasibility_score'  => '実行容易性',
+            'reachability_score' => '営業到達性',
+            'recurring_score'    => '継続性',
+        ];
+        $v2TypeLabels = [
+            'renewal_candidate'        => 'HPリニューアル候補',
+            'cms_conversion_candidate' => 'CMS化候補',
+            'maintenance_candidate'    => '保守・更新候補',
+            'new_site_candidate'       => '新規制作候補',
+            'reject'                   => '優先度低',
+            'unclassified'             => '未分類',
+        ];
+        $v2RankColors = ['A' => 'green', 'B' => 'blue', 'C' => 'amber', 'D' => 'red'];
+        $v2Rank       = $scoreSummary?->rank;
+        $v2RankColor  = $v2RankColors[$v2Rank] ?? 'gray';
+        $v2TypeKey    = $scoreSummary?->candidate_type;
+        $v2TypeLabel  = $v2TypeLabels[$v2TypeKey] ?? ($v2TypeKey ?? '—');
+        $v2Conf       = $scoreSummary?->confidence;
+        $v2Total      = $scoreSummary?->total_score;
+        $v2Caps       = $scoreSummary?->caps_applied_json ?? [];
+    @endphp
+
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
-        <div class="section-label">4軸スコア（Layer 2）</div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <span style="font-size:11px;color:var(--muted);">スコア {{ $totalScore }}/20 · 採点 {{ $scoredAxesCount }}/4</span>
-            <span class="badge {{ $scoreJudgmentClass }}">{{ $scoreJudgment }}</span>
-        </div>
+        <div class="section-label">5軸スコア（scoring_v1.0）</div>
+        @if ($scoreSummary)
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <span style="font-size:13px;font-weight:600;">総合 {{ number_format((float)$v2Total, 1) }} / 5.0</span>
+                <span class="badge {{ $v2RankColor }}">ランク {{ $v2Rank }}</span>
+                <span class="badge blue" style="font-size:11px;">{{ $v2TypeLabel }}</span>
+                @if ($v2Conf !== null)
+                    <span style="font-size:11px;color:var(--muted);">信頼度 {{ (int)round($v2Conf * 100) }}%</span>
+                    @if ($v2Conf < 0.70)
+                        <span class="badge amber" style="font-size:11px;">目視確認推奨</span>
+                    @endif
+                @endif
+            </div>
+        @else
+            <span class="badge gray">未計算（scores:recalculate を実行してください）</span>
+        @endif
     </div>
 
-    <form method="POST" action="{{ route('companies.scores.store', $company) }}">
-        @csrf
-
-        <div class="cs-score-row">
-            @foreach ($scoreAxes as $axis => $meta)
-                @php
-                    $currentScore       = $scoresByAxis->get($axis);
-                    $currentReason      = $currentScore?->reason_json ?? [];
-                    $currentNote        = old("scores.$axis.note", $currentReason['note'] ?? '');
-                    $currentValue       = old("scores.$axis.value", $currentScore?->value ?? 0);
-                    $currentConfidence  = old("scores.$axis.confidence", $currentScore?->confidence ?? '0.6');
-                    $suggestion         = $scoreSuggestions[$axis] ?? null;
-                    $autoSuggestedValue = $currentScore?->auto_suggested_value;
-                    $suggestionDelta    = ($autoSuggestedValue !== null && $currentScore)
-                        ? ((int)$currentScore->value - (int)$autoSuggestedValue) : null;
-                @endphp
-
-                <div class="cs-score-card opp">
-                    <div class="cs-score-card-top">
-                        <div>
-                            <div class="cs-axis-key">{{ $axis }}</div>
-                            <div class="cs-axis-label">{{ $meta['label'] }}</div>
-                        </div>
-                        <span class="badge green" style="font-size:10px;">{{ $meta['group'] }}</span>
-                    </div>
-
-                    <div class="cs-score-val" style="color:#166534;">
-                        {{ $currentScore ? $currentScore->value : '—' }}<span style="font-size:14px;font-weight:400;color:var(--muted);">/5</span>
-                    </div>
-                    <div class="cs-score-sub">{{ $meta['polarity'] }}</div>
-
-                    @if ($suggestion && $suggestion['value'] !== null)
-                        <div class="cs-suggestion-bar">自動提案：{{ $suggestion['value'] }}点（{{ $suggestion['confidence'] }}）</div>
-                        <input type="hidden" name="score_suggestions[{{ $axis }}][value]"        value="{{ $suggestion['value'] }}">
-                        <input type="hidden" name="score_suggestions[{{ $axis }}][confidence]"   value="{{ $suggestion['confidence'] }}">
-                        <input type="hidden" name="score_suggestions[{{ $axis }}][basis]"        value="{{ $suggestion['basis'] ?? 'auto' }}">
-                        <input type="hidden" name="score_suggestions[{{ $axis }}][algo_version]" value="{{ \App\Services\ScoreSuggester::ALGO }}">
-                        <input type="hidden" name="score_suggestions[{{ $axis }}][drivers_json]" value="{{ e(json_encode($suggestion['drivers'] ?? [], JSON_UNESCAPED_UNICODE)) }}">
-                        <input type="hidden" name="score_suggestions[{{ $axis }}][note]"         value="{{ $suggestion['note'] }}">
-                    @endif
-
-                    <div class="field" style="margin-top:10px;margin-bottom:6px;">
-                        <label for="score_{{ $axis }}_value" style="font-size:11px;">value 0〜5</label>
-                        <select id="score_{{ $axis }}_value" name="scores[{{ $axis }}][value]" data-scored="{{ $currentScore ? '1' : '0' }}" required>
-                            @for ($i = 0; $i <= 5; $i++)
-                                <option value="{{ $i }}" @selected((string)$currentValue === (string)$i)>{{ $i }}</option>
-                            @endfor
-                        </select>
-                    </div>
-                    <div class="field" style="margin-bottom:6px;">
-                        <label for="score_{{ $axis }}_confidence" style="font-size:11px;">confidence</label>
-                        <select id="score_{{ $axis }}_confidence" name="scores[{{ $axis }}][confidence]" required>
-                            <option value="0.3" @selected((string)$currentConfidence === '0.3')>0.3 推測</option>
-                            <option value="0.6" @selected((string)$currentConfidence === '0.6')>0.6 一部確認</option>
-                            <option value="0.9" @selected((string)$currentConfidence === '0.9')>0.9 直接確認</option>
-                        </select>
-                    </div>
-                    <div class="field" style="margin-bottom:0;">
-                        <label for="score_{{ $axis }}_note" style="font-size:11px;">メモ</label>
-                        <textarea id="score_{{ $axis }}_note" name="scores[{{ $axis }}][note]" rows="1" placeholder="判断メモ">{{ $currentNote }}</textarea>
-                    </div>
-
-                    @if ($currentScore && $autoSuggestedValue !== null)
-                        <div class="cs-current-bar">
-                            auto提案 {{ $autoSuggestedValue }}点
-                            @if ($suggestionDelta === 0)
-                                <span class="badge green" style="font-size:10px;">提案どおり</span>
-                            @else
-                                <span class="badge blue" style="font-size:10px;">手動 {{ $suggestionDelta > 0 ? '+' : '' }}{{ $suggestionDelta }}</span>
-                            @endif
-                        </div>
-                    @endif
+    <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:12px;">
+        @foreach ($v2Axes as $axisKey => $axisLabel)
+            @php
+                $axisScore    = $scoresV2->get($axisKey);
+                $rawScore     = data_get($axisScore?->reason_json, 'score_raw');
+                $displayScore = $rawScore !== null
+                    ? number_format((float)$rawScore, 1)
+                    : ($axisScore ? (string)$axisScore->value : '—');
+            @endphp
+            <div class="cs-score-card opp">
+                <div class="cs-axis-label">{{ $axisLabel }}</div>
+                <div class="cs-score-val" style="color:#166534;">
+                    {{ $displayScore }}<span style="font-size:12px;font-weight:400;color:var(--muted);">/5</span>
                 </div>
+                <div class="cs-score-sub" style="font-size:10px;">{{ $axisKey }}</div>
+            </div>
+        @endforeach
+    </div>
+
+    @if ($scoreSummary?->reason_summary)
+        <div style="font-size:12px;color:var(--muted);padding:8px 0;border-top:1px solid var(--border);">
+            {{ $scoreSummary->reason_summary }}
+        </div>
+    @endif
+
+    @if (!empty($v2Caps))
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;">
+            @foreach ($v2Caps as $cap)
+                <span class="badge amber" style="font-size:10px;">cap: {{ $cap }}</span>
             @endforeach
         </div>
+    @endif
 
-        <div class="actions" style="margin-top:14px;">
-            <button class="button" type="submit">4軸スコアを保存</button>
-            <button class="button light" type="submit" name="after_action" value="next_scoring">保存して次の未採点へ</button>
+    <details style="margin-top:16px;">
+        <summary style="font-size:12px;color:var(--muted);cursor:pointer;padding:4px 0;">旧4軸スコア入力（legacy）▶</summary>
+        <div style="margin-top:10px;">
+            <form method="POST" action="{{ route('companies.scores.store', $company) }}">
+                @csrf
+
+                <div class="cs-score-row">
+                    @foreach ($scoreAxes as $axis => $meta)
+                        @php
+                            $currentScore       = $scoresByAxis->get($axis);
+                            $currentReason      = $currentScore?->reason_json ?? [];
+                            $currentNote        = old("scores.$axis.note", $currentReason['note'] ?? '');
+                            $currentValue       = old("scores.$axis.value", $currentScore?->value ?? 0);
+                            $currentConfidence  = old("scores.$axis.confidence", $currentScore?->confidence ?? '0.6');
+                            $suggestion         = $scoreSuggestions[$axis] ?? null;
+                            $autoSuggestedValue = $currentScore?->auto_suggested_value;
+                            $suggestionDelta    = ($autoSuggestedValue !== null && $currentScore)
+                                ? ((int)$currentScore->value - (int)$autoSuggestedValue) : null;
+                        @endphp
+
+                        <div class="cs-score-card opp">
+                            <div class="cs-score-card-top">
+                                <div>
+                                    <div class="cs-axis-key">{{ $axis }}</div>
+                                    <div class="cs-axis-label">{{ $meta['label'] }}</div>
+                                </div>
+                                <span class="badge green" style="font-size:10px;">{{ $meta['group'] }}</span>
+                            </div>
+
+                            <div class="cs-score-val" style="color:#166534;">
+                                {{ $currentScore ? $currentScore->value : '—' }}<span style="font-size:14px;font-weight:400;color:var(--muted);">/5</span>
+                            </div>
+                            <div class="cs-score-sub">{{ $meta['polarity'] }}</div>
+
+                            @if ($suggestion && $suggestion['value'] !== null)
+                                <div class="cs-suggestion-bar">自動提案：{{ $suggestion['value'] }}点（{{ $suggestion['confidence'] }}）</div>
+                                <input type="hidden" name="score_suggestions[{{ $axis }}][value]"        value="{{ $suggestion['value'] }}">
+                                <input type="hidden" name="score_suggestions[{{ $axis }}][confidence]"   value="{{ $suggestion['confidence'] }}">
+                                <input type="hidden" name="score_suggestions[{{ $axis }}][basis]"        value="{{ $suggestion['basis'] ?? 'auto' }}">
+                                <input type="hidden" name="score_suggestions[{{ $axis }}][algo_version]" value="{{ \App\Services\ScoreSuggester::ALGO }}">
+                                <input type="hidden" name="score_suggestions[{{ $axis }}][drivers_json]" value="{{ e(json_encode($suggestion['drivers'] ?? [], JSON_UNESCAPED_UNICODE)) }}">
+                                <input type="hidden" name="score_suggestions[{{ $axis }}][note]"         value="{{ $suggestion['note'] }}">
+                            @endif
+
+                            <div class="field" style="margin-top:10px;margin-bottom:6px;">
+                                <label for="score_{{ $axis }}_value" style="font-size:11px;">value 0〜5</label>
+                                <select id="score_{{ $axis }}_value" name="scores[{{ $axis }}][value]" data-scored="{{ $currentScore ? '1' : '0' }}" required>
+                                    @for ($i = 0; $i <= 5; $i++)
+                                        <option value="{{ $i }}" @selected((string)$currentValue === (string)$i)>{{ $i }}</option>
+                                    @endfor
+                                </select>
+                            </div>
+                            <div class="field" style="margin-bottom:6px;">
+                                <label for="score_{{ $axis }}_confidence" style="font-size:11px;">confidence</label>
+                                <select id="score_{{ $axis }}_confidence" name="scores[{{ $axis }}][confidence]" required>
+                                    <option value="0.3" @selected((string)$currentConfidence === '0.3')>0.3 推測</option>
+                                    <option value="0.6" @selected((string)$currentConfidence === '0.6')>0.6 一部確認</option>
+                                    <option value="0.9" @selected((string)$currentConfidence === '0.9')>0.9 直接確認</option>
+                                </select>
+                            </div>
+                            <div class="field" style="margin-bottom:0;">
+                                <label for="score_{{ $axis }}_note" style="font-size:11px;">メモ</label>
+                                <textarea id="score_{{ $axis }}_note" name="scores[{{ $axis }}][note]" rows="1" placeholder="判断メモ">{{ $currentNote }}</textarea>
+                            </div>
+
+                            @if ($currentScore && $autoSuggestedValue !== null)
+                                <div class="cs-current-bar">
+                                    auto提案 {{ $autoSuggestedValue }}点
+                                    @if ($suggestionDelta === 0)
+                                        <span class="badge green" style="font-size:10px;">提案どおり</span>
+                                    @else
+                                        <span class="badge blue" style="font-size:10px;">手動 {{ $suggestionDelta > 0 ? '+' : '' }}{{ $suggestionDelta }}</span>
+                                    @endif
+                                </div>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+
+                <div class="actions" style="margin-top:14px;">
+                    <button class="button" type="submit">4軸スコアを保存</button>
+                    <button class="button light" type="submit" name="after_action" value="next_scoring">保存して次の未採点へ</button>
+                </div>
+            </form>
         </div>
-    </form>
+    </details>
 </section>
 
 {{-- kill_flags --}}

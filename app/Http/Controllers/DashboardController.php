@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
+use App\Models\CompanyScoreSummary;
 use App\Models\SourceRecord;
 use Illuminate\View\View;
 
@@ -167,6 +168,25 @@ class DashboardController extends Controller
             'recommended_queue' => $recommendedQueue,
         ];
 
-        return view('dashboard', compact('summary', 'workBoard'));
+        $activeIds = $activeCompanies->pluck('id');
+        $v2RankCounts = CompanyScoreSummary::query()
+            ->where('score_version', 'scoring_v1.0')
+            ->whereIn('company_id', $activeIds)
+            ->selectRaw('`rank`, COUNT(*) as cnt')
+            ->groupBy('rank')
+            ->pluck('cnt', 'rank');
+
+        $v2Summary = [
+            'rank_a'          => (int) ($v2RankCounts['A'] ?? 0),
+            'rank_b'          => (int) ($v2RankCounts['B'] ?? 0),
+            'rank_a_low_conf' => CompanyScoreSummary::query()
+                ->where('score_version', 'scoring_v1.0')
+                ->whereIn('company_id', $activeIds)
+                ->where('rank', 'A')
+                ->where('confidence', '<', 0.70)
+                ->count(),
+        ];
+
+        return view('dashboard', compact('summary', 'workBoard', 'v2Summary'));
     }
 }

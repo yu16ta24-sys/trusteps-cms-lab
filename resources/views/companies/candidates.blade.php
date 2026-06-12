@@ -375,9 +375,9 @@
                                 <a href="{{ $sortUrl('region') }}">地域{{ $sortMark('region') }}</a>
                             </th>
                             <th>
-                                <a href="{{ $sortUrl('opportunity_score') }}">機会{{ $sortMark('opportunity_score') }}</a>
+                                <a href="{{ $sortUrl('v2_rank') }}">ランク{{ $sortMark('v2_rank') }}</a>
                                 /
-                                <a href="{{ $sortUrl('risk_score') }}">リスク{{ $sortMark('risk_score') }}</a>
+                                <a href="{{ $sortUrl('v2_total_score') }}">スコア{{ $sortMark('v2_total_score') }}</a>
                             </th>
                             <th>
                                 <a href="{{ $sortUrl('scored_axes_count') }}">判定{{ $sortMark('scored_axes_count') }}</a>
@@ -430,19 +430,33 @@
                                     </div>
                                 </td>
                                 <td>
-                                    @if ($company->scored_axes_count > 0)
-                                        <div style="display:grid; gap:6px; justify-items:start;">
-                                            <span class="score-pill opportunity">機会 {{ $company->opportunity_score }} / 10</span>
-                                            <span class="score-pill risk">リスク {{ $company->risk_score }} / 10</span>
+                                    @php
+                                        $v2RankTd = $company->v2_rank;
+                                        $v2RankColorsTd = ['A' => 'green', 'B' => 'blue', 'C' => 'amber', 'D' => 'red'];
+                                        $v2TypeLabelsTd = [
+                                            'renewal_candidate'        => 'HPリニューアル',
+                                            'cms_conversion_candidate' => 'CMS化',
+                                            'maintenance_candidate'    => '保守・更新',
+                                            'new_site_candidate'       => '新規制作',
+                                            'reject'                   => '優先度低',
+                                            'unclassified'             => '未分類',
+                                        ];
+                                    @endphp
+                                    @if ($v2RankTd)
+                                        <div style="display:grid; gap:4px; justify-items:start;">
+                                            <span class="badge {{ $v2RankColorsTd[$v2RankTd] ?? 'gray' }}" style="font-size:12px;font-weight:700;">{{ $v2RankTd }} &nbsp;{{ number_format((float)$company->v2_total_score, 1) }}</span>
+                                            <span class="badge gray" style="font-size:10px;">{{ $v2TypeLabelsTd[$company->v2_candidate_type] ?? ($company->v2_candidate_type ?? '—') }}</span>
                                         </div>
                                     @else
-                                        <span class="score-pill empty">未採点</span>
+                                        <span class="score-pill empty">未計算</span>
                                     @endif
                                 </td>
                                 <td>
-                                    <span class="judgment {{ $company->candidate_judgment_class }}">{{ $company->candidate_judgment }}</span>
-                                    <div class="subtext" style="margin-top:6px;">採点 {{ $company->scored_axes_count }} / 4</div>
-                                    <div class="subtext">auto提案 {{ $company->auto_suggestion_count }} / 補正 {{ $company->manual_adjusted_count }}</div>
+                                    @if ($company->v2_confidence !== null && $company->v2_confidence < 0.70)
+                                        <span class="badge amber" style="font-size:10px;margin-bottom:4px;display:inline-block;">目視推奨</span>
+                                    @endif
+                                    <div class="subtext" style="font-size:11px;">信頼度 {{ $company->v2_confidence !== null ? (int)round($company->v2_confidence * 100).'%' : '—' }}</div>
+                                    <div class="subtext" style="margin-top:4px;">採点 {{ $company->scored_axes_count }} / 4</div>
                                 </td>
                                 <td>
                                     <span class="score-pill priority">{{ number_format($company->candidate_priority_score, 1) }}</span>

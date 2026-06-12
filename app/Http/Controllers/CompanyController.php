@@ -147,6 +147,7 @@ class CompanyController extends Controller
                 'primaryDomain',
                 'scores'                => fn ($scoreQuery) => $scoreQuery->where('algo_version', 'v1'),
                 'latestOutreachContact',
+                'scoreSummary',
             ])
             ->withCount(['sourceLinks', 'domains', 'killFlags'])
             ->where('is_killed', false)
@@ -232,9 +233,14 @@ class CompanyController extends Controller
                     }
                 }
 
-                $priorityScore = $scoredAxesCount < 4
-                    ? -100 + $scoredAxesCount + $contactPenalty
-                    : ($opportunityScore * 10) + ($riskScore * 10) + min($company->source_links_count, 5) + $contactPenalty;
+                $v2sum = $company->scoreSummary;
+                $v2TotalScore = $v2sum?->total_score;
+
+                $priorityScore = $v2TotalScore !== null
+                    ? (float) $v2TotalScore * 20
+                    : ($scoredAxesCount < 4
+                        ? -100 + $scoredAxesCount + $contactPenalty
+                        : ($opportunityScore * 10) + ($riskScore * 10) + min($company->source_links_count, 5) + $contactPenalty);
 
                 $company->setAttribute('opportunity_score', $opportunityScore);
                 $company->setAttribute('risk_score', $riskScore);
@@ -244,6 +250,11 @@ class CompanyController extends Controller
                 $company->setAttribute('candidate_judgment', $judgment);
                 $company->setAttribute('candidate_judgment_class', $judgmentClass);
                 $company->setAttribute('candidate_priority_score', $priorityScore);
+                $company->setAttribute('v2_total_score', $v2TotalScore);
+                $company->setAttribute('v2_rank', $v2sum?->rank);
+                $company->setAttribute('v2_candidate_type', $v2sum?->candidate_type);
+                $company->setAttribute('v2_confidence', $v2sum?->confidence);
+                $company->setAttribute('v2_reason_summary', $v2sum?->reason_summary);
 
                 return $company;
             });
@@ -318,6 +329,7 @@ class CompanyController extends Controller
             'opportunity_score', 'risk_score', 'scored_axes_count',
             'source_links_count', 'domains_count', 'kill_flags_count',
             'domain', 'auto_suggestion_count', 'manual_adjusted_count',
+            'v2_total_score', 'v2_rank',
         ];
 
         if (!in_array($sort, $allowedSorts, true)) {
@@ -341,6 +353,8 @@ class CompanyController extends Controller
                         'domain' => $company->primaryDomain?->normalized_domain ?? '',
                         'auto_suggestion_count' => $company->auto_suggestion_count,
                         'manual_adjusted_count' => $company->manual_adjusted_count,
+                        'v2_total_score' => $company->v2_total_score ?? -1,
+                        'v2_rank' => $company->v2_rank ?? 'Z',
                         default => $company->candidate_priority_score,
                     };
                 };
@@ -414,12 +428,15 @@ class CompanyController extends Controller
             'killFlags',
             'scores',
             'outreachContacts',
+            'scoreSummary',
         ]);
 
         $scoreAxes = $this->scoreAxisOptions();
         $scoresByAxis = $company->scores
             ->where('algo_version', 'v1')
             ->keyBy('axis');
+        $scoreSummary = $company->scoreSummary;
+        $scoresV2 = $company->scores->where('score_version', 'scoring_v1.0')->keyBy('axis');
 
         try {
             $scoreSuggestions = app(\App\Services\ScoreSuggester::class)->suggest($company);
@@ -456,7 +473,9 @@ class CompanyController extends Controller
             'scoringQueueCount',
             'isCurrentScoringQueueTarget',
             'previousScoringCompany',
-            'nextScoringCompany'
+            'nextScoringCompany',
+            'scoreSummary',
+            'scoresV2'
         ));
     }
 

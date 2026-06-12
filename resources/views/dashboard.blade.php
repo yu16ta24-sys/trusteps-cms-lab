@@ -99,6 +99,32 @@
                 <a class="button small" href="{{ route('companies.candidates', ['preset' => 'recommended']) }}">確認する →</a>
             </div>
         </div>
+        <div class="db-next-card">
+            <span class="db-step db-step-green">5 · Aランク</span>
+            <div class="db-next-num">{{ number_format($v2Summary['rank_a']) }}</div>
+            <div class="db-next-desc">V2スコア最優先候補</div>
+            <div class="db-next-action">
+                <a class="button small" href="{{ route('companies.candidates', ['sort' => 'v2_rank', 'direction' => 'asc']) }}">確認する →</a>
+            </div>
+        </div>
+        <div class="db-next-card">
+            <span class="db-step db-step-blue">6 · Bランク</span>
+            <div class="db-next-num">{{ number_format($v2Summary['rank_b']) }}</div>
+            <div class="db-next-desc">V2スコア準優先候補</div>
+            <div class="db-next-action">
+                <a class="button small light" href="{{ route('companies.candidates', ['sort' => 'v2_rank', 'direction' => 'asc']) }}">確認する →</a>
+            </div>
+        </div>
+        @if ($v2Summary['rank_a_low_conf'] > 0)
+        <div class="db-next-card">
+            <span class="db-step db-step-amber">7 · 目視確認推奨</span>
+            <div class="db-next-num">{{ number_format($v2Summary['rank_a_low_conf']) }}</div>
+            <div class="db-next-desc">Aランク・信頼度70%未満</div>
+            <div class="db-next-action">
+                <a class="button light small" href="{{ route('companies.candidates', ['sort' => 'v2_rank', 'direction' => 'asc']) }}">確認する →</a>
+            </div>
+        </div>
+        @endif
     </div>
 </section>
 
