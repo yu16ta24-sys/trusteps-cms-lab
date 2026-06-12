@@ -15,6 +15,8 @@ class DatabaseSeeder extends Seeder
             IndustryScoreAxisSeeder::class,
             UpdateTargetSeeder::class,
             ReasonCodeSeeder::class,
+            RegionSeeder::class,
+            PrefectureRegionSeeder::class,
         ]);
     }
 }

@@ -77,13 +77,20 @@ class IndustryScoreController extends Controller
             }
         }
 
+        $observationStats = DB::table('industry_score_observations')
+            ->select('industry_id', 'axis_key', DB::raw('ROUND(AVG(value), 1) as avg_value'), DB::raw('COUNT(*) as obs_count'))
+            ->groupBy('industry_id', 'axis_key')
+            ->get()
+            ->keyBy(fn($row) => $row->industry_id . '_' . $row->axis_key);
+
         return view('industries.scores.index', [
-            'parents'        => $parents,
-            'children'       => $children,
-            'axes'           => $axes,
-            'categoryLabels' => $this->categoryLabels,
-            'categoryKeys'   => $categoryKeys,
-            'summaries'      => $summaries,
+            'parents'          => $parents,
+            'children'         => $children,
+            'axes'             => $axes,
+            'categoryLabels'   => $this->categoryLabels,
+            'categoryKeys'     => $categoryKeys,
+            'summaries'        => $summaries,
+            'observationStats' => $observationStats,
         ]);
     }
 

@@ -43,6 +43,9 @@
 .isc-save-bar.visible { display:flex; }
 .isc-legend { display:flex; gap:12px; align-items:center; flex-wrap:wrap; font-size:11px; color:var(--muted); }
 .isc-legend-item { display:flex; align-items:center; gap:4px; }
+.isc-score-cell--amber { background:#fef3c7 !important; }
+.isc-obs { font-size:10px; color:#6b7280; margin-top:3px; white-space:nowrap; line-height:1.3; }
+.isc-obs--ref { color:#d1d5db; }
 </style>
 
 <div class="isc-topbar">
@@ -147,11 +150,23 @@
                                                 $score = $industryScores->get($axis->key);
                                                 $val = $score?->value;
                                                 $badgeClass = $val === null ? 'none' : ($val >= 4 ? 'high' : ($val >= 2 ? 'mid' : 'low'));
+                                                $obs = $observationStats->get($child->id . '_' . $axis->key);
+                                                $obsAvg = $obs ? (float)$obs->avg_value : null;
+                                                $obsCount = $obs ? (int)$obs->obs_count : 0;
+                                                $deviation = ($val !== null && $obsAvg !== null) ? abs($val - $obsAvg) : null;
+                                                $isAmber = $deviation !== null && $deviation >= 1;
                                             @endphp
-                                            <td class="isc-score-cell">
+                                            <td class="isc-score-cell{{ $isAmber ? ' isc-score-cell--amber' : '' }}">
                                                 <span class="isc-score-badge {{ $badgeClass }}">
                                                     {{ $val !== null ? $val : '—' }}
                                                 </span>
+                                                @if($obs)
+                                                    @if($obsCount < 5)
+                                                        <div class="isc-obs isc-obs--ref">参考 n={{ $obsCount }}</div>
+                                                    @else
+                                                        <div class="isc-obs">実績: {{ number_format($obsAvg, 1) }} (n={{ $obsCount }})</div>
+                                                    @endif
+                                                @endif
                                                 <input
                                                     type="number"
                                                     class="isc-score-input"
