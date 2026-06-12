@@ -586,6 +586,11 @@ class HpAnalyzerService
 
     private function extractContactEmail(string $html): ?string
     {
+        // mailto: リンクを最優先
+        if (preg_match('/href=["\']mailto:([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i', $html, $m)) {
+            return $m[1];
+        }
+        // fallback: script/style除去 → HTMLエンティティデコード → テキスト検索
         $text = preg_replace('/<script[^>]*>.*?<\/script>/is', '', $html);
         $text = preg_replace('/<style[^>]*>.*?<\/style>/is', '', $text);
         $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -601,26 +606,44 @@ class HpAnalyzerService
 
     private function extractContactFormUrl(string $html, string $htmlLower, bool $hasContactForm, string $baseUrl): ?string
     {
-        if (!$hasContactForm) {
-            return null;
-        }
-        if (preg_match('/<form[^>]+action=["\']([^"\']+)["\'][^>]*>/i', $html, $m)) {
-            $action = trim($m[1]);
-            if ($action === '' || $action === '#') {
-                return $baseUrl;
+        // 1. <form> のある問い合わせフォームが同一ページに存在する場合
+        if ($hasContactForm) {
+            if (preg_match('/<form[^>]+action=["\']([^"\']+)["\'][^>]*>/i', $html, $m)) {
+                $action = trim($m[1]);
+                if ($action !== '' && $action !== '#') {
+                    return mb_substr($this->resolveUrl($action, $baseUrl), 0, 500);
+                }
             }
-            if (preg_match('#^https?://#i', $action)) {
-                return mb_substr($action, 0, 500);
-            }
-            $parsed = parse_url($baseUrl);
-            $scheme = $parsed['scheme'] ?? 'https';
-            $host   = $parsed['host'] ?? '';
-            $resolved = str_starts_with($action, '/')
-                ? $scheme . '://' . $host . $action
-                : rtrim($baseUrl, '/') . '/' . ltrim($action, '/');
-            return mb_substr($resolved, 0, 500);
+            return $baseUrl;
         }
-        return $baseUrl;
+        // 2. フォームなし → 問い合わせページへのリンクを探す（別ページにフォームがある場合）
+        $keywords = ['contact', 'inquiry', 'enquiry', 'お問い合わせ', 'お問合せ', 'お問合わせ', '問い合わせ', '問合せ'];
+        if (preg_match_all('/<a[^>]+href=["\']([^"\'#][^"\']*)["\'][^>]*>(.*?)<\/a>/is', $html, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $href     = $match[1];
+                $hrefLow  = strtolower($href);
+                $textLow  = strtolower(strip_tags($match[2]));
+                foreach ($keywords as $kw) {
+                    if (str_contains($hrefLow, $kw) || str_contains($textLow, $kw)) {
+                        return mb_substr($this->resolveUrl($href, $baseUrl), 0, 500);
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private function resolveUrl(string $url, string $baseUrl): string
+    {
+        if (preg_match('#^https?://#i', $url)) {
+            return $url;
+        }
+        $parsed = parse_url($baseUrl);
+        $scheme = $parsed['scheme'] ?? 'https';
+        $host   = $parsed['host'] ?? '';
+        return str_starts_with($url, '/')
+            ? $scheme . '://' . $host . $url
+            : rtrim($baseUrl, '/') . '/' . ltrim($url, '/');
     }
 
     private function extractContactPhone(string $html): ?string
