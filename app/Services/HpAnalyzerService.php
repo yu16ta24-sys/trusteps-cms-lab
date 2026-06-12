@@ -123,7 +123,7 @@ class HpAnalyzerService
         }
 
         // HTML解析
-        $factData = $this->analyzeHtml($html, $headers, $url, $fetchResult['final_url']);
+        $factData = $this->analyzeHtml($html, $headers, $url, $fetchResult['final_url'], $fetchResult['ssl_enabled'] ?? null);
         $factData['hp_snapshot_id'] = $snapshot->id;
         $factData['extractor_version'] = self::EXTRACTOR_VERSION;
         $factData['extracted_at'] = now();
@@ -211,12 +211,17 @@ class HpAnalyzerService
                 $html = mb_convert_encoding($html, 'UTF-8', $encoding);
             }
 
+            // SSL（HTTPS）対応の実態判定。ここに到達した時点で正規化後URLの取得は成功している。
+            $normalizedIsHttps = str_starts_with(strtolower($url), 'https://');
+            $sslEnabled        = $this->detectSslEnabled($url, $normalizedIsHttps);
+
             return [
                 'success'       => true,
                 'html'          => $html,
                 'headers'       => $headers,
                 'final_url'     => $finalUrl,
                 'http_status'   => $httpStatus ?? 200,
+                'ssl_enabled'   => $sslEnabled,
                 'error_type'    => null,
                 'error_message' => null,
             ];
@@ -236,9 +241,58 @@ class HpAnalyzerService
     }
 
     /**
+     * SSL（HTTPS）対応状況を実態ベースで判定する。
+     * 1. https:// で取得成功していれば true
+     * 2. http:// アクセス時に Location が https:// へリダイレクトしていれば true
+     * 3. 判定不能時は requestedUrl のスキームにフォールバック
+     */
+    private function detectSslEnabled(string $requestedUrl, bool $httpsFetchSucceeded): bool
+    {
+        $reqIsHttps = str_starts_with(strtolower($requestedUrl), 'https://');
+
+        try {
+            $httpUrl = preg_replace('#^https?://#i', 'http://', $requestedUrl);
+
+            $httpContext = stream_context_create([
+                'http' => [
+                    'method'          => 'GET',
+                    'header'          => 'User-Agent: Mozilla/5.0 (compatible; TRUSTEPSBot/1.0)',
+                    'timeout'         => 5,
+                    'follow_location' => 0,
+                    'ignore_errors'   => true,
+                ],
+                'ssl' => [
+                    'verify_peer'      => false,
+                    'verify_peer_name' => false,
+                ],
+            ]);
+
+            @file_get_contents($httpUrl, false, $httpContext);
+            $responseHeaders = (isset($http_response_header) && is_array($http_response_header))
+                ? $http_response_header
+                : [];
+
+            $location = '';
+            foreach ($responseHeaders as $h) {
+                if (stripos($h, 'Location:') === 0) {
+                    $location = trim(substr($h, 9));
+                    break;
+                }
+            }
+
+            // http→https リダイレクトあり、または https で取得成功
+            return str_starts_with(strtolower($location), 'https://')
+                || ($reqIsHttps && $httpsFetchSucceeded);
+        } catch (\Throwable $e) {
+            // 判定不能 → 既存のスキームチェックにフォールバック
+            return $reqIsHttps;
+        }
+    }
+
+    /**
      * HTMLを解析してfactデータを生成する
      */
-    private function analyzeHtml(string $html, array $headers, string $requestedUrl, string $finalUrl): array
+    private function analyzeHtml(string $html, array $headers, string $requestedUrl, string $finalUrl, ?bool $sslEnabled = null): array
     {
         $htmlLower = strtolower($html);
 
@@ -248,7 +302,8 @@ class HpAnalyzerService
         $lastModified = $headers['last-modified'] ?? null;
 
         // ====== B: 技術スタック ======
-        $sslEnabled = str_starts_with($finalUrl, 'https://') || str_starts_with($requestedUrl, 'https://');
+        // fetchHtml() で実態判定済みの値があればそれを採用、なければ従来のスキームチェックにフォールバック
+        $sslEnabled = $sslEnabled ?? (str_starts_with($finalUrl, 'https://') || str_starts_with($requestedUrl, 'https://'));
         $hasViewport = str_contains($htmlLower, 'name="viewport"') || str_contains($htmlLower, "name='viewport'");
         [$cmsType, $builderType] = $this->detectCms($html, $htmlLower);
 
