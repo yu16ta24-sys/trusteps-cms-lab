@@ -206,7 +206,7 @@
         .muted { color: var(--muted); }
         .muted a { color: var(--primary); text-decoration-thickness: 1px; text-underline-offset: 3px; }
         .page-kicker { margin: 0 0 5px; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
-        .page-title { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -.02em; line-height: 1.2; }
+        .page-title { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -.02em; line-height: 1.2; }
         .page-subtitle { margin: 8px 0 0; color: var(--muted); font-size: 13px; max-width: 760px; line-height: 1.65; }
         .section-label { margin: 0; color: #94a3b8; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
 
