@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\CompanyKillFlag;
+use App\Models\HpFact;
 use App\Models\CompanyScore;
 use App\Models\CompanySourceLink;
 use App\Models\Domain;
@@ -175,8 +176,25 @@ class CompanyController extends Controller
             $query->where('status', $request->input('status'));
         }
 
-        $companies = $query->get()
-            ->map(function (Company $company) {
+        $all = $query->get();
+
+        // primaryDomain 経由で最新HpFactをドメインIDキーで一括取得（N+1回避）
+        $domainIds = $all->pluck('primaryDomain.id')->filter()->unique()->values()->all();
+        $latestFactsByDomainId = collect();
+        if (!empty($domainIds)) {
+            $latestFactsByDomainId = HpFact::query()
+                ->join('hp_snapshots', 'hp_facts.hp_snapshot_id', '=', 'hp_snapshots.id')
+                ->whereIn('hp_snapshots.domain_id', $domainIds)
+                ->whereNotNull('hp_facts.extracted_at')
+                ->orderByDesc('hp_facts.extracted_at')
+                ->select('hp_facts.*', 'hp_snapshots.domain_id')
+                ->get()
+                ->groupBy('domain_id')
+                ->map(fn ($group) => $group->first());
+        }
+
+        $companies = $all
+            ->map(function (Company $company) use ($latestFactsByDomainId) {
                 $scores = $company->scores->keyBy('axis');
 
                 $hpWeakness = optional($scores->get('hp_weakness'))->value;
@@ -201,9 +219,21 @@ class CompanyController extends Controller
 
                 [$judgment, $judgmentClass] = $this->scoreJudgment($opportunityScore, $riskScore, $scoredAxesCount);
 
+                $hpFact = $latestFactsByDomainId->get($company->primaryDomain?->id);
+                $company->setRelation('latestHpFact', $hpFact);
+
+                $contactPenalty = 0;
+                if ($hpFact) {
+                    if (!$hpFact->hp_contact_email && !$hpFact->hp_contact_form_url && !$hpFact->hp_contact_phone) {
+                        $contactPenalty = -3;
+                    } elseif (!$hpFact->hp_contact_email && !$hpFact->hp_contact_form_url) {
+                        $contactPenalty = -1; // 電話のみ
+                    }
+                }
+
                 $priorityScore = $scoredAxesCount < 4
-                    ? -100 + $scoredAxesCount
-                    : ($opportunityScore * 10) - ($riskScore * 6) + min($company->source_links_count, 5);
+                    ? -100 + $scoredAxesCount + $contactPenalty
+                    : ($opportunityScore * 10) - ($riskScore * 6) + min($company->source_links_count, 5) + $contactPenalty;
 
                 $company->setAttribute('opportunity_score', $opportunityScore);
                 $company->setAttribute('risk_score', $riskScore);

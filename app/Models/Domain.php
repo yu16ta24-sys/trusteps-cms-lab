@@ -32,5 +32,10 @@ class Domain extends Model
     {
         return $this->hasMany(HpSnapshot::class);
     }
+
+    public function hpFacts()
+    {
+        return $this->hasManyThrough(HpFact::class, HpSnapshot::class, 'domain_id', 'hp_snapshot_id');
+    }
 }
 

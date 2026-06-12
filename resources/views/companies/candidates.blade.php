@@ -387,6 +387,7 @@
                                 <a href="{{ $sortUrl('kill_flags_count') }}">kill{{ $sortMark('kill_flags_count') }}</a>
                             </th>
                             <th><a href="{{ $sortUrl('domain') }}">domain{{ $sortMark('domain') }}</a></th>
+                            <th>営業入り口</th>
                             <th></th>
                         </tr>
                         </thead>
@@ -437,13 +438,34 @@
                                 <td>
                                     <span class="domain-chip">{{ $company->primaryDomain?->normalized_domain ?? '-' }}</span>
                                 </td>
+                                <td>
+                                    @php $hpFact = $company->latestHpFact; @endphp
+                                    @if (!$hpFact)
+                                        <span style="font-size:11px;color:var(--muted);">—</span>
+                                    @else
+                                        <div style="display:flex;flex-direction:column;gap:3px;">
+                                            @if ($hpFact->hp_contact_email)
+                                                <span class="badge green">メール</span>
+                                            @endif
+                                            @if ($hpFact->hp_contact_form_url)
+                                                <span class="badge blue">フォーム</span>
+                                            @endif
+                                            @if ($hpFact->hp_contact_phone)
+                                                <span class="badge gray">電話</span>
+                                            @endif
+                                            @if (!$hpFact->hp_contact_email && !$hpFact->hp_contact_form_url && !$hpFact->hp_contact_phone)
+                                                <span class="badge red">入口なし</span>
+                                            @endif
+                                        </div>
+                                    @endif
+                                </td>
                                 <td class="tight">
                                     <a class="button small" href="{{ route('companies.show', $company) }}">詳細</a>
                                 </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="8" class="empty-state">
+                                <td colspan="9" class="empty-state">
                                     <div class="empty-state-box">
                                         <div class="empty-icon">候</div>
                                         <p class="empty-title">条件に合う営業候補がない</p>
