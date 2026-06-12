@@ -828,6 +828,23 @@ class ScoreSuggester
      * HpFact から HP 解析サブスコアを算出する。
      * $hpFact が null の場合は全軸 neutral 3.0 を返す。
      */
+    /**
+     * 問い合わせ導線（フォーム/別ページのフォームURL/メール）が1つでもあるか。
+     * has_contact_form（インライン<form>のみ）だと別ページにフォームがある場合を
+     * 取りこぼすため、hp_contact_form_url / メール系も含めて統一判定する。
+     */
+    private function hasContactRouteFact(?object $hpFact): bool
+    {
+        if (!$hpFact) {
+            return false;
+        }
+
+        return $hpFact->has_contact_form
+            || !empty($hpFact->hp_contact_form_url)
+            || $hpFact->has_public_email
+            || !empty($hpFact->hp_contact_email);
+    }
+
     private function computeHpSubscores(?object $hpFact): array
     {
         $n        = 3.0;
@@ -846,11 +863,18 @@ class ScoreSuggester
         elseif ($hpFact->update_status === 'stale_1y')               $w += 0.5;
         $siteWeakness = min(5.0, $w);
 
+        // 問い合わせ導線の有無（フォーム/別ページのフォームURL/メール）を統一判定
+        $hasContactRoute = $this->hasContactRouteFact($hpFact);
+        $hasPhoneOnly    = !$hasContactRoute && $hpFact->has_phone;
+
         // conversion_gap_score: デジタル問い合わせ導線の欠如度
         $cg = 0.0;
-        if (!$hpFact->has_contact_form) $cg += 1.5;
-        if (!$hpFact->has_public_email) $cg += 1.5;
-        if (!$hpFact->has_phone)        $cg += 1.0;
+        if (!$hasContactRoute) {
+            $cg += $hasPhoneOnly ? 2.0 : 3.0; // 電話のみ→デジタル導線欠如 / 完全になし→最大ギャップ
+        }
+        if (!$hpFact->has_phone) {
+            $cg += 1.0;
+        }
         $conversionGap = min(5.0, $cg);
 
         // freshness_gap_score: 更新停滞度（高いほど改善余地大）
@@ -864,10 +888,13 @@ class ScoreSuggester
         };
 
         // contact_route_score: 企業への連絡経路の豊富さ（営業アプローチしやすさ）
+        // フォーム（インライン or 別ページURL）/ メールアドレスがあれば高評価
         $cr = 0.0;
-        if ($hpFact->hp_contact_email)    $cr += 2.0;
-        if ($hpFact->hp_contact_form_url) $cr += 2.0;
-        if ($hpFact->hp_contact_phone)    $cr += 1.0;
+        $hasEmailRoute = $hpFact->has_public_email || !empty($hpFact->hp_contact_email);
+        $hasFormRoute  = $hpFact->has_contact_form  || !empty($hpFact->hp_contact_form_url);
+        if ($hasEmailRoute) $cr += 2.0;
+        if ($hasFormRoute)  $cr += 2.0;
+        if ($hpFact->has_phone || !empty($hpFact->hp_contact_phone)) $cr += 1.0;
         $contactRoute = min(5.0, $cr);
 
         // function_complexity_score / low_function_complexity_score
@@ -1053,8 +1080,8 @@ class ScoreSuggester
                     } elseif ($d !== null && $d > 365) {
                         $P("更新{$d}日以上停止", 0.10, 'freshness_gap');
                     }
-                    if (!$hp->has_contact_form && !$hp->has_public_email) {
-                        $P('問い合わせ導線なし', (1.5 + 1.5) * 0.15, 'conversion_gap');
+                    if (!$this->hasContactRouteFact($hp)) {
+                        $P('問い合わせ導線なし', 3.0 * 0.15, 'conversion_gap');
                     }
                     if ($hp->hp_word_count !== null && $hp->hp_word_count < 300) {
                         $P("情報量が少ない（{$hp->hp_word_count}文字）", 0.20, 'content_gap');
