@@ -119,6 +119,9 @@ class HpAnalyzerService
                 'message'              => 'JSレンダリングが必要なサイトのため自動解析できませんでした。',
                 'snapshot_id'          => $snapshot->id,
                 'fact'                 => $factData,
+                'url_upgraded'         => $fetchResult['url_upgraded'] ?? false,
+                'https_url'            => $fetchResult['https_url'] ?? null,
+                'https_accessible'     => $fetchResult['https_accessible'] ?? false,
             ];
         }
 
@@ -139,10 +142,13 @@ class HpAnalyzerService
         $this->recordObservations($company, $factData);
 
         return [
-            'success'     => true,
-            'message'     => 'HP解析完了',
-            'snapshot_id' => $snapshot->id,
-            'fact'        => $factData,
+            'success'          => true,
+            'message'          => 'HP解析完了',
+            'snapshot_id'      => $snapshot->id,
+            'fact'             => $factData,
+            'url_upgraded'     => $fetchResult['url_upgraded'] ?? false,
+            'https_url'        => $fetchResult['https_url'] ?? null,
+            'https_accessible' => $fetchResult['https_accessible'] ?? false,
         ];
     }
 
@@ -213,17 +219,20 @@ class HpAnalyzerService
 
             // SSL（HTTPS）対応の実態判定。ここに到達した時点で正規化後URLの取得は成功している。
             $normalizedIsHttps = str_starts_with(strtolower($url), 'https://');
-            $sslEnabled        = $this->detectSslEnabled($url, $normalizedIsHttps);
+            $sslInfo           = $this->detectSslEnabled($url, $normalizedIsHttps);
 
             return [
-                'success'       => true,
-                'html'          => $html,
-                'headers'       => $headers,
-                'final_url'     => $finalUrl,
-                'http_status'   => $httpStatus ?? 200,
-                'ssl_enabled'   => $sslEnabled,
-                'error_type'    => null,
-                'error_message' => null,
+                'success'          => true,
+                'html'             => $html,
+                'headers'          => $headers,
+                'final_url'        => $finalUrl,
+                'http_status'      => $httpStatus ?? 200,
+                'ssl_enabled'      => $sslInfo['ssl_enabled'],
+                'https_accessible' => $sslInfo['https_accessible'],
+                'url_upgraded'     => $sslInfo['url_upgraded'],
+                'https_url'        => $sslInfo['https_url'],
+                'error_type'       => null,
+                'error_message'    => null,
             ];
         } catch (\Throwable $e) {
             Log::warning('HpAnalyzerService: fetch failed', ['url' => $url, 'error' => $e->getMessage()]);
@@ -242,51 +251,61 @@ class HpAnalyzerService
 
     /**
      * SSL（HTTPS）対応状況を実態ベースで判定する。
-     * 1. https:// で取得成功していれば true
-     * 2. http:// アクセス時に Location が https:// へリダイレクトしていれば true
-     * 3. 判定不能時は requestedUrl のスキームにフォールバック
+     * https:// で実際に取得できるかを試行し、その成否を ssl_enabled とする。
+     *
+     * @return array{ssl_enabled:bool, https_accessible:bool, url_upgraded:bool, https_url:string}
      */
-    private function detectSslEnabled(string $requestedUrl, bool $httpsFetchSucceeded): bool
+    private function detectSslEnabled(string $requestedUrl, bool $mainHttpsSucceeded = false): array
     {
-        $reqIsHttps = str_starts_with(strtolower($requestedUrl), 'https://');
+        $reqIsHttp = str_starts_with(strtolower($requestedUrl), 'http://');
+        $httpsUrl  = preg_replace('#^https?://#i', 'https://', $requestedUrl);
 
-        try {
-            $httpUrl = preg_replace('#^https?://#i', 'http://', $requestedUrl);
+        // 1. 本フェッチが https で成功済みなら再試行不要
+        $httpsAccessible = $mainHttpsSucceeded;
 
-            $httpContext = stream_context_create([
-                'http' => [
-                    'method'          => 'GET',
-                    'header'          => 'User-Agent: Mozilla/5.0 (compatible; TRUSTEPSBot/1.0)',
-                    'timeout'         => 5,
-                    'follow_location' => 0,
-                    'ignore_errors'   => true,
-                ],
-                'ssl' => [
-                    'verify_peer'      => false,
-                    'verify_peer_name' => false,
-                ],
-            ]);
+        // 2. 未確認なら https:// で実アクセスを試行（証明書あり・到達可能か）
+        if (!$httpsAccessible) {
+            try {
+                $httpsContext = stream_context_create([
+                    'http' => [
+                        'method'          => 'GET',
+                        'header'          => 'User-Agent: Mozilla/5.0 (compatible; TRUSTEPSBot/1.0)',
+                        'timeout'         => 5,
+                        'follow_location' => 1,
+                        'max_redirects'   => 5,
+                        'ignore_errors'   => true,
+                    ],
+                    'ssl' => [
+                        'verify_peer'      => false,
+                        'verify_peer_name' => false,
+                    ],
+                ]);
 
-            @file_get_contents($httpUrl, false, $httpContext);
-            $responseHeaders = (isset($http_response_header) && is_array($http_response_header))
-                ? $http_response_header
-                : [];
-
-            $location = '';
-            foreach ($responseHeaders as $h) {
-                if (stripos($h, 'Location:') === 0) {
-                    $location = trim(substr($h, 9));
-                    break;
+                $body = @file_get_contents($httpsUrl, false, $httpsContext);
+                if ($body !== false) {
+                    $status = null;
+                    if (isset($http_response_header) && is_array($http_response_header)) {
+                        foreach ($http_response_header as $h) {
+                            if (preg_match('#^HTTP/\S+\s+(\d+)#i', $h, $m)) {
+                                $status = (int) $m[1];
+                            }
+                        }
+                    }
+                    // ステータス不明 or 2xx/3xx を到達成功とみなす
+                    $httpsAccessible = ($status === null) || ($status >= 200 && $status < 400);
                 }
+            } catch (\Throwable $e) {
+                $httpsAccessible = false;
             }
-
-            // http→https リダイレクトあり、または https で取得成功
-            return str_starts_with(strtolower($location), 'https://')
-                || ($reqIsHttps && $httpsFetchSucceeded);
-        } catch (\Throwable $e) {
-            // 判定不能 → 既存のスキームチェックにフォールバック
-            return $reqIsHttps;
         }
+
+        return [
+            'ssl_enabled'      => $httpsAccessible,
+            'https_accessible' => $httpsAccessible,
+            // 元URLが http:// かつ https 到達成功 → https へ昇格可能
+            'url_upgraded'     => $reqIsHttp && $httpsAccessible,
+            'https_url'        => $httpsUrl,
+        ];
     }
 
     /**

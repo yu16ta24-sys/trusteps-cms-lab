@@ -571,8 +571,16 @@ class CompanyController extends Controller
             if (!$result['success']) {
                 return redirect()->route('companies.show', $company)->with('status', 'HP解析失敗：' . $result['message']);
             }
+
+            // http:// で登録されているがhttpsで到達可能な場合、primary_domainのURLをhttpsへ自動更新
+            $upgradeMsg = '';
+            if (($result['url_upgraded'] ?? false) && !empty($result['https_url'])) {
+                $company->primaryDomain->update(['url' => $result['https_url']]);
+                $upgradeMsg = 'URLをhttps://に自動更新しました。';
+            }
+
             if ($result['js_rendering_required'] ?? false) {
-                return redirect()->route('companies.show', $company)->with('status', 'JSサイトのため自動解析できませんでした。目視で確認してください。');
+                return redirect()->route('companies.show', $company)->with('status', $upgradeMsg . 'JSサイトのため自動解析できませんでした。目視で確認してください。');
             }
             $company->load(['industry', 'domains', 'primaryDomain', 'scores']);
             $suggestions = app(\App\Services\ScoreSuggester::class)->suggest($company);
@@ -604,7 +612,7 @@ class CompanyController extends Controller
                 );
                 $savedCount++;
             }
-            return redirect()->route('companies.show', $company)->with('status', "HP解析完了。{$savedCount}軸のスコアを自動保存しました。");
+            return redirect()->route('companies.show', $company)->with('status', $upgradeMsg . "HP解析完了。{$savedCount}軸のスコアを自動保存しました。");
         } catch (\Throwable $e) {
             report($e);
             return redirect()->route('companies.show', $company)->with('status', 'HP解析中にエラーが発生しました。');
