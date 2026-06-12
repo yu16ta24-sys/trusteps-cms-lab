@@ -184,6 +184,9 @@
             if (request('city')) {
                 $activeFilterLinks[] = ['label' => '市区町村', 'value' => request('city'), 'url' => route('companies.candidates', request()->except(['page', 'city']))];
             }
+            if (request('manual_only')) {
+                $activeFilterLinks[] = ['label' => '手動候補', 'value' => 'のみ', 'url' => route('companies.candidates', request()->except(['page', 'manual_only']))];
+            }
         @endphp
 
         <div class="stack">
@@ -311,6 +314,12 @@
                                 </select>
                             </div>
                             <div class="field" style="margin-bottom:0; align-self:end;">
+                                <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; white-space:nowrap;">
+                                    <input type="checkbox" name="manual_only" value="1" @checked(request('manual_only'))>
+                                    手動候補のみ
+                                </label>
+                            </div>
+                            <div class="field" style="margin-bottom:0; align-self:end;">
                                 <button class="button" type="submit">絞り込み</button>
                                 <a class="button light" href="{{ route('companies.candidates') }}">リセット</a>
                             </div>
@@ -417,6 +426,9 @@
                                         <div class="subtext">法人番号：{{ $company->corporate_number }}</div>
                                     @endif
                                     <div class="subtext">状態：{{ $company->status }}</div>
+                                    @if ($company->is_manual_candidate)
+                                        <span class="badge amber" style="margin-top:4px;">手動</span>
+                                    @endif
                                     @if ($outreachPhase)
                                         <span class="badge {{ $outreachColors[$outreachPhase] ?? 'gray' }}" style="margin-top:4px;">{{ $outreachLabels[$outreachPhase] ?? $outreachPhase }}</span>
                                     @endif

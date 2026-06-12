@@ -322,6 +322,10 @@ class CompanyController extends Controller
             $companies = $companies->filter(fn (Company $company) => $this->companyCityLabel($company) === $selectedCity);
         }
 
+        if ($request->boolean('manual_only')) {
+            $companies = $companies->filter(fn (Company $company) => (bool) $company->is_manual_candidate);
+        }
+
         $sort = (string) $request->input('sort', 'priority');
         $direction = $request->input('direction') === 'asc' ? 'asc' : 'desc';
         $allowedSorts = [
@@ -617,6 +621,34 @@ class CompanyController extends Controller
             report($e);
             return redirect()->route('companies.show', $company)->with('status', 'HP解析中にエラーが発生しました。');
         }
+    }
+
+    public function setManualCandidate(Request $request, Company $company): RedirectResponse
+    {
+        $validated = $request->validate([
+            'manual_candidate_reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $company->update([
+            'is_manual_candidate'     => true,
+            'manual_candidate_reason' => $validated['manual_candidate_reason'] ?? null,
+            'manual_candidate_at'     => now(),
+            'manual_candidate_by'     => auth()->user()?->email ?? 'unknown',
+        ]);
+
+        return redirect()->route('companies.show', $company)->with('status', '営業候補に手動追加しました。');
+    }
+
+    public function unsetManualCandidate(Company $company): RedirectResponse
+    {
+        $company->update([
+            'is_manual_candidate'     => false,
+            'manual_candidate_reason' => null,
+            'manual_candidate_at'     => null,
+            'manual_candidate_by'     => null,
+        ]);
+
+        return redirect()->route('companies.show', $company)->with('status', '手動候補を解除しました。');
     }
 
     public function setPrimaryUrl(Request $request, Company $company): RedirectResponse

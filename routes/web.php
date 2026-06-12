@@ -134,6 +134,8 @@ Route::middleware('auth')->group(function () {
     Route::put('/companies/{company}', [CompanyController::class, 'update'])->name('companies.update');
     Route::post('/companies/{company}/analyze', [CompanyController::class, 'analyze'])->name('companies.analyze');
     Route::post('/companies/{company}/set-primary-url', [CompanyController::class, 'setPrimaryUrl'])->name('companies.set-primary-url');
+    Route::post('/companies/{company}/manual-candidate', [CompanyController::class, 'setManualCandidate'])->name('companies.manual-candidate.set');
+    Route::delete('/companies/{company}/manual-candidate', [CompanyController::class, 'unsetManualCandidate'])->name('companies.manual-candidate.unset');
     Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
 
     // 営業管理

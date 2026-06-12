@@ -83,6 +83,9 @@
                 <span class="badge {{ $company->is_killed ? 'red' : 'green' }}">{{ $company->is_killed ? 'killed' : 'active' }}</span>
                 <span class="badge {{ $scoreJudgmentClass }}">{{ $scoreJudgment }}</span>
                 <span class="badge {{ $isCurrentScoringQueueTarget ? 'amber' : 'green' }}">{{ $isCurrentScoringQueueTarget ? '採点待ち' : '4軸採点済み' }}</span>
+                @if ($company->is_manual_candidate)
+                    <span class="badge green">手動候補</span>
+                @endif
             </div>
             <h1 class="cs-title">{{ $company->display_name }}</h1>
             <div class="cs-meta">
@@ -243,6 +246,47 @@
         @endif
     @else
         <div style="font-size:13px;color:var(--muted);">未解析。ヘッダーの「HP解析 → スコア自動保存」ボタンで実行するとスコアが自動設定されます。</div>
+    @endif
+</section>
+
+{{-- 営業判断（手動候補） --}}
+<section class="card">
+    <div class="section-label" style="margin-bottom:12px;">営業判断</div>
+
+    @if ($company->is_manual_candidate)
+        <div style="display:flex; flex-direction:column; gap:10px;">
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <span class="badge green" style="font-size:13px; padding:6px 14px;">手動候補</span>
+                <span style="font-size:12px; color:var(--muted);">追加日: {{ optional($company->manual_candidate_at)->format('Y-m-d H:i') ?? '—' }}</span>
+                <span style="font-size:12px; color:var(--muted);">追加者: {{ $company->manual_candidate_by ?? '—' }}</span>
+            </div>
+            @if ($company->manual_candidate_reason)
+                <div style="font-size:13px; padding:10px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; color:#15803d; white-space:pre-wrap;">{{ $company->manual_candidate_reason }}</div>
+            @endif
+            <div>
+                <form method="POST" action="{{ route('companies.manual-candidate.unset', $company) }}" onsubmit="return confirm('手動候補を解除しますか？');">
+                    @csrf
+                    @method('DELETE')
+                    <button class="button danger small" type="submit">候補から外す</button>
+                </form>
+            </div>
+        </div>
+    @else
+        <details id="manual-candidate-details">
+            <summary style="cursor:pointer; list-style:none; display:inline-block;">
+                <button class="button light small" type="button" onclick="document.getElementById('manual-candidate-details').setAttribute('open','');" style="pointer-events:none;">手動で営業候補に追加</button>
+            </summary>
+            <form method="POST" action="{{ route('companies.manual-candidate.set', $company) }}" style="margin-top:12px; display:flex; flex-direction:column; gap:8px; max-width:600px;">
+                @csrf
+                <div class="field" style="margin-bottom:0;">
+                    <label for="manual_candidate_reason">追加理由（任意）</label>
+                    <textarea id="manual_candidate_reason" name="manual_candidate_reason" rows="3" placeholder="例: 担当者と名刺交換済み、HP老朽化が顕著で提案しやすい等"></textarea>
+                </div>
+                <div>
+                    <button class="button small" type="submit">候補に追加</button>
+                </div>
+            </form>
+        </details>
     @endif
 </section>
 

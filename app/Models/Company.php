@@ -27,12 +27,18 @@ class Company extends Model
         'merged_at',
         'merged_by',
         'merge_reason',
+        'is_manual_candidate',
+        'manual_candidate_reason',
+        'manual_candidate_at',
+        'manual_candidate_by',
     ];
 
     protected $casts = [
         'alias_names_json' => 'array',
         'is_killed' => 'boolean',
+        'is_manual_candidate' => 'boolean',
         'merged_at' => 'datetime',
+        'manual_candidate_at' => 'datetime',
     ];
 
     public function mergedInto()
