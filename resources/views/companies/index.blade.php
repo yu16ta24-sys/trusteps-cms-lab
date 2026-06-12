@@ -101,8 +101,8 @@
                 font-weight:950;
                 font-size:15px;
                 margin-bottom:4px;
-                letter-spacing:-.01em;
             }
+            .companies-index .table-wrap td, .companies-index .table-wrap th { padding:6px 14px; }
             .companies-index .subtext {
                 color:#667085;
                 font-size:12px;

@@ -37,7 +37,7 @@
 
         /* ─── Topbar / Nav ────────────────────────────────────── */
         .topbar {
-            min-height: 48px;
+            min-height: 52px;
             display: grid;
             grid-template-columns: auto 1fr auto;
             gap: 16px;
@@ -53,8 +53,8 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            font-size: 14px;
-            font-weight: 700;
+            font-size: 15px;
+            font-weight: 800;
             color: var(--text);
             white-space: nowrap;
         }
@@ -75,7 +75,7 @@
             border-radius: var(--radius-sm);
             text-decoration: none;
             color: var(--muted);
-            font-size: 13px;
+            font-size: 14px;
             font-weight: 600;
             transition: background .1s, color .1s;
             white-space: nowrap;

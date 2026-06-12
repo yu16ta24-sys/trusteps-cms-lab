@@ -96,7 +96,6 @@
                 font-weight:950;
                 font-size:15px;
                 margin-bottom:4px;
-                letter-spacing:-.01em;
             }
             .candidates-index .subtext {
                 color:#667085;

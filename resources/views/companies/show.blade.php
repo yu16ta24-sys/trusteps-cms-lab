@@ -57,7 +57,7 @@
 .cs-hp-k { font-size:10px; color:var(--muted); font-weight:900; margin-bottom:5px; }
 .cs-hp-v { font-size:13px; font-weight:700; color:var(--text); }
 .cs-score-row { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
-.cs-score-card { border:1px solid var(--line); border-radius:14px; padding:14px; background:var(--card); }
+.cs-score-card { border:1px solid var(--line); border-radius:14px; padding:12px; background:var(--card); }
 .cs-score-card.opp { border-color:#bbf7d0; background:#f0fdf4; }
 .cs-score-card.risk { border-color:#fed7aa; background:#fffaf3; }
 .cs-score-card-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; }
@@ -300,7 +300,7 @@
                     </div>
                     <div class="field" style="margin-bottom:0;">
                         <label for="score_{{ $axis }}_note" style="font-size:11px;">メモ</label>
-                        <textarea id="score_{{ $axis }}_note" name="scores[{{ $axis }}][note]" rows="2" placeholder="判断メモ">{{ $currentNote }}</textarea>
+                        <textarea id="score_{{ $axis }}_note" name="scores[{{ $axis }}][note]" rows="1" placeholder="判断メモ">{{ $currentNote }}</textarea>
                     </div>
 
                     @if ($currentScore && $autoSuggestedValue !== null)
