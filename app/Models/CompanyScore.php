@@ -16,6 +16,7 @@ class CompanyScore extends Model
         'confidence',
         'auto_suggested_value',
         'algo_version',
+        'score_version',
         'reason_json',
         'scored_by',
         'scored_at',

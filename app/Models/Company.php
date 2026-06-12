@@ -89,4 +89,9 @@ class Company extends Model
     {
         return $this->hasOne(OutreachContact::class)->latest();
     }
+
+    public function scoreSummary()
+    {
+        return $this->hasOne(CompanyScoreSummary::class);
+    }
 }
