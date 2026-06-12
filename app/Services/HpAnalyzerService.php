@@ -242,8 +242,11 @@ class HpAnalyzerService
             str_contains($htmlLower, 'inquiry') ||
             str_contains($htmlLower, 'メール')
         );
-        $hasPublicEmail = (bool) preg_match('/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/', $html);
-        $hasPhone = (bool) preg_match('/0\d{1,4}[-\s]?\d{1,4}[-\s]?\d{3,4}/', $html);
+        $contactEmail   = $this->extractContactEmail($html);
+        $contactFormUrl = $this->extractContactFormUrl($html, $htmlLower, $hasContactForm, $finalUrl);
+        $contactPhone   = $this->extractContactPhone($html);
+        $hasPublicEmail = $contactEmail !== null;
+        $hasPhone       = $contactPhone !== null;
         $hasMap = str_contains($htmlLower, 'google.com/maps') ||
                   str_contains($htmlLower, 'maps.google') ||
                   str_contains($htmlLower, 'goo.gl/maps') ||
@@ -285,6 +288,9 @@ class HpAnalyzerService
 
         return [
             // 既存カラム
+            'hp_contact_email'          => $contactEmail,
+            'hp_contact_form_url'       => $contactFormUrl,
+            'hp_contact_phone'          => $contactPhone,
             'has_ec'                    => false,
             'has_reservation'           => str_contains($htmlLower, '予約') && (str_contains($htmlLower, 'form') || str_contains($htmlLower, 'reserve')),
             'has_recruiting'            => str_contains($htmlLower, '採用') || str_contains($htmlLower, '求人') || str_contains($htmlLower, 'recruit'),
@@ -576,6 +582,56 @@ class HpAnalyzerService
         // 0〜9点を0〜5点に正規化
         $score = max(0, $score);
         return (int) round($score / 9 * 5);
+    }
+
+    private function extractContactEmail(string $html): ?string
+    {
+        $text = preg_replace('/<script[^>]*>.*?<\/script>/is', '', $html);
+        $text = preg_replace('/<style[^>]*>.*?<\/style>/is', '', $text);
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        if (preg_match_all('/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/', $text, $m)) {
+            foreach ($m[0] as $email) {
+                if (!preg_match('/\.(png|jpg|gif|svg|webp|css|js|woff2?)$/i', $email)) {
+                    return $email;
+                }
+            }
+        }
+        return null;
+    }
+
+    private function extractContactFormUrl(string $html, string $htmlLower, bool $hasContactForm, string $baseUrl): ?string
+    {
+        if (!$hasContactForm) {
+            return null;
+        }
+        if (preg_match('/<form[^>]+action=["\']([^"\']+)["\'][^>]*>/i', $html, $m)) {
+            $action = trim($m[1]);
+            if ($action === '' || $action === '#') {
+                return $baseUrl;
+            }
+            if (preg_match('#^https?://#i', $action)) {
+                return mb_substr($action, 0, 500);
+            }
+            $parsed = parse_url($baseUrl);
+            $scheme = $parsed['scheme'] ?? 'https';
+            $host   = $parsed['host'] ?? '';
+            $resolved = str_starts_with($action, '/')
+                ? $scheme . '://' . $host . $action
+                : rtrim($baseUrl, '/') . '/' . ltrim($action, '/');
+            return mb_substr($resolved, 0, 500);
+        }
+        return $baseUrl;
+    }
+
+    private function extractContactPhone(string $html): ?string
+    {
+        if (preg_match('/href=["\']tel:([+\d\-\s().]+)["\']/', $html, $m)) {
+            return preg_replace('/[^\d\-+]/', '', trim($m[1]));
+        }
+        if (preg_match('/0\d{1,4}[-\s]?\d{1,4}[-\s]?\d{3,4}/', $html, $m)) {
+            return $m[0];
+        }
+        return null;
     }
 
     private function normalizeUrl(string $url): string

@@ -188,6 +188,23 @@
                 <div class="cs-hp-k">問い合わせ</div>
                 <div class="cs-hp-v">{{ $latestFact->contact_method_type ?? '不明' }}</div>
             </div>
+            <div class="cs-hp-item" style="grid-column:span 2;">
+                <div class="cs-hp-k">営業入り口</div>
+                <div class="cs-hp-v" style="display:flex;flex-direction:column;gap:4px;">
+                    @if ($latestFact->hp_contact_email)
+                        <a href="mailto:{{ $latestFact->hp_contact_email }}" style="color:var(--primary);font-size:12px;word-break:break-all;">{{ $latestFact->hp_contact_email }}</a>
+                    @endif
+                    @if ($latestFact->hp_contact_form_url)
+                        <a href="{{ $latestFact->hp_contact_form_url }}" target="_blank" rel="noopener" style="color:var(--primary);font-size:12px;word-break:break-all;">フォーム: {{ $latestFact->hp_contact_form_url }}</a>
+                    @endif
+                    @if ($latestFact->hp_contact_phone)
+                        <span style="font-size:12px;">{{ $latestFact->hp_contact_phone }}</span>
+                    @endif
+                    @if (!$latestFact->hp_contact_email && !$latestFact->hp_contact_form_url && !$latestFact->hp_contact_phone)
+                        <span style="font-size:12px;color:var(--muted);">営業入り口なし</span>
+                    @endif
+                </div>
+            </div>
             <div class="cs-hp-item">
                 <div class="cs-hp-k">ポータル依存</div>
                 <div class="cs-hp-v">
