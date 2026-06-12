@@ -173,7 +173,7 @@ class DashboardController extends Controller
             ->where('score_version', 'scoring_v1.0')
             ->whereIn('company_id', $activeIds)
             ->selectRaw('`rank`, COUNT(*) as cnt')
-            ->groupBy('rank')
+            ->groupByRaw('`rank`')
             ->pluck('cnt', 'rank');
 
         $v2Summary = [
