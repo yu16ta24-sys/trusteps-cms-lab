@@ -61,7 +61,16 @@
             .candidates-index .table-wrap table { min-width:900px; }
             .candidates-index th a { text-decoration:none; color:inherit; }
             .candidates-index th a:hover { color:#1f5eff; }
-            .candidates-index .pagination nav { display:flex; align-items:center; justify-content:center; gap:0; }
+            /* モバイル用 Previous/Next div を非表示 */
+            .candidates-index .pagination nav > div:first-child { display:none !important; }
+            /* デスクトップ用コンテナを1行フレックスに */
+            .candidates-index .pagination nav > div:last-child {
+                display:flex !important; align-items:center; justify-content:center; gap:8px; flex-wrap:nowrap;
+            }
+            /* "Showing X to Y of Z results" テキストを非表示 */
+            .candidates-index .pagination nav > div:last-child > div:first-child { display:none !important; }
+            /* ページボタン群 */
+            .candidates-index .pagination nav > div:last-child > div:last-child { display:flex; }
             .candidates-index .pagination span[aria-current] span,
             .candidates-index .pagination a {
                 display:inline-flex; align-items:center; justify-content:center;
