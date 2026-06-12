@@ -9,25 +9,25 @@ class ScoreSuggester
     public const ALGO = 'suggest_v2';
 
     private const DEV_DIFFICULTY = [
-        'lodging'         => 5,
-        'lodging_leisure' => 5,
-        'medical'         => 4,
-        'food'           => 4,
-        'beauty'         => 4,
-        'real_estate'    => 4,
+        'lodging'         => 1,
+        'lodging_leisure' => 1,
+        'medical'         => 2,
+        'food'           => 2,
+        'beauty'         => 2,
+        'real_estate'    => 2,
         'retail'         => 3,
         'automotive'     => 3,
         'therapy'        => 3,
-        'btob_service'   => 2,
-        'manufacturing'  => 2,
-        'welfare_care'   => 2,
-        'child_education' => 2,
-        'culture_event'  => 2,
-        'local_service'  => 2,
-        'agriculture'    => 2,
-        'construction'   => 1,
-        'exterior_paint' => 1,
-        'professional'   => 1,
+        'btob_service'   => 4,
+        'manufacturing'  => 4,
+        'welfare_care'   => 4,
+        'child_education' => 4,
+        'culture_event'  => 4,
+        'local_service'  => 4,
+        'agriculture'    => 4,
+        'construction'   => 5,
+        'exterior_paint' => 5,
+        'professional'   => 5,
     ];
 
     private const SELF_UPDATE_FIT = [
@@ -178,7 +178,7 @@ class ScoreSuggester
             $level = $hpFact->portal_dependency_level ?? 'none';
             $portalLinks = $hpFact->hp_portal_links ?? null;
 
-            $valueMap = ['none' => 1, 'low' => 2, 'medium' => 3, 'high' => 5];
+            $valueMap = ['none' => 5, 'low' => 4, 'medium' => 3, 'high' => 1];
             $value = $valueMap[$level] ?? 2;
 
             $drivers = [];
@@ -261,17 +261,17 @@ class ScoreSuggester
 
         if ($own > 0 && $portal === 0) {
             return [
-                'value' => 1, 'confidence' => '0.6', 'basis' => 'auto',
+                'value' => 5, 'confidence' => '0.6', 'basis' => 'auto',
                 'drivers' => ['own_domain'],
-                'note'    => '自社ドメインのみ登録。ポータル/SNS依存は低めに見積もる。',
+                'note'    => '自社ドメインのみ登録。自社HP自立度は高めに見積もる。',
             ];
         }
 
         if ($portal > 0 && $own === 0) {
             return [
-                'value' => 5, 'confidence' => '0.6', 'basis' => 'auto',
+                'value' => 1, 'confidence' => '0.6', 'basis' => 'auto',
                 'drivers' => ['portal_only'],
-                'note'    => '登録ドメインがポータル/SNSのみ。自社HPより外部依存が強い可能性。',
+                'note'    => '登録ドメインがポータル/SNSのみ。自社HPがなく自立度は低い。',
             ];
         }
 

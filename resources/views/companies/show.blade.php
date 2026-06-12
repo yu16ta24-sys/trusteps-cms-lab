@@ -13,19 +13,18 @@
 
     $opportunityScore = ($hpWeakness ?? 0) + ($selfUpdateFit ?? 0);
     $riskScore        = ($devDifficulty ?? 0) + ($portalDependence ?? 0);
+    $totalScore       = $opportunityScore + $riskScore;
 
     if ($scoredAxesCount < 4) {
         $scoreJudgment = '未採点あり'; $scoreJudgmentClass = 'gray';
-    } elseif ($opportunityScore >= 7 && $riskScore <= 3) {
-        $scoreJudgment = '高機会・低リスク'; $scoreJudgmentClass = 'green';
-    } elseif ($opportunityScore >= 7 && $riskScore >= 7) {
-        $scoreJudgment = '高機会・高リスク'; $scoreJudgmentClass = 'blue';
-    } elseif ($opportunityScore <= 3 && $riskScore >= 7) {
-        $scoreJudgment = '低機会・高リスク'; $scoreJudgmentClass = 'red';
-    } elseif ($opportunityScore <= 3 && $riskScore <= 3) {
-        $scoreJudgment = '低機会・低リスク'; $scoreJudgmentClass = 'gray';
+    } elseif ($totalScore >= 16) {
+        $scoreJudgment = '高ポテンシャル'; $scoreJudgmentClass = 'green';
+    } elseif ($totalScore >= 12) {
+        $scoreJudgment = 'ポテンシャルあり'; $scoreJudgmentClass = 'blue';
+    } elseif ($totalScore >= 8) {
+        $scoreJudgment = '要確認'; $scoreJudgmentClass = 'amber';
     } else {
-        $scoreJudgment = '要確認'; $scoreJudgmentClass = 'blue';
+        $scoreJudgment = '優先度低'; $scoreJudgmentClass = 'gray';
     }
 
     $latestFact = null;
@@ -59,7 +58,6 @@
 .cs-score-row { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
 .cs-score-card { border:1px solid var(--line); border-radius:14px; padding:12px; background:var(--card); }
 .cs-score-card.opp { border-color:#bbf7d0; background:#f0fdf4; }
-.cs-score-card.risk { border-color:#fed7aa; background:#fffaf3; }
 .cs-score-card-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; }
 .cs-axis-key { font-size:10px; color:var(--muted); font-family:monospace; }
 .cs-axis-label { font-size:13px; font-weight:950; letter-spacing:-.01em; margin-top:1px; }
@@ -235,7 +233,7 @@
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
         <div class="section-label">4軸スコア（Layer 2）</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <span style="font-size:11px;color:var(--muted);">機会 {{ $opportunityScore }}/10 · リスク {{ $riskScore }}/10 · 採点 {{ $scoredAxesCount }}/4</span>
+            <span style="font-size:11px;color:var(--muted);">スコア {{ $totalScore }}/20 · 採点 {{ $scoredAxesCount }}/4</span>
             <span class="badge {{ $scoreJudgmentClass }}">{{ $scoreJudgment }}</span>
         </div>
     </div>
@@ -251,23 +249,22 @@
                     $currentNote        = old("scores.$axis.note", $currentReason['note'] ?? '');
                     $currentValue       = old("scores.$axis.value", $currentScore?->value ?? 0);
                     $currentConfidence  = old("scores.$axis.confidence", $currentScore?->confidence ?? '0.6');
-                    $isRisk             = $meta['group'] === 'リスク';
                     $suggestion         = $scoreSuggestions[$axis] ?? null;
                     $autoSuggestedValue = $currentScore?->auto_suggested_value;
                     $suggestionDelta    = ($autoSuggestedValue !== null && $currentScore)
                         ? ((int)$currentScore->value - (int)$autoSuggestedValue) : null;
                 @endphp
 
-                <div class="cs-score-card {{ $isRisk ? 'risk' : 'opp' }}">
+                <div class="cs-score-card opp">
                     <div class="cs-score-card-top">
                         <div>
                             <div class="cs-axis-key">{{ $axis }}</div>
                             <div class="cs-axis-label">{{ $meta['label'] }}</div>
                         </div>
-                        <span class="badge {{ $isRisk ? 'red' : 'green' }}" style="font-size:10px;">{{ $meta['group'] }}</span>
+                        <span class="badge green" style="font-size:10px;">{{ $meta['group'] }}</span>
                     </div>
 
-                    <div class="cs-score-val" style="color:{{ $isRisk ? '#92400e' : '#166534' }};">
+                    <div class="cs-score-val" style="color:#166534;">
                         {{ $currentScore ? $currentScore->value : '—' }}<span style="font-size:14px;font-weight:400;color:var(--muted);">/5</span>
                     </div>
                     <div class="cs-score-sub">{{ $meta['polarity'] }}</div>

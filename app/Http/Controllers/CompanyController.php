@@ -233,7 +233,7 @@ class CompanyController extends Controller
 
                 $priorityScore = $scoredAxesCount < 4
                     ? -100 + $scoredAxesCount + $contactPenalty
-                    : ($opportunityScore * 10) - ($riskScore * 6) + min($company->source_links_count, 5) + $contactPenalty;
+                    : ($opportunityScore * 10) + ($riskScore * 10) + min($company->source_links_count, 5) + $contactPenalty;
 
                 $company->setAttribute('opportunity_score', $opportunityScore);
                 $company->setAttribute('risk_score', $riskScore);
@@ -253,7 +253,7 @@ class CompanyController extends Controller
             $companies = $companies->filter(fn ($company) =>
                 $company->scored_axes_count === 4
                 && $company->opportunity_score >= 7
-                && $company->risk_score <= 3
+                && $company->risk_score >= 7
             );
         } elseif ($preset === 'high_opportunity') {
             $companies = $companies->filter(fn ($company) =>
@@ -1108,23 +1108,21 @@ class CompanyController extends Controller
             return ['未採点あり', 'gray'];
         }
 
-        if ($opportunityScore >= 7 && $riskScore <= 3) {
-            return ['高機会・低リスク', 'green'];
+        $totalScore = $opportunityScore + $riskScore;
+
+        if ($totalScore >= 16) {
+            return ['高ポテンシャル', 'green'];
         }
 
-        if ($opportunityScore >= 7 && $riskScore >= 7) {
-            return ['高機会・高リスク', 'blue'];
+        if ($totalScore >= 12) {
+            return ['ポテンシャルあり', 'blue'];
         }
 
-        if ($opportunityScore <= 3 && $riskScore >= 7) {
-            return ['低機会・高リスク', 'red'];
+        if ($totalScore >= 8) {
+            return ['要確認', 'amber'];
         }
 
-        if ($opportunityScore <= 3 && $riskScore <= 3) {
-            return ['低機会・低リスク', 'gray'];
-        }
-
-        return ['要確認', 'blue'];
+        return ['優先度低', 'gray'];
     }
 
     private function companyPrefLabel(Company $company): ?string
@@ -1159,22 +1157,22 @@ class CompanyController extends Controller
                 'anchor_5' => '事例・入荷・活動報告など、継続更新すべき明確な枠が複数ある。',
             ],
             'dev_difficulty' => [
-                'label' => '開発・運用難易度リスク',
-                'group' => 'リスク',
-                'polarity' => '高いほど危険',
-                'description' => '予約・決済・在庫・物件DB・規制対応など、MVPスコープを逸脱しやすいか。',
-                'anchor_0' => '静的情報提供と簡単な更新で完結する。',
+                'label' => '開発・運用しやすさ',
+                'group' => '機会',
+                'polarity' => '高いほどチャンス',
+                'description' => '予約・決済・在庫・物件DB・規制対応などを必要とせず、MVPスコープで完結しやすいか。',
+                'anchor_0' => '予約エンジン、決済、在庫/物件DB、強い広告規制などが中核。',
                 'anchor_3' => '軽い予約・問い合わせ・会員要素などが一部ある。',
-                'anchor_5' => '予約エンジン、決済、在庫/物件DB、強い広告規制などが中核。',
+                'anchor_5' => '静的情報提供と簡単な更新で完結する。',
             ],
             'portal_dependence' => [
-                'label' => 'ポータル・SNS依存リスク',
-                'group' => 'リスク',
-                'polarity' => '高いほど危険',
-                'description' => '自社HPではなく、ポータル・SNS・Googleマップ等が実質的な集客窓口になっているか。',
-                'anchor_0' => '自社HPが主な発信・集客窓口になっている。',
+                'label' => '自社HP自立度',
+                'group' => '機会',
+                'polarity' => '高いほどチャンス',
+                'description' => '自社HPが実質的な集客・発信の窓口になっており、ポータル・SNS依存が低いか。',
+                'anchor_0' => '自社HPが形骸化し、実質ポータルやSNSが窓口になっている。',
                 'anchor_3' => '自社HPもあるが、SNSやポータルとの併用色が強い。',
-                'anchor_5' => '自社HPが形骸化し、実質ポータルやSNSが窓口になっている。',
+                'anchor_5' => '自社HPが主な発信・集客窓口になっている。',
             ],
         ];
     }
