@@ -545,6 +545,15 @@ document.addEventListener('DOMContentLoaded', function () {
           fetchHpBtnText.textContent    = 'HP URL取得完了';
           fetchHpProgress.style.display = 'inline';
           fetchHpProgress.textContent   = hpFoundCount + '件取得';
+
+          PREVIEW_DATA.forEach(function (item, idx) {
+            const cb = document.querySelector('.row-check[value="' + idx + '"]');
+            if (!cb) return;
+            cb.checked = !!(item.normalized_domain);
+          });
+          updateCount();
+
+          setTimeout(function () { hpFetchModal.style.display = 'none'; }, 1500);
           return;
         }
 

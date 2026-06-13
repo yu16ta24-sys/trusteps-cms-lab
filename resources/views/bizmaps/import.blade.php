@@ -216,16 +216,17 @@ document.addEventListener('DOMContentLoaded', function () {
       if (data.finished) {
         es.close();
         previewModalBar.style.width    = '100%';
-        previewModalStatus.textContent = data.main_count + '件取得完了';
+        previewModalStatus.textContent = 'スキャン済: ' + (data.scanned ?? 0) + '件 / 新規: ' + (data.main_count ?? 0) + '件';
         previewModalClose.style.display = 'inline-block';
         previewModalClose.textContent   = '結果を確認する';
         previewModalClose.onclick       = () => { window.location.href = '/bizmaps/preview-result'; };
+        setTimeout(() => { window.location.href = '/bizmaps/preview-result'; }, 1500);
         return;
       }
 
-      const pct = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
+      const pct = data.total > 0 ? Math.round(((data.new_count ?? 0) / data.total) * 100) : 0;
       previewModalBar.style.width    = pct + '%';
-      previewModalStatus.textContent = '取得中: ' + data.done + '/' + data.total + '件';
+      previewModalStatus.textContent = 'スキャン済: ' + (data.scanned ?? 0) + '件 / 新規: ' + (data.new_count ?? 0) + '件';
     };
 
     es.onerror = function () {
