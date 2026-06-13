@@ -694,21 +694,28 @@ class ScoreSuggester
      */
     private function candidateTypeV2(float $opp, float $imp, float $feas, float $reach, float $rec, array $flags): string
     {
-        // 除外条件を最優先
-        if ($imp < 2.5 || $feas < 2.5 || $reach < 2.0) {
-            return 'reject';
-        }
-        if (in_array('no_official_site', $flags, true) && $imp >= 2.5 && $reach >= 2.5) {
-            return 'new_site_candidate';
-        }
-        if ($opp >= 3.0 && $imp >= 3.0 && $feas >= 2.5) {
+        // 浮動小数点の誤差を吸収するため 0.05 のマージンを持たせる
+        // 判定順: renewal → cms_conversion → maintenance → new_site → reject → unclassified
+
+        // HPリニューアル: opportunity高め + impact高め + feasibility高め
+        if ($opp >= 2.95 && $imp >= 2.95 && $feas >= 2.45) {
             return 'renewal_candidate';
         }
-        if ($feas >= 3.0 && $rec >= 3.0) {
+        // CMS化: feasibility高め + recurring高め（opportunity不問）
+        if ($feas >= 2.95 && $rec >= 2.95) {
             return 'cms_conversion_candidate';
         }
-        if ($rec >= 3.0 && $opp >= 2.0) {
+        // 保守・更新: recurring高め + opportunity最低限
+        if ($rec >= 2.95 && $opp >= 1.95) {
             return 'maintenance_candidate';
+        }
+        // 新規制作: 公式サイトなし + impact/reach最低限
+        if (in_array('no_official_site', $flags, true) && $imp >= 2.45 && $reach >= 2.45) {
+            return 'new_site_candidate';
+        }
+        // 除外: imp/feas/reach が最低基準未満
+        if ($imp < 2.45 || $feas < 2.45 || $reach < 1.95) {
+            return 'reject';
         }
 
         return 'unclassified';
