@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\BizmapsScraperService;
 use App\Services\BizmapsIndustryMapper;
+use App\Support\NameNormalizer;
+use App\Support\UrlNormalizer;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BizmapsImportController extends Controller
@@ -372,15 +374,14 @@ class BizmapsImportController extends Controller
 
             $normalizedDomain = null;
             if ($hpUrl) {
-                $host             = parse_url($hpUrl, PHP_URL_HOST);
-                $normalizedDomain = $host ? preg_replace('/^www\./', '', $host) : null;
+                $normalizedDomain = UrlNormalizer::host($hpUrl);
             }
 
             DB::table('source_records')->insert([
                 'source_type'       => 'bizmaps',
                 'source_url'        => $sourceUrl,
                 'normalized_domain' => $normalizedDomain,
-                'name_norm'         => $item['name']     ?? null,
+                'name_norm'         => $this->normalizeName($item['name'] ?? null) ?: null,
                 'pref'              => $item['pref']     ?? null,
                 'city'              => $item['city']     ?? null,
                 'raw_json'          => json_encode([
@@ -444,8 +445,7 @@ class BizmapsImportController extends Controller
             // 正規化ドメイン
             $normalizedDomain = null;
             if ($hpUrl) {
-                $host             = parse_url($hpUrl, PHP_URL_HOST);
-                $normalizedDomain = $host ? preg_replace('/^www\./', '', $host) : null;
+                $normalizedDomain = UrlNormalizer::host($hpUrl);
             }
 
             DB::transaction(function () use (
@@ -459,7 +459,7 @@ class BizmapsImportController extends Controller
                     'primary_domain_id' => null,
                     'legal_name'        => null,
                     'display_name'      => $name,
-                    'name_norm'         => mb_strtolower(preg_replace('/[\s　]+/u', '', $name)),
+                    'name_norm'         => $this->normalizeName($name),
                     'alias_names_json'  => null,
                     'corporate_number'  => null,
                     'pref'              => $municipalityId ? null : ($item['pref'] ?? null),
@@ -489,7 +489,7 @@ class BizmapsImportController extends Controller
                         'source_type'       => 'bizmaps',
                         'source_url'        => $detailUrl,
                         'normalized_domain' => $normalizedDomain,
-                        'name_norm'         => mb_strtolower(preg_replace('/[\s　]+/u', '', $name)),
+                        'name_norm'         => $this->normalizeName($name),
                         'pref'              => $item['pref'] ?? null,
                         'city'              => $item['city'] ?? null,
                         'raw_json'          => json_encode([
@@ -541,8 +541,7 @@ class BizmapsImportController extends Controller
 
                 $normalizedDomain = null;
                 if ($hpUrl) {
-                    $host             = parse_url($hpUrl, PHP_URL_HOST);
-                    $normalizedDomain = $host ? preg_replace('/^www\./', '', $host) : null;
+                    $normalizedDomain = UrlNormalizer::host($hpUrl);
                 }
 
                 $existing = DB::table('source_records')->where('source_url', $sourceUrl)->exists();
@@ -555,7 +554,7 @@ class BizmapsImportController extends Controller
                         'source_type'       => 'bizmaps',
                         'source_url'        => $sourceUrl,
                         'normalized_domain' => $normalizedDomain,
-                        'name_norm'         => $name,
+                        'name_norm'         => $this->normalizeName($name) ?: null,
                         'pref'              => $item['pref'] ?? null,
                         'city'              => $item['city'] ?? null,
                         'raw_json'          => json_encode([
@@ -600,8 +599,7 @@ class BizmapsImportController extends Controller
 
                 $normalizedDomain = null;
                 if ($hpUrl) {
-                    $host             = parse_url($hpUrl, PHP_URL_HOST);
-                    $normalizedDomain = $host ? preg_replace('/^www\./', '', $host) : null;
+                    $normalizedDomain = UrlNormalizer::host($hpUrl);
                 }
 
                 DB::transaction(function () use (
@@ -615,7 +613,7 @@ class BizmapsImportController extends Controller
                         'primary_domain_id' => null,
                         'legal_name'        => null,
                         'display_name'      => $name,
-                        'name_norm'         => mb_strtolower(preg_replace('/[\s　]+/u', '', $name)),
+                        'name_norm'         => $this->normalizeName($name),
                         'alias_names_json'  => null,
                         'corporate_number'  => null,
                         'pref'              => $municipalityId ? null : ($item['pref'] ?? null),
@@ -645,7 +643,7 @@ class BizmapsImportController extends Controller
                             'source_type'       => 'bizmaps',
                             'source_url'        => $detailUrl,
                             'normalized_domain' => $normalizedDomain,
-                            'name_norm'         => mb_strtolower(preg_replace('/[\s　]+/u', '', $name)),
+                            'name_norm'         => $this->normalizeName($name),
                             'pref'              => $item['pref'] ?? null,
                             'city'              => $item['city'] ?? null,
                             'raw_json'          => json_encode([
@@ -718,8 +716,7 @@ class BizmapsImportController extends Controller
 
             $normalizedDomain = null;
             if ($hpUrl) {
-                $host             = parse_url($hpUrl, PHP_URL_HOST);
-                $normalizedDomain = $host ? preg_replace('/^www\./', '', $host) : null;
+                $normalizedDomain = UrlNormalizer::host($hpUrl);
             }
 
             DB::transaction(function () use (
@@ -733,7 +730,7 @@ class BizmapsImportController extends Controller
                     'primary_domain_id' => null,
                     'legal_name'        => null,
                     'display_name'      => $name,
-                    'name_norm'         => mb_strtolower(preg_replace('/[\s　]+/u', '', $name)),
+                    'name_norm'         => $this->normalizeName($name),
                     'alias_names_json'  => null,
                     'corporate_number'  => null,
                     'pref'              => $municipalityId ? null : ($item['pref'] ?? null),
@@ -763,7 +760,7 @@ class BizmapsImportController extends Controller
                         'source_type'       => 'bizmaps',
                         'source_url'        => $detailUrl,
                         'normalized_domain' => $normalizedDomain,
-                        'name_norm'         => mb_strtolower(preg_replace('/[\s　]+/u', '', $name)),
+                        'name_norm'         => $this->normalizeName($name),
                         'pref'              => $item['pref'] ?? null,
                         'city'              => $item['city'] ?? null,
                         'raw_json'          => json_encode([
@@ -790,8 +787,7 @@ class BizmapsImportController extends Controller
 
             $normalizedDomain = null;
             if ($hpUrl) {
-                $host             = parse_url($hpUrl, PHP_URL_HOST);
-                $normalizedDomain = $host ? preg_replace('/^www\./', '', $host) : null;
+                $normalizedDomain = UrlNormalizer::host($hpUrl);
             }
 
             $existing = DB::table('source_records')->where('source_url', $sourceUrl)->exists();
@@ -804,7 +800,7 @@ class BizmapsImportController extends Controller
                     'source_type'       => 'bizmaps',
                     'source_url'        => $sourceUrl,
                     'normalized_domain' => $normalizedDomain,
-                    'name_norm'         => $item['name'] ?? null,
+                    'name_norm'         => $this->normalizeName($item['name'] ?? null) ?: null,
                     'pref'              => $item['pref'] ?? null,
                     'city'              => $item['city'] ?? null,
                     'raw_json'          => json_encode([
@@ -831,24 +827,12 @@ class BizmapsImportController extends Controller
 
     private function normalizeUrl(?string $url): string
     {
-        if (!$url) return '';
-        return strtolower(rtrim($url, '/'));
+        return UrlNormalizer::normalize($url);
     }
 
     private function normalizeName(?string $name): string
     {
-        if (!$name) return '';
-        // 略称除去
-        $name = preg_replace('/（株）|（有）|（合）|\(株\)|\(有\)|\(合\)|㈱|㈲/u', '', $name);
-        // 法人格（前置き・後置き）除去
-        $sfx  = '株式会社|有限会社|合同会社|合資会社|合名会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|社会福祉法人|医療法人';
-        $name = preg_replace('/^(?:' . $sfx . ')\s*/u', '', $name);
-        $name = preg_replace('/\s*(?:' . $sfx . ')$/u', '', $name);
-        // 全角英数・スペース→半角
-        $name = mb_convert_kana($name, 'ans');
-        // スペース除去（全角・半角）
-        $name = preg_replace('/[\s　]+/u', '', $name);
-        return mb_strtolower($name);
+        return NameNormalizer::normalize($name);
     }
 
     private function matchesExistingCompany(array $r, array $existingByName): bool

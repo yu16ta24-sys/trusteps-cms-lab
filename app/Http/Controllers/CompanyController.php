@@ -14,6 +14,7 @@ use App\Models\Prefecture;
 use App\Models\SourceRecord;
 use App\Services\HpAnalyzerService;
 use App\Services\ScoreSuggester;
+use App\Support\NameNormalizer;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -1151,16 +1152,7 @@ class CompanyController extends Controller
 
     private function normalizeName(?string $name): ?string
     {
-        if (!$name) {
-            return null;
-        }
-
-        $name = mb_convert_kana($name, 'asKV', 'UTF-8');
-        $name = mb_strtolower($name);
-        $name = preg_replace('/[\s　]+/u', '', $name);
-        $name = str_replace(['株式会社', '有限会社', '合同会社', '（株）', '(株)', '㈱', '（有）', '(有)'], '', $name);
-
-        return $name !== '' ? $name : null;
+        return NameNormalizer::normalize($name) ?: null;
     }
 
     private function isDirectorySourceRecord(SourceRecord $sourceRecord): bool

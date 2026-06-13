@@ -165,7 +165,7 @@ class ScoreSuggester
             $drivers[] = 'no_cms';
             $notes[] = 'CMS未使用の可能性';
         }
-        if (!$hpFact->has_contact_form && !$hpFact->has_public_email && !$hpFact->has_phone) {
+        if (!$this->hasContactRouteFact($hpFact) && !$hpFact->has_phone) {
             $drivers[] = 'no_contact';
             $notes[] = '問い合わせ導線なし';
         }
