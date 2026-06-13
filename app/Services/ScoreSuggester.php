@@ -508,21 +508,19 @@ class ScoreSuggester
         // === confidence ===
         $confidence = $this->computeConfidenceV2($company, $hpFact, $hasIndustrySig, $s);
 
-        // === rank判定 ===
+        // === rank判定（スコアによる最低ランクは C。D は is_killed 企業のみ → RecalculateScores で上書き）===
         $hasCritical = count(array_intersect($flags, self::CRITICAL_FLAGS)) > 0;
-        if ($hasCritical || $total < 2.5) {
-            $rank = 'D';
-        } elseif ($total >= 4.0 && $confidence >= 0.70) {
+        if ($total >= 4.0 && $confidence >= 0.70 && !$hasCritical) {
             $rank = 'S';
         } elseif ($total >= 3.8) {
             $rank = 'A';
-            if ($confidence < 0.70) {
+            if ($confidence < 0.70 || $hasCritical) {
                 $flags[] = 'rank_a_provisional'; // A候補（目視確認推奨）
             }
         } elseif ($total >= 3.2) {
             $rank = 'B';
         } else {
-            $rank = 'C';
+            $rank = 'C'; // スコアによる最低ランク
         }
 
         // === candidate_type判定 ===

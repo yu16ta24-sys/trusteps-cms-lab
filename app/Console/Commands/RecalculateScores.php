@@ -53,6 +53,11 @@ class RecalculateScores extends Command
             foreach ($companies as $company) {
                 try {
                     $result = $suggester->suggestV2($company);
+                    // is_killed 企業はスコアに関わらず D ランク・reject に強制上書き
+                    if ($company->is_killed) {
+                        $result['rank']           = 'D';
+                        $result['candidate_type'] = 'reject';
+                    }
                     $this->persist($company, $result, $version);
                     $processed++;
 
