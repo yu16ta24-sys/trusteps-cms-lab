@@ -9,6 +9,44 @@ class BizmapsScraperService
     private const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
     private const SLEEP_SEC  = 1;
 
+    /**
+     * ページ完了ごとにコールバックを呼び出しながら一覧を取得
+     * @param callable $onPage function(int $fetched, int $total, int $page): void
+     */
+    public function fetchListWithProgress(string $startUrl, int $limit, callable $onPage): array
+    {
+        set_time_limit(300);
+
+        $results = [];
+        $page    = 1;
+        $nextUrl = $startUrl;
+
+        while (count($results) < $limit && $nextUrl) {
+            try {
+                $html = $this->fetch($nextUrl);
+                if (!$html) break;
+
+                $items = $this->parseListPage($html);
+                foreach ($items as $item) {
+                    $results[] = $item;
+                    if (count($results) >= $limit) break;
+                }
+
+                $onPage(count($results), $limit, $page);
+
+                $nextUrl = $this->getNextPageUrl($html, $nextUrl, $page);
+                $page++;
+                if ($nextUrl) sleep(self::SLEEP_SEC);
+
+            } catch (\Throwable $e) {
+                Log::warning('BizmapsScraper progress error: ' . $e->getMessage(), ['url' => $nextUrl]);
+                break;
+            }
+        }
+
+        return $results;
+    }
+
     public function fetchList(string $startUrl, int $limit = 50, bool $fetchHp = false): array
     {
         set_time_limit(300);

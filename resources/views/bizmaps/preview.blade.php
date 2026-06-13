@@ -76,7 +76,7 @@
           </div>
 
           <div style="padding-bottom:2px;">
-            <button type="submit" class="button" id="reSubmitBtn" style="min-width:120px;">再取得</button>
+            <button type="button" class="button" id="reSubmitBtn" style="min-width:120px;">再取得</button>
           </div>
         </div>
 
@@ -85,6 +85,18 @@
         <input type="hidden" name="big_ind_name"  value="">
         <input type="hidden" name="m_ind_name"    value="">
       </form>
+
+      {{-- 再取得 SSEモーダル --}}
+      <div id="rePreviewModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:18px;padding:32px;width:min(480px,90vw);box-shadow:0 20px 60px rgba(0,0,0,.25);">
+          <h3 style="margin:0 0 20px;font-size:16px;font-weight:900;color:var(--text);">企業リスト再取得中</h3>
+          <div style="background:#e2e6ed;border-radius:4px;height:8px;margin-bottom:14px;overflow:hidden;">
+            <div id="rePreviewBar" style="background:var(--primary,#3b82f6);height:100%;border-radius:4px;width:0%;transition:width .4s ease;"></div>
+          </div>
+          <p id="rePreviewStatus" style="font-size:13px;font-weight:700;color:var(--text);margin:0 0 22px;">接続中...</p>
+          <button id="rePreviewClose" class="button light" style="display:none;">閉じる</button>
+        </div>
+      </div>
     </div>
   </details>
 
@@ -399,9 +411,58 @@ document.addEventListener('DOMContentLoaded', function () {
     reCityBox.querySelectorAll('.re-city-check').forEach(cb => cb.checked = false);
   });
 
-  document.getElementById('reSearchForm')?.addEventListener('submit', function () {
-    const btn = document.getElementById('reSubmitBtn');
-    if (btn) { btn.disabled = true; btn.textContent = '取得中...'; }
+  document.getElementById('reSubmitBtn')?.addEventListener('click', function () {
+    const form = document.getElementById('reSearchForm');
+    if (!form) return;
+
+    const formData = new FormData(form);
+    const params   = new URLSearchParams();
+    for (const [key, value] of formData.entries()) {
+      if (key === '_token' || key === '_method') continue;
+      params.append(key, value);
+    }
+
+    const modal  = document.getElementById('rePreviewModal');
+    const bar    = document.getElementById('rePreviewBar');
+    const status = document.getElementById('rePreviewStatus');
+    const close  = document.getElementById('rePreviewClose');
+
+    modal.style.display  = 'flex';
+    bar.style.width      = '0%';
+    status.textContent   = '接続中...';
+    close.style.display  = 'none';
+    this.disabled        = true;
+
+    const es = new EventSource('/bizmaps/preview-stream?' + params.toString());
+
+    es.onmessage = function (ev) {
+      const data = JSON.parse(ev.data);
+
+      if (data.finished) {
+        es.close();
+        bar.style.width    = '100%';
+        status.textContent = data.main_count + '件取得完了';
+        close.style.display = 'inline-block';
+        close.textContent   = '結果を確認する';
+        close.onclick       = () => { window.location.href = '/bizmaps/preview-result'; };
+        return;
+      }
+
+      const pct  = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
+      bar.style.width    = pct + '%';
+      status.textContent = '取得中: ' + data.done + '/' + data.total + '件';
+    };
+
+    es.onerror = function () {
+      es.close();
+      status.textContent  = 'エラーが発生しました。もう一度お試しください。';
+      close.style.display = 'inline-block';
+      close.textContent   = '閉じる';
+      close.onclick       = function () {
+        modal.style.display                                     = 'none';
+        document.getElementById('reSubmitBtn').disabled = false;
+      };
+    };
   });
 
   // ---- チェックボックス ----

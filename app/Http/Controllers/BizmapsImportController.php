@@ -287,6 +287,204 @@ class BizmapsImportController extends Controller
     }
 
     /**
+     * SSEエンドポイント：BIZMAPSリスト取得の進捗をストリームで返す
+     * 完了後に結果をセッションに保存する
+     */
+    public function previewStream(Request $request): StreamedResponse
+    {
+        $prefectureId = (int)$request->input('prefecture_id');
+        $cityCodes    = (array)$request->input('city_codes', []);
+        $industryType = $request->input('industry_type', 'pref');
+        $industryId   = $request->input('industry_id') ? (int)$request->input('industry_id') : null;
+        $limit        = max(1, min(500, (int)$request->input('limit', 50)));
+
+        $prefecture = DB::table('prefectures')->find($prefectureId);
+        $urls       = $this->buildUrls($prefectureId, $cityCodes, $industryType, $industryId);
+
+        $searchCondition = [
+            'prefecture_id'   => $prefectureId,
+            'prefecture_name' => $prefecture->name ?? '',
+            'city_codes'      => $cityCodes,
+            'industry_type'   => $industryType,
+            'industry_id'     => $industryId,
+            'limit'           => $limit,
+            'big_ind_name'    => $request->input('big_ind_name', ''),
+            'm_ind_name'      => $request->input('m_ind_name', ''),
+        ];
+        session(['bizmaps_search_condition' => $searchCondition]);
+        session()->save();
+
+        $prefectureId2  = $prefectureId;
+        $prefectureName = $prefecture->name ?? '';
+
+        return new StreamedResponse(function () use (
+            $urls, $limit, $prefectureId2, $prefectureName
+        ) {
+            set_time_limit(0);
+            if (ob_get_level() === 0) ob_start();
+
+            $scraper = new BizmapsScraperService();
+            $allRaw  = [];
+
+            foreach ($urls as $url) {
+                if (count($allRaw) >= $limit) break;
+                $baseOffset = count($allRaw);
+                $remaining  = $limit - $baseOffset;
+
+                $fetched = $scraper->fetchListWithProgress(
+                    $url,
+                    $remaining,
+                    function (int $pageDone, int $pageTotal, int $page) use ($baseOffset, $limit) {
+                        $this->sseEmit([
+                            'done'  => $baseOffset + $pageDone,
+                            'total' => $limit,
+                            'page'  => $page,
+                        ]);
+                        if (ob_get_level() > 0) ob_flush();
+                        flush();
+                    }
+                );
+
+                $allRaw = array_merge($allRaw, $fetched);
+            }
+            $allRaw = array_slice($allRaw, 0, $limit);
+
+            // 重複チェック
+            $detailUrls = array_values(array_filter(array_column($allRaw, 'detail_url')));
+            $allUrls    = array_values(array_unique(array_filter(array_merge(
+                $detailUrls,
+                array_column($allRaw, 'hp_url')
+            ))));
+
+            $existingActiveUrls = $allUrls ? DB::table('source_records')
+                ->whereIn('source_url', $allUrls)
+                ->where(fn($q) => $q->whereNull('is_excluded')->orWhere('is_excluded', false))
+                ->pluck('source_url')->toArray() : [];
+
+            $existingExcludedUrls = $allUrls ? DB::table('source_records')
+                ->whereIn('source_url', $allUrls)
+                ->where('is_excluded', true)
+                ->pluck('source_url')->toArray() : [];
+
+            $excludedUrls = $detailUrls ? DB::table('bizmaps_excluded_companies')
+                ->whereIn('detail_url', $detailUrls)
+                ->pluck('detail_url')->toArray() : [];
+
+            $normalizedAllUrls  = array_values(array_unique(array_filter(array_map([$this, 'normalizeUrl'], $allUrls))));
+            $rawDomainUrls      = $normalizedAllUrls
+                ? DB::table('domains')
+                    ->whereIn(DB::raw("LOWER(TRIM(TRAILING '/' FROM url))"), $normalizedAllUrls)
+                    ->pluck('url')->toArray()
+                : [];
+            $existingDomainUrls = array_flip(array_map([$this, 'normalizeUrl'], $rawDomainUrls));
+
+            $existingByName = [];
+            if ($prefectureName) {
+                DB::table('companies')
+                    ->leftJoin('municipalities', 'companies.municipality_id', '=', 'municipalities.id')
+                    ->select('companies.display_name', 'companies.city as comp_city', 'municipalities.name as muni_name')
+                    ->where('companies.is_killed', false)
+                    ->where(function ($q) use ($prefectureId2, $prefectureName) {
+                        $q->where('municipalities.prefecture_id', $prefectureId2)
+                          ->orWhere('companies.pref', $prefectureName);
+                    })
+                    ->get()
+                    ->each(function ($c) use (&$existingByName) {
+                        $normName = $this->normalizeName($c->display_name ?? '');
+                        if ($normName) {
+                            $existingByName[$normName][] = $c->muni_name ?? $c->comp_city ?? '';
+                        }
+                    });
+            }
+
+            $mainResults           = [];
+            $excludedResults       = [];
+            $excludedSourceResults = [];
+            $companyExistedResults = [];
+
+            foreach ($allRaw as &$r) {
+                $hpUrl = $r['hp_url'] ?? null;
+                $r['is_duplicate'] = in_array($r['detail_url'], $existingActiveUrls)
+                    || ($hpUrl && in_array($hpUrl, $existingActiveUrls));
+                $r['is_excluded_source'] = in_array($r['detail_url'], $existingExcludedUrls)
+                    || ($hpUrl && in_array($hpUrl, $existingExcludedUrls));
+                $r['is_company_existed'] = isset($existingDomainUrls[$this->normalizeUrl($r['detail_url'] ?? null)])
+                    || ($hpUrl && isset($existingDomainUrls[$this->normalizeUrl($hpUrl)]))
+                    || $this->matchesExistingCompany($r, $existingByName);
+                if (in_array($r['detail_url'], $excludedUrls)) {
+                    $excludedResults[] = $r;
+                } elseif ($r['is_excluded_source']) {
+                    $excludedSourceResults[] = $r;
+                } elseif ($r['is_company_existed']) {
+                    $companyExistedResults[] = $r;
+                } else {
+                    $mainResults[] = $r;
+                }
+            }
+            unset($r);
+
+            $mainResults = array_slice($mainResults, 0, $limit);
+
+            $sseItems = array_values(array_map(fn($r) => [
+                'detail_url' => $r['detail_url'],
+                'name'       => $r['name'] ?? null,
+            ], $mainResults));
+
+            session()->start();
+            session([
+                'bizmaps_detail_urls'     => $sseItems,
+                'bizmaps_preview_main'    => $mainResults,
+                'bizmaps_preview_excl'    => $excludedResults,
+                'bizmaps_preview_exclsrc' => $excludedSourceResults,
+                'bizmaps_preview_comp'    => $companyExistedResults,
+            ]);
+            session()->save();
+
+            $this->sseEmit([
+                'done'       => $limit,
+                'total'      => $limit,
+                'finished'   => true,
+                'main_count' => count($mainResults),
+            ]);
+            if (ob_get_level() > 0) ob_flush();
+            flush();
+
+        }, 200, [
+            'Content-Type'      => 'text/event-stream',
+            'Cache-Control'     => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+            'Connection'        => 'keep-alive',
+        ]);
+    }
+
+    /**
+     * previewStreamで取得・セッション保存した結果を表示
+     */
+    public function previewResult()
+    {
+        $mainResults           = session('bizmaps_preview_main', []);
+        $excludedResults       = session('bizmaps_preview_excl', []);
+        $excludedSourceResults = session('bizmaps_preview_exclsrc', []);
+        $companyExistedResults = session('bizmaps_preview_comp', []);
+        $searchCondition       = session('bizmaps_search_condition', []);
+
+        if (empty($mainResults) && empty($excludedResults)) {
+            return redirect()->route('bizmaps.import');
+        }
+
+        $prefectureId = $searchCondition['prefecture_id'] ?? null;
+        $prefecture   = $prefectureId ? DB::table('prefectures')->find($prefectureId) : null;
+        $limit        = $searchCondition['limit'] ?? 50;
+        $results      = $mainResults;
+        $industries   = $this->getIndustries();
+
+        return view('bizmaps.preview', compact(
+            'mainResults', 'excludedResults', 'excludedSourceResults', 'companyExistedResults',
+            'results', 'prefecture', 'limit', 'searchCondition', 'industries'
+        ));
+    }
+
+    /**
      * SSEエンドポイント：1件ずつHP URLを取得してストリームで返す
      */
     public function fetchHpStream(Request $request): StreamedResponse

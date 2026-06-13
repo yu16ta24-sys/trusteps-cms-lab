@@ -109,6 +109,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/bizmaps/store-companies', [BizmapsImportController::class, 'storeCompanies'])->name('bizmaps.store-companies');
     Route::post('/bizmaps/store-with-exclusion', [BizmapsImportController::class, 'storeWithExclusion'])->name('bizmaps.store-with-exclusion');
     Route::post('/bizmaps/store-with-exclusion-all', [BizmapsImportController::class, 'storeWithExclusionAll'])->name('bizmaps.store-with-exclusion-all');
+    Route::get('/bizmaps/preview-stream', [BizmapsImportController::class, 'previewStream'])->name('bizmaps.preview-stream');
+    Route::get('/bizmaps/preview-result', [BizmapsImportController::class, 'previewResult'])->name('bizmaps.preview-result');
     Route::get('/bizmaps/fetch-hp-stream', [BizmapsImportController::class, 'fetchHpStream'])->name('bizmaps.fetch-hp-stream');
     Route::post('/bizmaps/exclude', [BizmapsImportController::class, 'exclude'])->name('bizmaps.exclude');
     Route::post('/bizmaps/unexclude', [BizmapsImportController::class, 'unexclude'])->name('bizmaps.unexclude');

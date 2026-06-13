@@ -12,6 +12,18 @@
     <p class="page-subtitle">BIZMAPSから企業情報を収集してsource_recordsに保存します。都道府県・市区町村で絞り込みができます。</p>
   </div>
 
+  {{-- プレビュー取得モーダル --}}
+  <div id="previewModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:18px;padding:32px;width:min(480px,90vw);box-shadow:0 20px 60px rgba(0,0,0,.25);">
+      <h3 style="margin:0 0 20px;font-size:16px;font-weight:900;color:var(--text);">企業リスト取得中</h3>
+      <div style="background:#e2e6ed;border-radius:4px;height:8px;margin-bottom:14px;overflow:hidden;">
+        <div id="previewModalBar" style="background:var(--primary,#3b82f6);height:100%;border-radius:4px;width:0%;transition:width .4s ease;"></div>
+      </div>
+      <p id="previewModalStatus" style="font-size:13px;font-weight:700;color:var(--text);margin:0 0 22px;">接続中...</p>
+      <button id="previewModalClose" class="button light" style="display:none;">閉じる</button>
+    </div>
+  </div>
+
   <form method="POST" action="{{ route('bizmaps.preview') }}" id="importForm">
     @csrf
 
@@ -166,9 +178,59 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  document.getElementById('importForm').addEventListener('submit', function () {
+  const previewModal       = document.getElementById('previewModal');
+  const previewModalBar    = document.getElementById('previewModalBar');
+  const previewModalStatus = document.getElementById('previewModalStatus');
+  const previewModalClose  = document.getElementById('previewModalClose');
+
+  document.getElementById('importForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+
+    const formData = new FormData(this);
+    const params   = new URLSearchParams();
+    for (const [key, value] of formData.entries()) {
+      if (key === '_token') continue;
+      params.append(key, value);
+    }
+
+    previewModal.style.display      = 'flex';
+    previewModalBar.style.width     = '0%';
+    previewModalStatus.textContent  = '接続中...';
+    previewModalClose.style.display = 'none';
     submitBtn.disabled = true;
     submitBtn.textContent = '取得中...';
+
+    const es = new EventSource('/bizmaps/preview-stream?' + params.toString());
+
+    es.onmessage = function (ev) {
+      const data = JSON.parse(ev.data);
+
+      if (data.finished) {
+        es.close();
+        previewModalBar.style.width    = '100%';
+        previewModalStatus.textContent = data.main_count + '件取得完了';
+        previewModalClose.style.display = 'inline-block';
+        previewModalClose.textContent   = '結果を確認する';
+        previewModalClose.onclick       = () => { window.location.href = '/bizmaps/preview-result'; };
+        return;
+      }
+
+      const pct = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
+      previewModalBar.style.width    = pct + '%';
+      previewModalStatus.textContent = '取得中: ' + data.done + '/' + data.total + '件';
+    };
+
+    es.onerror = function () {
+      es.close();
+      previewModalStatus.textContent  = 'エラーが発生しました。もう一度お試しください。';
+      previewModalClose.style.display = 'inline-block';
+      previewModalClose.textContent   = '閉じる';
+      previewModalClose.onclick       = function () {
+        previewModal.style.display = 'none';
+        submitBtn.disabled         = false;
+        submitBtn.textContent      = 'プレビュー取得';
+      };
+    };
   });
 
 });
