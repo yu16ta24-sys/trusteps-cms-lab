@@ -8,18 +8,15 @@
                     <p class="page-kicker">source record / intake review</p>
                     <h1 class="page-title">source_record #{{ $sourceRecord->id }}</h1>
                     <p class="page-subtitle">
-                        外部取得データの原典確認画面。ここでは生データを壊さず、company化するか既存companyへリンクするかだけを判断する。
+                        外部取得データの原典確認画面。ここでは生データを壊さず、company化するかどうかだけを判断する。
                     </p>
                 </div>
                 <div class="actions">
                     <a class="button light" href="{{ route('source-records.index') }}">一覧へ戻る</a>
                     @if ($sourceRecord->sourceLink)
                         <a class="button" href="{{ route('companies.show', $sourceRecord->sourceLink->company) }}">リンク済みcompany</a>
-                    @elseif ($isDirectorySource ?? false)
-                        <span class="button light" style="opacity:.7; cursor:not-allowed;">名簿元：company化対象外</span>
                     @else
                         <a class="button" href="{{ route('companies.create-from-source', $sourceRecord) }}">新規company作成</a>
-                        <a class="button light" href="{{ route('companies.link-existing-from-source', $sourceRecord) }}">既存companyへリンク</a>
                     @endif
                 </div>
             </div>
@@ -32,7 +29,7 @@
                 <summary>この画面の判断ポイント</summary>
                 <div class="help-body">
                     <div>同じ会社かどうかは、ドメイン・法人番号・名称・地域を見て判断する。住所や電話だけの一致で強引に統合しない。</div>
-                    <div>迷う場合は新規company化せず、既存company検索で近い候補を確認する。誤統合より重複の方が後から直しやすい。</div>
+                    <div>重複が疑わしくても、まずcompany化してよい。company側でmerge（統合）すれば後から直せる。誤統合より重複の方が後から直しやすい。</div>
                 </div>
             </details>
 
@@ -48,18 +45,6 @@
                         <a class="button light" href="{{ route('companies.show', $sourceRecord->sourceLink->company) }}">companyを開く</a>
                     </div>
                 </div>
-            @elseif ($isDirectorySource ?? false)
-                <div class="info-strip" style="margin-top:20px; background:#eff6ff; border-color:#bfdbfe;">
-                    <div class="row">
-                        <div>
-                            <strong>名簿元source_record</strong>
-                            <div class="muted" style="margin-top:4px;">
-                                これは営業先companyではなく、会員一覧・事業者一覧を探すための情報源。company化せずsource_recordsに残す。
-                            </div>
-                        </div>
-                        <span class="button light" style="opacity:.7; cursor:not-allowed;">company化対象外</span>
-                    </div>
-                </div>
             @else
                 <div class="info-strip" style="margin-top:20px; background:#fff7ed; border-color:#fed7aa;">
                     <div class="row">
@@ -71,7 +56,6 @@
                         </div>
                         <div class="actions">
                             <a class="button" href="{{ route('companies.create-from-source', $sourceRecord) }}">新規company作成</a>
-                            <a class="button light" href="{{ route('companies.link-existing-from-source', $sourceRecord) }}">既存companyへリンク</a>
                         </div>
                     </div>
                 </div>
@@ -123,7 +107,7 @@
                 <table>
                     <tbody>
                     <tr><th>ID</th><td>{{ $sourceRecord->id }}</td></tr>
-                    <tr><th>source_type</th><td><span class="badge gray">{{ $sourceRecord->source_type }}</span> @if ($isDirectorySource ?? false)<span class="badge" style="background:#dbeafe; color:#1d4ed8;">名簿元</span>@endif</td></tr>
+                    <tr><th>source_type</th><td><span class="badge gray">{{ $sourceRecord->source_type }}</span></td></tr>
                     <tr><th>source_url</th><td style="overflow-wrap:anywhere;">{{ $sourceRecord->source_url ?? '-' }}</td></tr>
                     <tr><th>corporate_number</th><td>{{ $sourceRecord->corporate_number ?? '-' }}</td></tr>
                     <tr><th>normalized_domain</th><td>{{ $sourceRecord->normalized_domain ?? '-' }}</td></tr>

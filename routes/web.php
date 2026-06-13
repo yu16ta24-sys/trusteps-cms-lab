@@ -5,16 +5,11 @@ use App\Http\Controllers\BizmapsImportController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DiscoveryLabController;
-use App\Http\Controllers\DirectorySourceLabController;
-use App\Http\Controllers\DirectorySourcePageController;
-use App\Http\Controllers\DirectorySourceController;
 use App\Http\Controllers\IndustryScoreController;
 use App\Http\Controllers\MvpResetController;
 use App\Http\Controllers\OfficialSiteResolverController;
 use App\Http\Controllers\OutreachController;
 use App\Http\Controllers\SourceRecordController;
-use App\Http\Controllers\ShokokaiBulkHtmlImportController;
-use App\Http\Controllers\ShokokaiWebSearchController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -32,40 +27,6 @@ Route::post('/logout', [LoginController::class, 'logout'])
 
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
-
-
-
-
-    Route::get('/directory-sources/shokokai-bulk-html', [ShokokaiBulkHtmlImportController::class, 'show'])->name('directory-sources.shokokai-bulk-html');
-    Route::post('/directory-sources/shokokai-bulk-html/preview', [ShokokaiBulkHtmlImportController::class, 'preview'])->name('directory-sources.shokokai-bulk-html.preview');
-    Route::post('/directory-sources/shokokai-bulk-html/store', [ShokokaiBulkHtmlImportController::class, 'store'])->name('directory-sources.shokokai-bulk-html.store');
-    Route::get('/directory-sources/shokokai-bulk-html/preview', fn () => redirect()->route('directory-sources.shokokai-bulk-html'));
-    Route::get('/directory-sources/shokokai-bulk-html/store', fn () => redirect()->route('directory-sources.shokokai-bulk-html'));
-
-    Route::get('/directory-sources/shokokai-web-search', [ShokokaiWebSearchController::class, 'show'])->name('directory-sources.shokokai-web-search');
-    Route::post('/directory-sources/shokokai-web-search/preview', [ShokokaiWebSearchController::class, 'preview'])->name('directory-sources.shokokai-web-search.preview');
-    Route::post('/directory-sources/shokokai-web-search/store', [ShokokaiWebSearchController::class, 'store'])->name('directory-sources.shokokai-web-search.store');
-    Route::get('/directory-sources/shokokai-web-search/preview', fn () => redirect()->route('directory-sources.shokokai-web-search'));
-    Route::get('/directory-sources/shokokai-web-search/store', fn () => redirect()->route('directory-sources.shokokai-web-search'));
-
-
-    Route::get('/directory-sources', [DirectorySourceController::class, 'index'])->name('directory-sources.index');
-    Route::post('/directory-sources/import-source-records', [DirectorySourceController::class, 'importFromSourceRecords'])->name('directory-sources.import-source-records');
-    Route::post('/directory-sources/crawl-selected', [DirectorySourceController::class, 'crawlSelected'])->name('directory-sources.crawl-selected');
-    Route::post('/directory-sources/crawl-queue', [DirectorySourceController::class, 'crawlQueue'])->name('directory-sources.crawl-queue');
-    Route::post('/directory-sources/{directorySource}/crawl', [DirectorySourceController::class, 'crawlOne'])->whereNumber('directorySource')->name('directory-sources.crawl-one');
-    Route::post('/directory-sources/{directorySource}/pages/store-source-records', [DirectorySourceController::class, 'storePagesAsSourceRecords'])->whereNumber('directorySource')->name('directory-sources.pages.store-source-records');
-
-    Route::get('/directory-sources/{directorySource}/pages', [DirectorySourcePageController::class, 'index'])->whereNumber('directorySource')->name('directory-sources.pages');
-    Route::get('/directory-source-pages/{page}/extract', [DirectorySourcePageController::class, 'extract'])->whereNumber('page')->name('directory-source-pages.extract');
-    Route::post('/directory-source-pages/{page}/save-candidates', [DirectorySourcePageController::class, 'saveCandidates'])->whereNumber('page')->name('directory-source-pages.save-candidates');
-    Route::get('/directory-sources/{directorySource}', [DirectorySourceController::class, 'show'])->whereNumber('directorySource')->name('directory-sources.show');
-
-    Route::get('/directory-sources/lab', [DirectorySourceLabController::class, 'show'])->name('directory-sources.lab');
-    Route::post('/directory-sources/lab/preview', [DirectorySourceLabController::class, 'preview'])->name('directory-sources.lab.preview');
-    Route::post('/directory-sources/lab/store', [DirectorySourceLabController::class, 'store'])->name('directory-sources.lab.store');
-    Route::get('/directory-sources/lab/preview', fn () => redirect()->route('directory-sources.lab'));
-    Route::get('/directory-sources/lab/store', fn () => redirect()->route('directory-sources.lab'));
 
     Route::get('/resolver/official-sites', [OfficialSiteResolverController::class, 'show'])->name('resolver.official-sites.index');
     Route::post('/resolver/official-sites/preview', [OfficialSiteResolverController::class, 'preview'])->name('resolver.official-sites.preview');
@@ -108,17 +69,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/source-records/import/cancel', [SourceRecordController::class, 'cancelImport'])->name('source-records.import.cancel');
     Route::post('/source-records/bulk-create-companies', [SourceRecordController::class, 'bulkCreateCompanies'])->name('source-records.bulk-create-companies');
     Route::post('/source-records/bulk-kill', [SourceRecordController::class, 'bulkKill'])->name('source-records.bulk-kill');
-    Route::post('/source-records/cleanup-directory-source-companies', [SourceRecordController::class, 'cleanupDirectorySourceCompanies'])->name('source-records.cleanup-directory-source-companies');
 
     Route::get('/source-records/{sourceRecord}/create-company', [CompanyController::class, 'createFromSource'])
         ->name('companies.create-from-source');
     Route::post('/source-records/{sourceRecord}/create-company', [CompanyController::class, 'storeFromSource'])
         ->name('companies.store-from-source');
-
-    Route::get('/source-records/{sourceRecord}/link-company', [CompanyController::class, 'linkExistingFromSource'])
-        ->name('companies.link-existing-from-source');
-    Route::post('/source-records/{sourceRecord}/link-company', [CompanyController::class, 'storeLinkExistingFromSource'])
-        ->name('companies.store-link-existing-from-source');
 
     Route::get('/source-records/{sourceRecord}', [SourceRecordController::class, 'show'])->name('source-records.show');
 

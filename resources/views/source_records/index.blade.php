@@ -53,7 +53,7 @@
     <div>
         <div class="sr-kicker">Phase1 / Intake</div>
         <h1 class="sr-title">source_records</h1>
-        <p class="sr-sub">外部から取った生データを整理する入口。営業先候補と名簿元は分けて扱う。</p>
+        <p class="sr-sub">外部から取った生データを整理する入口。company化前の営業先候補を確認する。</p>
     </div>
     <div class="sr-btn-row">
         <a class="button light small" href="{{ route('source-records.import') }}">CSV取り込み</a>
@@ -117,9 +117,9 @@
             <div class="field" style="margin-bottom:0;">
                 <label for="link_status">状態</label>
                 <select id="link_status" name="link_status">
-                    <option value="">すべて</option>
-                    <option value="unlinked" @selected(request('link_status') === 'unlinked')>未リンク</option>
+                    <option value="unlinked" @selected(request('link_status', 'unlinked') === 'unlinked')>未リンク（未company化）</option>
                     <option value="linked" @selected(request('link_status') === 'linked')>company化済み</option>
+                    <option value="all" @selected(request('link_status') === 'all')>すべて表示</option>
                 </select>
             </div>
             <div class="field" style="margin-bottom:0; align-self:end;">
@@ -129,37 +129,6 @@
         </div>
     </form>
 </section>
-
-{{-- 名簿元の扱い --}}
-<div class="sr-info-card blue">
-    <div class="sr-info-row">
-        <div>
-            <div class="sr-info-title">名簿元の扱い</div>
-            <p class="sr-info-sub"><code>directory_source_candidate</code> は営業先ではなく情報源。一括company化・company作成対象から除外される。</p>
-        </div>
-        <div class="sr-actions">
-            <a class="button light small" href="{{ route('source-records.index', ['source_type' => 'directory_source_candidate']) }}">名簿元だけ表示</a>
-            <a class="button small" href="{{ route('directory-sources.index') }}">名簿元管理へ</a>
-        </div>
-    </div>
-</div>
-
-{{-- 名簿元company混入警告 --}}
-@if (($directorySourceCompanyCleanupCount ?? 0) > 0)
-    <div class="sr-info-card red">
-        <div class="sr-info-row">
-            <div>
-                <div class="sr-info-title">名簿元company混入の整理</div>
-                <p class="sr-info-sub">名簿元source_recordから作られたcandidate companyが {{ number_format($directorySourceCompanyCleanupCount) }} 件ある。source_recordsは残したまま削除できる。</p>
-            </div>
-            <form method="POST" action="{{ route('source-records.cleanup-directory-source-companies') }}" onsubmit="return confirm('名簿元から誤って作られたcandidate companyを削除する？source_recordsは残る。');">
-                @csrf
-                <input type="hidden" name="confirm_cleanup" value="1">
-                <button class="button small" type="submit" style="background:#be123c;box-shadow:none;">混入companyを整理</button>
-            </form>
-        </div>
-    </div>
-@endif
 
 @php
     $sortKey = $sort ?? request('sort', 'id');
@@ -176,7 +145,7 @@
         return $sortDirection === 'asc' ? ' ↑' : ' ↓';
     };
     $currentPageUnlinked = $sourceRecords->getCollection()->filter(function ($record) {
-        return !$record->sourceLink && $record->source_type !== 'directory_source_candidate';
+        return !$record->sourceLink;
     });
     $currentPageLinkedCount = $sourceRecords->getCollection()->filter(fn ($record) => (bool) $record->sourceLink)->count();
     $firstUnlinkedId = optional($currentPageUnlinked->first())->id;
@@ -186,7 +155,7 @@
         ['key' => 'pref', 'label' => '都道府県', 'value' => request('pref')],
         ['key' => 'city', 'label' => '市区町村', 'value' => request('city')],
         ['key' => 'raw_industry', 'label' => '業種', 'value' => request('raw_industry')],
-        ['key' => 'link_status', 'label' => '状態', 'value' => request('link_status') === 'unlinked' ? '未リンク' : (request('link_status') === 'linked' ? 'company化済み' : null)],
+        ['key' => 'link_status', 'label' => '状態', 'value' => request('link_status') === 'linked' ? 'company化済み' : (request('link_status') === 'all' ? 'すべて表示' : null)],
     ])->filter(fn ($item) => $item['value'] !== null && $item['value'] !== '')->values();
     $filterRemoveUrl = function (string $key) {
         return route('source-records.index', request()->except(['page', $key]));
@@ -203,7 +172,7 @@
             <div class="sr-info-title">作業セッション</div>
             <p class="sr-info-sub">
                 一覧：{{ number_format($sourceRecords->total()) }}件 / このページ：{{ number_format($sourceRecords->count()) }}件。
-                未リンク：{{ number_format($currentPageUnlinked->count()) }}件 / company化済み：{{ number_format($currentPageLinkedCount) }}件 / 名簿元：{{ number_format($currentPageDirectorySourceCount ?? 0) }}件。
+                未リンク：{{ number_format($currentPageUnlinked->count()) }}件 / company化済み：{{ number_format($currentPageLinkedCount) }}件。
             </p>
             @if ($activeFilterItems->isNotEmpty())
                 <div class="sr-chip-row">
@@ -265,7 +234,7 @@
                 <span style="font-size:13px; font-weight:900; color:var(--text);">source_records一覧</span>
                 <span class="badge gray" style="margin-left:8px;">{{ number_format($sourceRecords->total()) }}件</span>
             </div>
-            <button class="button small" type="submit" onclick="return confirm('チェックしたcompany化対象の未リンクsource_recordを一括company化する？リンク済み・名簿元はスキップされる。');">選択分を一括company化</button>
+            <button class="button small" type="submit" onclick="return confirm('チェックしたcompany化対象の未リンクsource_recordを一括company化する？リンク済みはスキップされる。');">選択分を一括company化</button>
         </div>
 
         <div class="table-wrap" style="border:none; border-radius:0; box-shadow:none;">
@@ -288,8 +257,6 @@
                 @forelse ($sourceRecords as $record)
                     @php
                         $isLinked = (bool) $record->sourceLink;
-                        $isDirectorySource = $record->source_type === 'directory_source_candidate';
-                        $registeredDirectorySource = $record->directorySource ?? null;
                     @endphp
                     <tr @if (!$isLinked && $record->id === ($firstUnlinkedId ?? null)) style="background:#fffbeb;" @endif>
                         <td>
@@ -298,17 +265,12 @@
                                 class="source-record-check"
                                 name="source_record_ids[]"
                                 value="{{ $record->id }}"
-                                @disabled($isLinked || $isDirectorySource)
+                                @disabled($isLinked)
                                 aria-label="source_record #{{ $record->id }}を選択"
                             >
                         </td>
                         <td>{{ $record->id }}</td>
-                        <td>
-                            {{ $record->source_type }}
-                            @if ($isDirectorySource)
-                                <div><span class="badge blue">名簿元</span></div>
-                            @endif
-                        </td>
+                        <td>{{ $record->source_type }}</td>
                         <td>{{ $record->name_norm ?? '-' }}</td>
                         <td>{{ data_get($record->raw_json, 'canonical.raw_industry') ?: data_get($record->raw_json, 'raw_industry', '-') }}</td>
                         <td>
@@ -322,17 +284,6 @@
                         <td>
                             @if ($isLinked)
                                 <span class="badge green">company化済み</span>
-                                @if ($isDirectorySource)
-                                    <span class="badge red">名簿元リンク済み</span>
-                                @endif
-                            @elseif ($isDirectorySource)
-                                <span class="badge blue">名簿元</span>
-                                <span class="badge gray">company化対象外</span>
-                                @if ($registeredDirectorySource)
-                                    <span class="badge green">directory_sources登録済み</span>
-                                @else
-                                    <span class="badge amber">directory_sources未登録</span>
-                                @endif
                             @else
                                 <span class="badge gray">未リンク</span>
                                 @if ($record->id === ($firstUnlinkedId ?? null))
@@ -342,9 +293,6 @@
                         </td>
                         <td>
                             <a class="button small light" href="{{ route('source-records.show', $record) }}">詳細</a>
-                            @if ($registeredDirectorySource)
-                                <a class="button small" href="{{ route('directory-sources.show', $registeredDirectorySource) }}">名簿元</a>
-                            @endif
                         </td>
                     </tr>
                 @empty

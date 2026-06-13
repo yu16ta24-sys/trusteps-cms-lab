@@ -22,12 +22,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SourceRecordController extends Controller
 {
-    private const DIRECTORY_SOURCE_TYPES = ['directory_source_candidate'];
-
     public function index(Request $request): View
     {
         $query = SourceRecord::query()
-            ->with(['sourceLink', 'directorySource']);
+            ->with(['sourceLink']);
 
         if ($request->filled('q')) {
             $q = trim((string) $request->input('q'));
@@ -67,20 +65,18 @@ class SourceRecordController extends Controller
         $unlinkedQueueQuery = clone $query;
         $unlinkedQueueCount = (clone $unlinkedQueueQuery)
             ->whereDoesntHave('sourceLink')
-            ->whereNotIn('source_type', self::DIRECTORY_SOURCE_TYPES)
             ->count();
         $nextUnlinkedSourceRecord = (clone $unlinkedQueueQuery)
             ->whereDoesntHave('sourceLink')
-            ->whereNotIn('source_type', self::DIRECTORY_SOURCE_TYPES)
             ->orderBy('id')
             ->first();
 
-        if ($request->filled('link_status')) {
-            if ($request->input('link_status') === 'linked') {
-                $query->whereHas('sourceLink');
-            } elseif ($request->input('link_status') === 'unlinked') {
-                $query->whereDoesntHave('sourceLink');
-            }
+        // デフォルトは未リンク（未company化）のみ表示。'all' で全件、'linked' でcompany化済みのみ。
+        $linkStatus = (string) $request->input('link_status', 'unlinked');
+        if ($linkStatus === 'linked') {
+            $query->whereHas('sourceLink');
+        } elseif ($linkStatus !== 'all') {
+            $query->whereDoesntHave('sourceLink');
         }
 
         $sort = (string) $request->input('sort', 'id');
@@ -111,16 +107,6 @@ class SourceRecordController extends Controller
 
         $sourceRecords = $query->paginate(30)->withQueryString();
 
-        $currentPageDirectorySourceCount = $sourceRecords->getCollection()
-            ->filter(fn (SourceRecord $record) => $this->isDirectorySourceRecord($record))
-            ->count();
-
-        $directorySourceCount = SourceRecord::query()
-            ->whereIn('source_type', self::DIRECTORY_SOURCE_TYPES)
-            ->count();
-
-        $directorySourceCompanyCleanupCount = $this->directorySourceCompanyCleanupQuery()->count();
-
         $sourceTypes = SourceRecord::query()
             ->select('source_type')
             ->distinct()
@@ -149,10 +135,7 @@ class SourceRecordController extends Controller
             'sort',
             'direction',
             'unlinkedQueueCount',
-            'nextUnlinkedSourceRecord',
-            'currentPageDirectorySourceCount',
-            'directorySourceCount',
-            'directorySourceCompanyCleanupCount'
+            'nextUnlinkedSourceRecord'
         ));
     }
 
@@ -171,17 +154,11 @@ class SourceRecordController extends Controller
 
         $created = 0;
         $skipped = 0;
-        $directorySkipped = 0;
 
-        DB::transaction(function () use ($records, &$created, &$skipped, &$directorySkipped) {
+        DB::transaction(function () use ($records, &$created, &$skipped) {
             foreach ($records as $record) {
                 if ($record->sourceLink) {
                     $skipped++;
-                    continue;
-                }
-
-                if ($this->isDirectorySourceRecord($record)) {
-                    $directorySkipped++;
                     continue;
                 }
 
@@ -231,7 +208,7 @@ class SourceRecordController extends Controller
 
         return redirect()
             ->route('source-records.index', $request->except(['source_record_ids', '_token']))
-            ->with('status', "一括company化完了。作成 {$created} 件 / リンク済みスキップ {$skipped} 件 / 名簿元スキップ {$directorySkipped} 件。directory_source_candidateはcompany化対象外。");
+            ->with('status', "一括company化完了。作成 {$created} 件 / リンク済みスキップ {$skipped} 件。");
     }
 
 
@@ -288,37 +265,6 @@ class SourceRecordController extends Controller
             ->with('status', "一括除外完了。company kill {$killedCompanyCount} 件 / source_record除外 {$excludedSourceCount} 件。");
     }
 
-    public function cleanupDirectorySourceCompanies(Request $request): RedirectResponse
-    {
-        $validated = $request->validate([
-            'confirm_cleanup' => ['required', 'accepted'],
-        ]);
-
-        unset($validated);
-
-        $ids = $this->directorySourceCompanyCleanupQuery()
-            ->pluck('companies.id');
-
-        $deleted = 0;
-
-        DB::transaction(function () use ($ids, &$deleted) {
-            foreach ($ids as $id) {
-                $company = Company::query()->find($id);
-
-                if (! $company) {
-                    continue;
-                }
-
-                $company->delete();
-                $deleted++;
-            }
-        });
-
-        return redirect()
-            ->route('source-records.index', $request->except(['_token', 'confirm_cleanup']))
-            ->with('status', "名簿元から誤って作られたcandidate companyを {$deleted} 件削除した。source_recordsは残している。");
-    }
-
     public function create(): View
     {
         return view('source_records.create');
@@ -369,35 +315,29 @@ class SourceRecordController extends Controller
 
     public function show(SourceRecord $sourceRecord): View
     {
-        $sourceRecord->load(['sourceLink.company', 'directorySource']);
-
-        $isDirectorySource = $this->isDirectorySourceRecord($sourceRecord);
+        $sourceRecord->load(['sourceLink.company']);
 
         $nextUnlinkedSourceRecord = SourceRecord::query()
             ->where('id', '>', $sourceRecord->id)
             ->whereDoesntHave('sourceLink')
-            ->whereNotIn('source_type', self::DIRECTORY_SOURCE_TYPES)
             ->orderBy('id')
             ->first();
 
         $previousUnlinkedSourceRecord = SourceRecord::query()
             ->where('id', '<', $sourceRecord->id)
             ->whereDoesntHave('sourceLink')
-            ->whereNotIn('source_type', self::DIRECTORY_SOURCE_TYPES)
             ->orderByDesc('id')
             ->first();
 
         $remainingUnlinkedCount = SourceRecord::query()
             ->whereDoesntHave('sourceLink')
-            ->whereNotIn('source_type', self::DIRECTORY_SOURCE_TYPES)
             ->count();
 
         return view('source_records.show', compact(
             'sourceRecord',
             'nextUnlinkedSourceRecord',
             'previousUnlinkedSourceRecord',
-            'remainingUnlinkedCount',
-            'isDirectorySource'
+            'remainingUnlinkedCount'
         ));
     }
 
@@ -965,23 +905,4 @@ class SourceRecordController extends Controller
 
         return $name !== '' ? $name : null;
     }
-
-
-    private function isDirectorySourceRecord(SourceRecord $sourceRecord): bool
-    {
-        return in_array($sourceRecord->source_type, self::DIRECTORY_SOURCE_TYPES, true);
-    }
-
-    private function directorySourceCompanyCleanupQuery()
-    {
-        return Company::query()
-            ->where('companies.status', 'candidate')
-            ->whereHas('sourceLinks.sourceRecord', function ($query) {
-                $query->whereIn('source_type', self::DIRECTORY_SOURCE_TYPES);
-            })
-            ->whereDoesntHave('sourceLinks.sourceRecord', function ($query) {
-                $query->whereNotIn('source_type', self::DIRECTORY_SOURCE_TYPES);
-            });
-    }
-
 }
