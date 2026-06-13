@@ -218,6 +218,7 @@
                                 @csrf
                                 <button class="button light" type="submit">全社スコア再計算</button>
                             </form>
+                            <button class="button light" onclick="openReanalyzeModal()">全社HP再解析</button>
                         </div>
                     </div>
 
@@ -650,6 +651,92 @@
             document.getElementById('am-status').textContent = '解析を開始してください。';
             document.getElementById('am-start-btn').style.display = '';
             document.getElementById('am-close-btn').textContent = 'キャンセル';
+        }
+    })();
+    </script>
+
+    {{-- 全社HP再解析モーダル --}}
+    <div id="reanalyze-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(15,23,42,.52); align-items:center; justify-content:center;">
+        <div style="background:#fff; border-radius:24px; padding:32px; width:min(480px,90vw); box-shadow:0 24px 64px rgba(0,0,0,.22);">
+            <h3 style="margin:0 0 6px; font-size:20px; font-weight:950;">全社HP再解析</h3>
+            <p style="margin:0 0 20px; font-size:13px; color:#667085;">全社（primary domain保有・非merged）を順番に再解析し、完了後にスコアを再計算します。</p>
+
+            <div id="ra-status" style="font-size:14px; font-weight:700; color:#344054; margin-bottom:10px;">解析を開始してください。</div>
+
+            <div style="background:#e4e7ec; border-radius:999px; height:10px; overflow:hidden; margin-bottom:8px;">
+                <div id="ra-bar" style="height:100%; width:0%; background:#1f5eff; border-radius:999px; transition:width .4s ease;"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:16px;">
+                <span id="ra-count" style="font-size:12px; color:#98a2b3;">— / —社完了</span>
+                <span id="ra-pct" style="font-size:12px; color:#98a2b3;">0%</span>
+            </div>
+
+            <div id="ra-company" style="font-size:13px; color:#475467; min-height:20px; margin-bottom:20px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></div>
+
+            <div style="display:flex; gap:10px; justify-content:flex-end;">
+                <button id="ra-close-btn" class="button light" onclick="closeReanalyzeModal()">キャンセル</button>
+                <button id="ra-start-btn" class="button" onclick="startReanalyze()">解析を開始</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        let raEvtSource = null;
+
+        window.openReanalyzeModal = function () {
+            resetReanalyzeModal();
+            document.getElementById('reanalyze-modal').style.display = 'flex';
+        };
+
+        window.closeReanalyzeModal = function () {
+            if (raEvtSource) { raEvtSource.close(); raEvtSource = null; }
+            document.getElementById('reanalyze-modal').style.display = 'none';
+        };
+
+        window.startReanalyze = function () {
+            document.getElementById('ra-start-btn').style.display = 'none';
+            document.getElementById('ra-close-btn').textContent = 'キャンセル';
+            document.getElementById('ra-status').textContent = '解析中...';
+
+            raEvtSource = new EventSource('{{ route('companies.reanalyze-all.stream') }}');
+
+            raEvtSource.onmessage = function (e) {
+                const d = JSON.parse(e.data);
+                const pct = d.total > 0 ? Math.round(d.done / d.total * 100) : 0;
+
+                document.getElementById('ra-bar').style.width = pct + '%';
+                document.getElementById('ra-pct').textContent = pct + '%';
+                document.getElementById('ra-count').textContent = d.done + ' / ' + d.total + '社完了';
+
+                if (d.company_name) {
+                    document.getElementById('ra-company').textContent = '解析中: ' + d.done + '/' + d.total + '件（' + d.company_name + '）';
+                }
+
+                if (d.finished) {
+                    raEvtSource.close(); raEvtSource = null;
+                    document.getElementById('ra-status').textContent =
+                        d.total + '件の解析が完了しました（成功 ' + d.success_count + '社 / 失敗 ' + d.fail_count + '社）';
+                    document.getElementById('ra-company').textContent = '';
+                    document.getElementById('ra-close-btn').textContent = '閉じる';
+                }
+            };
+
+            raEvtSource.onerror = function () {
+                if (raEvtSource) { raEvtSource.close(); raEvtSource = null; }
+                document.getElementById('ra-status').textContent = 'エラーが発生しました。ページをリロードして再試行してください。';
+                document.getElementById('ra-close-btn').textContent = '閉じる';
+            };
+        };
+
+        function resetReanalyzeModal() {
+            document.getElementById('ra-bar').style.width = '0%';
+            document.getElementById('ra-pct').textContent = '0%';
+            document.getElementById('ra-count').textContent = '— / —社完了';
+            document.getElementById('ra-company').textContent = '';
+            document.getElementById('ra-status').textContent = '解析を開始してください。';
+            document.getElementById('ra-start-btn').style.display = '';
+            document.getElementById('ra-close-btn').textContent = 'キャンセル';
         }
     })();
     </script>
