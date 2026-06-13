@@ -383,13 +383,6 @@ class CompanyController extends Controller
         $scoresV2 = $company->scores->where('score_version', 'scoring_v1.0')->keyBy('axis');
         $reasonJson = $scoreSummary?->reason_json;
 
-        try {
-            $scoreSuggestions = app(\App\Services\ScoreSuggester::class)->suggest($company);
-        } catch (\Throwable $e) {
-            report($e);
-            $scoreSuggestions = [];
-        }
-
         $scoringQueueCount = $this->scoringQueueQuery()->count();
         $isCurrentScoringQueueTarget = $this->scoringQueueQuery()
             ->whereKey($company->id)
@@ -414,7 +407,6 @@ class CompanyController extends Controller
             'company',
             'scoreAxes',
             'scoresByAxis',
-            'scoreSuggestions',
             'scoringQueueCount',
             'isCurrentScoringQueueTarget',
             'previousScoringCompany',
@@ -949,76 +941,6 @@ class CompanyController extends Controller
             ->with('status', "company #{$company->id} の統合をUndoした。");
     }
 
-    public function storeScores(Request $request, Company $company): RedirectResponse
-    {
-        $axisKeys = array_keys($this->scoreAxisOptions());
-
-        $validated = $request->validate([
-            'scores' => ['required', 'array'],
-            'scores.*.value' => ['required', 'integer', 'min:0', 'max:5'],
-            'scores.*.confidence' => ['required', 'in:0.3,0.6,0.9'],
-            'scores.*.note' => ['nullable', 'string', 'max:5000'],
-            'after_action' => ['nullable', 'in:company,next_scoring'],
-        ]);
-
-        $scoreSuggestions = $request->input('score_suggestions', []);
-        if (!is_array($scoreSuggestions)) {
-            $scoreSuggestions = [];
-        }
-
-        foreach ($validated['scores'] as $axis => $scoreInput) {
-            if (!in_array($axis, $axisKeys, true)) {
-                continue;
-            }
-
-            $note = trim((string) ($scoreInput['note'] ?? ''));
-            $autoSuggestion = $this->normalizeScoreSuggestion($scoreSuggestions[$axis] ?? null);
-
-            $reasonJson = [
-                'basis' => $autoSuggestion['value'] !== null ? 'manual_with_auto_suggestion' : 'manual',
-                'drivers' => $autoSuggestion['drivers'],
-                'evidence' => [],
-                'note' => $note !== '' ? $note : null,
-                'auto_suggestion' => $autoSuggestion['value'] !== null ? [
-                    'algo_version' => $autoSuggestion['algo_version'],
-                    'value' => $autoSuggestion['value'],
-                    'confidence' => $autoSuggestion['confidence'],
-                    'basis' => $autoSuggestion['basis'],
-                    'drivers' => $autoSuggestion['drivers'],
-                    'note' => $autoSuggestion['note'],
-                ] : null,
-            ];
-
-            CompanyScore::updateOrCreate(
-                [
-                    'company_id' => $company->id,
-                    'axis' => $axis,
-                    'algo_version' => 'v1',
-                ],
-                [
-                    'value' => (int) $scoreInput['value'],
-                    'confidence' => (string) $scoreInput['confidence'],
-                    'auto_suggested_value' => $autoSuggestion['value'],
-                    'reason_json' => $reasonJson,
-                    'scored_by' => auth()->user()?->email ?? 'manual',
-                    'scored_at' => now(),
-                ]
-            );
-        }
-
-        if (($validated['after_action'] ?? null) === 'next_scoring') {
-            return $this->redirectToNextScoringCompany(
-                $company,
-                '4軸スコアを保存した。次の未採点companyへ進む。',
-                '4軸スコアを保存した。未採点companyは残っていない。'
-            );
-        }
-
-        return redirect()
-            ->route('companies.show', $company)
-            ->with('status', '4軸スコアを保存した。自動提案がある軸は提案値も記録した。');
-    }
-
     private function scoringQueueQuery()
     {
         $query = Company::query()
@@ -1036,127 +958,6 @@ class CompanyController extends Controller
         });
 
         return $query;
-    }
-
-    private function redirectToNextScoringCompany(Company $currentCompany, string $foundMessage, string $emptyMessage): RedirectResponse
-    {
-        $nextCompany = $this->scoringQueueQuery()
-            ->where('id', '>', $currentCompany->id)
-            ->orderBy('id')
-            ->first(['id', 'display_name']);
-
-        if (!$nextCompany) {
-            $nextCompany = $this->scoringQueueQuery()
-                ->where('id', '!=', $currentCompany->id)
-                ->orderBy('id')
-                ->first(['id', 'display_name']);
-        }
-
-        if ($nextCompany) {
-            return redirect()
-                ->route('companies.show', $nextCompany)
-                ->with('status', $foundMessage);
-        }
-
-        return redirect()
-            ->route('companies.index', ['score_state' => 'fully_scored'])
-            ->with('status', $emptyMessage);
-    }
-
-    private function normalizeScoreSuggestion($input): array
-    {
-        $default = [
-            'value' => null,
-            'confidence' => null,
-            'basis' => 'auto',
-            'drivers' => [],
-            'note' => null,
-            'algo_version' => ScoreSuggester::ALGO,
-        ];
-
-        if (!is_array($input)) {
-            return $default;
-        }
-
-        $value = $input['value'] ?? null;
-        if (!is_numeric($value)) {
-            return $default;
-        }
-
-        $value = (int) $value;
-        if ($value < 0 || $value > 5) {
-            return $default;
-        }
-
-        $confidence = (string) ($input['confidence'] ?? '');
-        if (!in_array($confidence, ['0.3', '0.6', '0.9'], true)) {
-            $confidence = null;
-        }
-
-        $basis = trim((string) ($input['basis'] ?? 'auto'));
-        if ($basis === '') {
-            $basis = 'auto';
-        }
-
-        $note = trim((string) ($input['note'] ?? ''));
-        $algoVersion = trim((string) ($input['algo_version'] ?? ScoreSuggester::ALGO));
-        if ($algoVersion === '') {
-            $algoVersion = ScoreSuggester::ALGO;
-        }
-
-        $drivers = [];
-        $driversRaw = $input['drivers_json'] ?? [];
-        if (is_string($driversRaw) && $driversRaw !== '') {
-            $decoded = json_decode($driversRaw, true);
-            if (is_array($decoded)) {
-                $driversRaw = $decoded;
-            }
-        }
-
-        if (is_array($driversRaw)) {
-            foreach ($driversRaw as $driver) {
-                if (!is_scalar($driver)) {
-                    continue;
-                }
-
-                $driver = trim((string) $driver);
-                if ($driver !== '') {
-                    $drivers[] = mb_substr($driver, 0, 120);
-                }
-            }
-        }
-
-        return [
-            'value' => $value,
-            'confidence' => $confidence,
-            'basis' => mb_substr($basis, 0, 80),
-            'drivers' => array_values(array_unique($drivers)),
-            'note' => $note !== '' ? mb_substr($note, 0, 500) : null,
-            'algo_version' => mb_substr($algoVersion, 0, 80),
-        ];
-    }
-
-    private function scoreJudgment(int $opportunityScore, int $riskScore, int $scoredAxesCount): array
-    {
-        if ($scoredAxesCount < 4) {
-            return ['未採点あり', 'gray'];
-        }
-
-        $totalScore = $opportunityScore + $riskScore;
-
-        if ($totalScore >= 16) {
-            return ['高ポテンシャル', 'green'];
-        }
-
-        if ($totalScore >= 12) {
-            return ['ポテンシャルあり', 'blue'];
-        }
-
-        if ($totalScore >= 8) {
-            return ['要確認', 'amber'];
-        }
-
-        return ['優先度低', 'gray'];
     }
 
     private function companyPrefLabel(Company $company): ?string
