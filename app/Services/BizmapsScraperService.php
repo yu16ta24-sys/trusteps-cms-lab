@@ -11,6 +11,8 @@ class BizmapsScraperService
 
     public function fetchList(string $startUrl, int $limit = 50, bool $fetchHp = false): array
     {
+        set_time_limit(300);
+
         $results = [];
         $page    = 1;
         $nextUrl = $startUrl;
@@ -247,17 +249,28 @@ class BizmapsScraperService
     {
         $doc = new \DOMDocument();
         @$doc->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
-        $xpath    = new \DOMXPath($doc);
-        $nextPage = $currentPage + 1;
-        $links    = $xpath->query('//a[contains(@href,"page=' . $nextPage . '")]');
+        $xpath = new \DOMXPath($doc);
 
-        if ($links->length > 0) {
-            $href = $links->item(0)->getAttribute('href');
-            if ($href) {
-                return strpos($href, 'http') === 0 ? $href : 'https://biz-maps.com' . $href;
-            }
+        // 「›」next 矢印リンク（disabled でない）を使う
+        $links = $xpath->query(
+            '//li[contains(@class,"page-item") and contains(@class,"next") and not(contains(@class,"disabled"))]/a[@href]'
+        );
+
+        if ($links->length === 0) {
+            return null;
         }
-        return null;
+
+        $href = $links->item(0)->getAttribute('href');
+        if (!$href) {
+            return null;
+        }
+
+        if (str_starts_with($href, '/')) {
+            $parsed = parse_url($currentUrl);
+            $href   = $parsed['scheme'] . '://' . $parsed['host'] . $href;
+        }
+
+        return $href;
     }
 
     private function fetch(string $url): ?string

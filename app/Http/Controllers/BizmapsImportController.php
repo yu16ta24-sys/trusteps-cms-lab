@@ -47,6 +47,8 @@ class BizmapsImportController extends Controller
 
     public function preview(Request $request)
     {
+        set_time_limit(300);
+
         $request->validate([
             'prefecture_id' => 'required|integer',
             'city_codes'    => 'nullable|array',
