@@ -224,11 +224,12 @@
             white-space: nowrap;
             border: 1px solid transparent;
         }
-        .badge.blue  { background: #dbeafe; color: #1d4ed8; border-color: #bfdbfe; }
-        .badge.green { background: #dcfce7; color: #15803d; border-color: #bbf7d0; }
-        .badge.red   { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
-        .badge.amber { background: #fef3c7; color: #92400e; border-color: #fde68a; }
-        .badge.gray  { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+        .badge.blue   { background: #dbeafe; color: #1d4ed8; border-color: #bfdbfe; }
+        .badge.green  { background: #dcfce7; color: #15803d; border-color: #bbf7d0; }
+        .badge.red    { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+        .badge.amber  { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+        .badge.gray   { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+        .badge.purple { background: #f3e8ff; color: #7c3aed; border-color: #e9d5ff; }
         a.badge { text-decoration: none; transition: opacity .1s; }
         a.badge:hover { opacity: .8; }
         a.badge:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,.25); }

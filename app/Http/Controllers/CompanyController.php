@@ -326,6 +326,7 @@ class CompanyController extends Controller
 
         $activeBase = Company::query()->where('is_killed', false)->where('status', '!=', 'merged');
         $activeCandidateTotal = (clone $activeBase)->count();
+        $rankSCount   = (clone $activeBase)->whereHas('scoreSummary', fn ($q) => $q->where('rank', 'S'))->count();
         $rankACount   = (clone $activeBase)->whereHas('scoreSummary', fn ($q) => $q->where('rank', 'A'))->count();
         $rankBCount   = (clone $activeBase)->whereHas('scoreSummary', fn ($q) => $q->where('rank', 'B'))->count();
         $manualCount  = (clone $activeBase)->where('is_manual_candidate', true)->count();
@@ -336,6 +337,7 @@ class CompanyController extends Controller
             'prefOptions'          => $prefOptions,
             'cityOptions'          => $cityOptions,
             'activeCandidateTotal' => $activeCandidateTotal,
+            'rankSCount'           => $rankSCount,
             'rankACount'           => $rankACount,
             'rankBCount'           => $rankBCount,
             'manualCount'          => $manualCount,

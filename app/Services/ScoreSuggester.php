@@ -512,10 +512,12 @@ class ScoreSuggester
         $hasCritical = count(array_intersect($flags, self::CRITICAL_FLAGS)) > 0;
         if ($hasCritical || $total < 2.5) {
             $rank = 'D';
+        } elseif ($total >= 4.0 && $confidence >= 0.70) {
+            $rank = 'S';
         } elseif ($total >= 3.8) {
             $rank = 'A';
             if ($confidence < 0.70) {
-                $flags[] = 'rank_a_provisional'; // A候補（確定でなく要確認）
+                $flags[] = 'rank_a_provisional'; // A候補（目視確認推奨）
             }
         } elseif ($total >= 3.2) {
             $rank = 'B';

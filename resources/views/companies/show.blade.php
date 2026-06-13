@@ -308,7 +308,7 @@
             'reject'                   => '優先度低',
             'unclassified'             => '未分類',
         ];
-        $v2RankColors = ['A' => 'green', 'B' => 'blue', 'C' => 'amber', 'D' => 'red'];
+        $v2RankColors = ['S' => 'purple', 'A' => 'green', 'B' => 'blue', 'C' => 'amber', 'D' => 'red'];
         $v2Rank       = $scoreSummary?->rank;
         $v2RankColor  = $v2RankColors[$v2Rank] ?? 'gray';
         $v2TypeKey    = $scoreSummary?->candidate_type;

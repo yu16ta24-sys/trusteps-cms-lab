@@ -99,7 +99,7 @@
                 'reject'                   => '優先度低',
                 'unclassified'             => '未分類',
             ];
-            $v2RankColors = ['A' => 'green', 'B' => 'blue', 'C' => 'amber', 'D' => 'red'];
+            $v2RankColors = ['S' => 'purple', 'A' => 'green', 'B' => 'blue', 'C' => 'amber', 'D' => 'red'];
             $presetLabels = [
                 'all'          => '全候補',
                 'rank_a'       => 'Aランク',
@@ -155,6 +155,10 @@
                         <div class="stat-card">
                             <div class="stat-label">Active Base</div>
                             <div class="stat-value">{{ number_format($activeCandidateTotal) }}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Sランク</div>
+                            <div class="stat-value" style="color:#7c3aed;">{{ number_format($rankSCount) }}</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-label">Aランク</div>
@@ -225,7 +229,7 @@
                                 <label for="rank">ランク</label>
                                 <select id="rank" name="rank">
                                     <option value="">すべて</option>
-                                    @foreach (['A', 'B', 'C', 'D'] as $r)
+                                    @foreach (['S', 'A', 'B', 'C', 'D'] as $r)
                                         <option value="{{ $r }}" @selected($selectedRank === $r)>{{ $r }}</option>
                                     @endforeach
                                 </select>
