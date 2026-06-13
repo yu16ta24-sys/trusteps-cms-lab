@@ -102,16 +102,10 @@
             <a class="button light small" href="{{ route('companies.index') }}">一覧</a>
             @if ($company->status !== 'merged')
                 <a class="button light small" href="{{ route('companies.edit', $company) }}">編集</a>
-                <a class="button light small" href="{{ route('companies.merge-form', $company) }}">統合</a>
-            @else
-                <form method="POST" action="{{ route('companies.undo-merge', $company) }}" onsubmit="return confirm('統合をUndoする？');">
-                    @csrf
-                    <button class="button danger small" type="submit">統合Undo</button>
-                </form>
             @endif
-            <form method="POST" action="{{ route('companies.revert', $company) }}" onsubmit="return confirm('このカンパニーをソースレコードに差し戻しますか？');">
+            <form method="POST" action="{{ route('companies.revert', $company) }}" onsubmit="return confirm('このカンパニーを削除しますか？');">
                 @csrf
-                <button class="button small" type="submit" style="background:#dc2626;border-color:#b91c1c;color:#fff;">差戻</button>
+                <button class="button small" type="submit" style="background:#dc2626;border-color:#b91c1c;color:#fff;">削除</button>
             </form>
         </div>
     </div>
