@@ -157,6 +157,10 @@
                 ];
                 $activeFilterLinks[] = ['label' => '採点', 'value' => $scoreLabels[request('score_state')] ?? request('score_state'), 'url' => route('companies.index', request()->except(['page', 'score_state']))];
             }
+            if (request('hp_state')) {
+                $hpStateLabels = ['unanalyzed' => 'HP未解析'];
+                $activeFilterLinks[] = ['label' => 'HP解析', 'value' => $hpStateLabels[request('hp_state')] ?? request('hp_state'), 'url' => route('companies.index', request()->except(['page', 'hp_state']))];
+            }
         @endphp
 
         <div class="stack">
@@ -274,6 +278,13 @@
                                     <option value="suggestion_as_is" @selected(request('score_state') === 'suggestion_as_is')>提案どおり</option>
                                 </select>
                             </div>
+                            <div class="field" style="margin-bottom:0;">
+                                <label for="hp_state">HP解析</label>
+                                <select id="hp_state" name="hp_state">
+                                    <option value="">すべて</option>
+                                    <option value="unanalyzed" @selected(request('hp_state') === 'unanalyzed')>未解析</option>
+                                </select>
+                            </div>
                             <div class="field" style="margin-bottom:0; align-self:end;">
                                 <button class="button" type="submit">絞り込み</button>
                                 <a class="button light" href="{{ route('companies.index') }}">リセット</a>
@@ -302,12 +313,19 @@
                             <span class="badge gray">表示 {{ $companies->count() }} / {{ number_format($companies->total()) }}</span>
                         </div>
                     </div>
-                    <details class="help-panel" style="min-width:min(420px, 100%); margin-top:0;">
-                        <summary>スコア表示の考え方</summary>
-                        <div class="help-body">
-                            機会とリスクは合算しない。高機会・高リスクと低機会・低リスクを混ぜないため、別々の軸として見る。
-                        </div>
-                    </details>
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        @if (request('hp_state') === 'unanalyzed' && $companies->total() > 0)
+                            <button class="button" onclick="openAnalyzeModal()" style="white-space:nowrap;">
+                                {{ $companies->total() }}社を一括HP解析
+                            </button>
+                        @endif
+                        <details class="help-panel" style="min-width:min(380px, 100%); margin-top:0;">
+                            <summary>スコア表示の考え方</summary>
+                            <div class="help-body">
+                                機会とリスクは合算しない。高機会・高リスクと低機会・低リスクを混ぜないため、別々の軸として見る。
+                            </div>
+                        </details>
+                    </div>
                 </div>
 
                 <div class="table-wrap">
@@ -448,4 +466,90 @@
             </section>
         </div>
     </main>
+
+    {{-- HP一括解析モーダル --}}
+    <div id="analyze-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(15,23,42,.52); align-items:center; justify-content:center;">
+        <div style="background:#fff; border-radius:24px; padding:32px; width:min(480px,90vw); box-shadow:0 24px 64px rgba(0,0,0,.22);">
+            <h3 style="margin:0 0 6px; font-size:20px; font-weight:950;">HP一括解析</h3>
+            <p style="margin:0 0 20px; font-size:13px; color:#667085;">HP未解析の全社を順番に解析し、完了後にスコアを再計算します。</p>
+
+            <div id="am-status" style="font-size:14px; font-weight:700; color:#344054; margin-bottom:10px;">解析を開始してください。</div>
+
+            <div style="background:#e4e7ec; border-radius:999px; height:10px; overflow:hidden; margin-bottom:8px;">
+                <div id="am-bar" style="height:100%; width:0%; background:#1f5eff; border-radius:999px; transition:width .4s ease;"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:16px;">
+                <span id="am-count" style="font-size:12px; color:#98a2b3;">— / —社完了</span>
+                <span id="am-pct" style="font-size:12px; color:#98a2b3;">0%</span>
+            </div>
+
+            <div id="am-company" style="font-size:13px; color:#475467; min-height:20px; margin-bottom:20px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></div>
+
+            <div style="display:flex; gap:10px; justify-content:flex-end;">
+                <button id="am-close-btn" class="button light" onclick="closeAnalyzeModal()">キャンセル</button>
+                <button id="am-start-btn" class="button" onclick="startAnalyze()">解析を開始</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        let evtSource = null;
+
+        window.openAnalyzeModal = function () {
+            resetModal();
+            document.getElementById('analyze-modal').style.display = 'flex';
+        };
+
+        window.closeAnalyzeModal = function () {
+            if (evtSource) { evtSource.close(); evtSource = null; }
+            document.getElementById('analyze-modal').style.display = 'none';
+        };
+
+        window.startAnalyze = function () {
+            document.getElementById('am-start-btn').style.display = 'none';
+            document.getElementById('am-close-btn').textContent = 'キャンセル';
+            document.getElementById('am-status').textContent = '解析中...';
+
+            evtSource = new EventSource('{{ route('companies.analyze-unanalyzed.stream') }}');
+
+            evtSource.onmessage = function (e) {
+                const d = JSON.parse(e.data);
+                const pct = d.total > 0 ? Math.round(d.done / d.total * 100) : 0;
+
+                document.getElementById('am-bar').style.width = pct + '%';
+                document.getElementById('am-pct').textContent = pct + '%';
+                document.getElementById('am-count').textContent = d.done + ' / ' + d.total + '社完了';
+
+                if (d.company_name) {
+                    document.getElementById('am-company').textContent = '処理中: ' + d.company_name;
+                }
+
+                if (d.finished) {
+                    evtSource.close(); evtSource = null;
+                    document.getElementById('am-status').textContent =
+                        '完了！ 成功 ' + d.success_count + '社 / 失敗 ' + d.fail_count + '社（スコア再計算済み）';
+                    document.getElementById('am-company').textContent = '';
+                    document.getElementById('am-close-btn').textContent = '閉じる';
+                }
+            };
+
+            evtSource.onerror = function () {
+                if (evtSource) { evtSource.close(); evtSource = null; }
+                document.getElementById('am-status').textContent = 'エラーが発生しました。ページをリロードして再試行してください。';
+                document.getElementById('am-close-btn').textContent = '閉じる';
+            };
+        };
+
+        function resetModal() {
+            document.getElementById('am-bar').style.width = '0%';
+            document.getElementById('am-pct').textContent = '0%';
+            document.getElementById('am-count').textContent = '— / —社完了';
+            document.getElementById('am-company').textContent = '';
+            document.getElementById('am-status').textContent = '解析を開始してください。';
+            document.getElementById('am-start-btn').style.display = '';
+            document.getElementById('am-close-btn').textContent = 'キャンセル';
+        }
+    })();
+    </script>
 @endsection

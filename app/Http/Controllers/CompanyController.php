@@ -112,6 +112,18 @@ class CompanyController extends Controller
                 );
         }
 
+        $hpState = (string) $request->input('hp_state', '');
+        if ($hpState === 'unanalyzed') {
+            $analyzedDomainIds = HpFact::query()
+                ->join('hp_snapshots', 'hp_facts.hp_snapshot_id', '=', 'hp_snapshots.id')
+                ->whereNotNull('hp_facts.extracted_at')
+                ->pluck('hp_snapshots.domain_id')
+                ->unique()
+                ->all();
+            $query->whereNotNull('primary_domain_id')
+                ->whereHas('primaryDomain', fn ($q) => $q->whereNotIn('id', $analyzedDomainIds));
+        }
+
         $companies = $query->paginate(30)->withQueryString();
 
         $industries = Industry::query()
@@ -538,6 +550,89 @@ class CompanyController extends Controller
             report($e);
             return redirect()->route('companies.show', $company)->with('status', 'HP解析中にエラーが発生しました。');
         }
+    }
+
+    public function analyzeUnanalyzedStream(): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        return response()->stream(function () {
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            set_time_limit(0);
+
+            $send = function (array $data): void {
+                echo 'data: ' . json_encode($data, JSON_UNESCAPED_UNICODE) . "\n\n";
+                if (ob_get_level() > 0) {
+                    ob_flush();
+                }
+                flush();
+            };
+
+            $analyzedDomainIds = HpFact::query()
+                ->join('hp_snapshots', 'hp_facts.hp_snapshot_id', '=', 'hp_snapshots.id')
+                ->whereNotNull('hp_facts.extracted_at')
+                ->pluck('hp_snapshots.domain_id')
+                ->unique()
+                ->all();
+
+            $companies = Company::query()
+                ->with(['primaryDomain'])
+                ->whereNotNull('primary_domain_id')
+                ->where('is_killed', false)
+                ->where('status', '!=', 'merged')
+                ->whereHas('primaryDomain', fn ($q) => $q->whereNotIn('id', $analyzedDomainIds))
+                ->get();
+
+            $total        = $companies->count();
+            $done         = 0;
+            $successCount = 0;
+            $failCount    = 0;
+            $analyzer     = app(HpAnalyzerService::class);
+
+            foreach ($companies as $company) {
+                $success = false;
+                try {
+                    $result  = $analyzer->analyze($company);
+                    $success = (bool) ($result['success'] ?? false);
+
+                    if (($result['url_upgraded'] ?? false) && !empty($result['https_url'])) {
+                        $company->primaryDomain->update(['url' => $result['https_url']]);
+                    }
+
+                    $success ? $successCount++ : $failCount++;
+                } catch (\Throwable $e) {
+                    $failCount++;
+                    report($e);
+                }
+
+                $done++;
+                $send([
+                    'done'         => $done,
+                    'total'        => $total,
+                    'company_name' => $company->display_name,
+                    'success'      => $success,
+                ]);
+            }
+
+            try {
+                \Artisan::call('scores:recalculate', ['--all' => true]);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
+            $send([
+                'done'          => $total,
+                'total'         => $total,
+                'finished'      => true,
+                'success_count' => $successCount,
+                'fail_count'    => $failCount,
+            ]);
+        }, 200, [
+            'Content-Type'      => 'text/event-stream',
+            'Cache-Control'     => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+            'Connection'        => 'keep-alive',
+        ]);
     }
 
     public function setManualCandidate(Request $request, Company $company): RedirectResponse
