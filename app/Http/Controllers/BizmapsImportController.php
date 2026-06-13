@@ -112,6 +112,27 @@ class BizmapsImportController extends Controller
             : [];
         $existingDomainUrls = array_flip(array_map([$this, 'normalizeUrl'], $rawDomainUrls));
 
+        // 名前+市区町村の複合照合用：同一都道府県のcompanyを取得
+        $existingByName = [];
+        $prefectureName = $prefecture->name ?? '';
+        if ($prefectureName) {
+            DB::table('companies')
+                ->leftJoin('municipalities', 'companies.municipality_id', '=', 'municipalities.id')
+                ->select('companies.display_name', 'companies.city as comp_city', 'municipalities.name as muni_name')
+                ->where('companies.is_killed', false)
+                ->where(function ($q) use ($prefectureId, $prefectureName) {
+                    $q->where('municipalities.prefecture_id', $prefectureId)
+                      ->orWhere('companies.pref', $prefectureName);
+                })
+                ->get()
+                ->each(function ($c) use (&$existingByName) {
+                    $normName = $this->normalizeName($c->display_name ?? '');
+                    if ($normName) {
+                        $existingByName[$normName][] = $c->muni_name ?? $c->comp_city ?? '';
+                    }
+                });
+        }
+
         $mainResults           = [];
         $excludedResults       = [];
         $excludedSourceResults = [];
@@ -124,7 +145,8 @@ class BizmapsImportController extends Controller
             $r['is_excluded_source'] = in_array($r['detail_url'], $existingExcludedUrls)
                 || ($hpUrl && in_array($hpUrl, $existingExcludedUrls));
             $r['is_company_existed'] = isset($existingDomainUrls[$this->normalizeUrl($r['detail_url'] ?? null)])
-                || ($hpUrl && isset($existingDomainUrls[$this->normalizeUrl($hpUrl)]));
+                || ($hpUrl && isset($existingDomainUrls[$this->normalizeUrl($hpUrl)]))
+                || $this->matchesExistingCompany($r, $existingByName);
             if (in_array($r['detail_url'], $excludedUrls)) {
                 $excludedResults[] = $r;
             } elseif ($r['is_excluded_source']) {
@@ -196,7 +218,8 @@ class BizmapsImportController extends Controller
                     $r['is_excluded_source'] = in_array($r['detail_url'], $suppExcludedUrls)
                         || ($hpUrl && in_array($hpUrl, $suppExcludedUrls));
                     $r['is_company_existed'] = isset($suppDomainUrls[$this->normalizeUrl($r['detail_url'] ?? null)])
-                        || ($hpUrl && isset($suppDomainUrls[$this->normalizeUrl($hpUrl)]));
+                        || ($hpUrl && isset($suppDomainUrls[$this->normalizeUrl($hpUrl)]))
+                        || $this->matchesExistingCompany($r, $existingByName);
                     if (in_array($r['detail_url'], $suppBzmUrls)) {
                         $excludedResults[] = $r;
                     } elseif ($r['is_excluded_source']) {
@@ -810,6 +833,37 @@ class BizmapsImportController extends Controller
     {
         if (!$url) return '';
         return strtolower(rtrim($url, '/'));
+    }
+
+    private function normalizeName(?string $name): string
+    {
+        if (!$name) return '';
+        // 略称除去
+        $name = preg_replace('/（株）|（有）|（合）|\(株\)|\(有\)|\(合\)|㈱|㈲/u', '', $name);
+        // 法人格（前置き・後置き）除去
+        $sfx  = '株式会社|有限会社|合同会社|合資会社|合名会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|社会福祉法人|医療法人';
+        $name = preg_replace('/^(?:' . $sfx . ')\s*/u', '', $name);
+        $name = preg_replace('/\s*(?:' . $sfx . ')$/u', '', $name);
+        // 全角英数・スペース→半角
+        $name = mb_convert_kana($name, 'ans');
+        // スペース除去（全角・半角）
+        $name = preg_replace('/[\s　]+/u', '', $name);
+        return mb_strtolower($name);
+    }
+
+    private function matchesExistingCompany(array $r, array $existingByName): bool
+    {
+        $normName = $this->normalizeName($r['name'] ?? '');
+        if (!$normName || !isset($existingByName[$normName])) return false;
+        $bizmapsCity = $r['city'] ?? '';
+        foreach ($existingByName[$normName] as $companyCity) {
+            if ($bizmapsCity === $companyCity) return true;
+            if ($bizmapsCity !== '' && $companyCity !== '' &&
+                (str_contains($bizmapsCity, $companyCity) || str_contains($companyCity, $bizmapsCity))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function buildUrls(int $prefectureId, array $cityCodes, string $industryType, ?int $industryId): array
