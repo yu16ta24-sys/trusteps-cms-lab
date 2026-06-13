@@ -645,16 +645,20 @@ class CompanyController extends Controller
         $companyId = $company->id;
 
         DB::transaction(function () use ($company, $companyId) {
+            // 1. source_record_ids を取得
             $sourceRecordIds = CompanySourceLink::where('company_id', $companyId)
                 ->pluck('source_record_id');
 
+            // 2. source_records の is_excluded を false に戻す
             if ($sourceRecordIds->isNotEmpty()) {
                 SourceRecord::whereIn('id', $sourceRecordIds)
                     ->update(['is_excluded' => false]);
             }
 
+            // 3. domain_ids を取得
             $domainIds = Domain::where('company_id', $companyId)->pluck('id');
 
+            // 4-6. hp_facts → hp_snapshots → domains を削除
             if ($domainIds->isNotEmpty()) {
                 $snapshotIds = HpSnapshot::whereIn('domain_id', $domainIds)->pluck('id');
                 if ($snapshotIds->isNotEmpty()) {
@@ -664,15 +668,22 @@ class CompanyController extends Controller
                 Domain::whereIn('id', $domainIds)->delete();
             }
 
+            // 7. scores 関連を削除
             \App\Models\CompanyScore::where('company_id', $companyId)->delete();
             CompanyScoreSummary::where('company_id', $companyId)->delete();
             CompanyKillFlag::where('company_id', $companyId)->delete();
+
+            // 8. outreach_contacts を削除
             OutreachContact::where('company_id', $companyId)->delete();
+
+            // 9. company_source_links を削除
             CompanySourceLink::where('company_id', $companyId)->delete();
 
+            // 10. company を削除
             $company->delete();
         });
 
+        // 11. /source-records にリダイレクト
         return redirect()
             ->route('source-records.index')
             ->with('status', "company #{$companyId} をsource_recordsに差し戻した。");
