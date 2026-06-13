@@ -229,7 +229,7 @@
                                 <label for="rank">ランク</label>
                                 <select id="rank" name="rank">
                                     <option value="">すべて</option>
-                                    @foreach (['S', 'A', 'B', 'C', 'D'] as $r)
+                                    @foreach (['S', 'A', 'B', 'C'] as $r)
                                         <option value="{{ $r }}" @selected($selectedRank === $r)>{{ $r }}</option>
                                     @endforeach
                                 </select>
