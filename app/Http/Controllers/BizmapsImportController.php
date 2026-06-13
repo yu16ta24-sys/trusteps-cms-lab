@@ -1001,23 +1001,33 @@ class BizmapsImportController extends Controller
         foreach ($excludeItems as $item) {
             $hpUrl     = $item['hp_url']     ?? null;
             $detailUrl = $item['detail_url'] ?? null;
-            $sourceUrl = $hpUrl ?: $detailUrl;
-            if (!$sourceUrl) { $skipped++; continue; }
+            if (!$detailUrl) { $skipped++; continue; }
 
-            $normalizedDomain = null;
-            if ($hpUrl) {
-                $normalizedDomain = UrlNormalizer::host($hpUrl);
-            }
+            $normalizedDomain = $hpUrl ? UrlNormalizer::host($hpUrl) : null;
 
-            $existing = DB::table('source_records')->where('source_url', $sourceUrl)->exists();
+            // SSEフィルター用にbizmaps_excluded_companiesへ登録
+            DB::table('bizmaps_excluded_companies')->updateOrInsert(
+                ['detail_url' => $detailUrl],
+                [
+                    'name'        => $item['name'] ?? null,
+                    'pref'        => $item['pref'] ?? null,
+                    'city'        => $item['city'] ?? null,
+                    'excluded_at' => $now,
+                    'updated_at'  => $now,
+                    'created_at'  => $now,
+                ]
+            );
+
+            // detail_urlをキーにsource_recordsへis_excluded=trueで登録
+            $existing = DB::table('source_records')->where('source_url', $detailUrl)->exists();
             if ($existing) {
                 DB::table('source_records')
-                    ->where('source_url', $sourceUrl)
+                    ->where('source_url', $detailUrl)
                     ->update(['is_excluded' => true, 'updated_at' => $now]);
             } else {
                 DB::table('source_records')->insert([
                     'source_type'       => 'bizmaps',
-                    'source_url'        => $sourceUrl,
+                    'source_url'        => $detailUrl,
                     'normalized_domain' => $normalizedDomain,
                     'name_norm'         => $this->normalizeName($item['name'] ?? null) ?: null,
                     'pref'              => $item['pref'] ?? null,

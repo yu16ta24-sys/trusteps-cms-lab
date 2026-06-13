@@ -144,7 +144,7 @@
       <thead>
         <tr>
           <th class="tight">
-            <input type="checkbox" id="checkAll" style="accent-color:var(--primary);width:15px;height:15px;">
+            <input type="checkbox" id="checkAll" checked style="accent-color:var(--primary);width:15px;height:15px;">
           </th>
           <th>会社名</th>
           <th>都道府県</th>
@@ -163,7 +163,7 @@
             @if($row['is_duplicate'])
               <span class="badge gray" style="font-size:11px;">保存済</span>
             @else
-              <input type="checkbox" class="row-check" value="{{ $i }}"
+              <input type="checkbox" class="row-check" value="{{ $i }}" checked
                 style="accent-color:var(--primary);width:15px;height:15px;cursor:pointer;">
             @endif
           </td>
