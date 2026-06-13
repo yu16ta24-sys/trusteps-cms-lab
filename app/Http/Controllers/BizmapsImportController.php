@@ -82,6 +82,23 @@ class BizmapsImportController extends Controller
         }
         $results = array_slice($results, 0, $limit);
 
+        // 1b. HP URL 同期取得（fetch_hp=1 のとき）
+        if ($request->boolean('fetch_hp')) {
+            set_time_limit(300);
+            foreach ($results as &$r) {
+                if (!empty($r['detail_url'])) {
+                    try {
+                        $detail = $scraper->fetchDetailInfo($r['detail_url']);
+                        if (!empty($detail['hp_url']))   $r['hp_url']   = $detail['hp_url'];
+                        if (!empty($detail['industry'])) $r['industry'] = $detail['industry'];
+                    } catch (\Throwable $e) {
+                        // skip on error
+                    }
+                }
+            }
+            unset($r);
+        }
+
         // 2. 重複チェック（active と is_excluded を分離）
         $detailUrls = array_values(array_filter(array_column($results, 'detail_url')));
         $allUrls    = array_values(array_unique(array_filter(array_merge(

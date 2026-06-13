@@ -99,6 +99,49 @@
     </div>
   @else
 
+  {{-- HP取得中プログレスバー --}}
+  <div id="hpFetchingBar" style="display:none;margin-bottom:16px;">
+    <style>
+      @keyframes indeterminate {
+        0%   { left: -35%; right: 100%; }
+        60%  { left: 100%; right: -90%; }
+        100% { left: 100%; right: -90%; }
+      }
+      .progress-bar-indeterminate {
+        position: relative;
+        height: 4px;
+        background: #e2e6ed;
+        border-radius: 2px;
+        overflow: hidden;
+        margin-bottom: 8px;
+      }
+      .progress-bar-indeterminate::after {
+        content: '';
+        position: absolute;
+        top: 0; bottom: 0;
+        background: var(--primary, #3b82f6);
+        animation: indeterminate 1.5s infinite ease-in-out;
+      }
+    </style>
+    <div class="progress-bar-indeterminate"></div>
+    <p style="font-size:12px;color:var(--muted);margin:0;">HP URLを取得中です。100件の場合、1〜2分かかります。しばらくお待ちください。</p>
+  </div>
+
+  {{-- HP取得フォーム（隠し） --}}
+  <form id="fetchHpForm" method="POST" action="{{ route('bizmaps.preview') }}" style="display:none;">
+    @csrf
+    <input type="hidden" name="prefecture_id" value="{{ $sc['prefecture_id'] ?? '' }}">
+    @foreach ($sc['city_codes'] ?? [] as $code)
+      <input type="hidden" name="city_codes[]" value="{{ $code }}">
+    @endforeach
+    <input type="hidden" name="industry_type" value="{{ $sc['industry_type'] ?? 'pref' }}">
+    <input type="hidden" name="industry_id"   value="{{ $sc['industry_id'] ?? '' }}">
+    <input type="hidden" name="big_ind_name"  value="{{ $sc['big_ind_name'] ?? '' }}">
+    <input type="hidden" name="m_ind_name"    value="{{ $sc['m_ind_name'] ?? '' }}">
+    <input type="hidden" name="limit"         value="{{ $sc['limit'] ?? 50 }}">
+    <input type="hidden" name="fetch_hp"      value="1">
+  </form>
+
   {{-- サマリーバー --}}
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
     <div class="badge blue" style="font-size:14px;padding:8px 14px;">{{ count($mainResults) }}件取得</div>
@@ -505,83 +548,22 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  // ---- SSE: HP URL リアルタイム取得 ----
-  let hpFoundCount = 0;
-  let sseActive    = false;
-  const totalRows  = PREVIEW_DATA.length;
-
+  // ---- HP URL 取得（フォーム送信） ----
   const fetchHpBtn      = document.getElementById('fetchHpBtn');
   const fetchHpBtnText  = document.getElementById('fetchHpBtnText');
   const fetchHpProgress = document.getElementById('fetchHpProgress');
-  const hpFoundBadge    = document.getElementById('hpFoundBadge');
-  const hpFoundCountEl  = document.getElementById('hpFoundCount');
+  const hpFetchingBar   = document.getElementById('hpFetchingBar');
+  const totalRows       = PREVIEW_DATA.length;
 
   if (fetchHpBtn) {
     fetchHpBtn.addEventListener('click', function () {
-      if (sseActive) return;
-      sseActive = true;
       fetchHpBtn.disabled = true;
       fetchHpBtnText.textContent = '取得中...';
       fetchHpProgress.style.display = 'inline';
-      fetchHpProgress.textContent = '0 / ' + totalRows;
-
-      let processed = 0;
-      const es = new EventSource('/bizmaps/fetch-hp-stream');
-
-      es.onmessage = function (e) {
-        const data = JSON.parse(e.data);
-        const idx  = data.index;
-        processed++;
-        fetchHpProgress.textContent = processed + ' / ' + totalRows;
-
-        if (data.hp_url) {
-          hpFoundCount++;
-          hpFoundBadge.style.display = 'inline-flex';
-          hpFoundCountEl.textContent = hpFoundCount;
-
-          const hpCell = document.getElementById('hp-cell-' + idx);
-          if (hpCell) {
-            hpCell.innerHTML = `<a href="${data.hp_url}" target="_blank"
-              style="font-size:12px;color:var(--primary);word-break:break-all;text-decoration:none;font-weight:700;">
-              ${data.hp_url.length > 35 ? data.hp_url.substring(0, 35) + '…' : data.hp_url}
-            </a>`;
-          }
-
-          const statusCell = document.getElementById('status-cell-' + idx);
-          if (statusCell) statusCell.innerHTML = '<span class="badge green">HP✓</span>';
-
-          if (PREVIEW_DATA[idx]) PREVIEW_DATA[idx].hp_url = data.hp_url;
-
-          const cb = document.querySelector(`.row-check[value="${idx}"]`);
-          if (cb && !PREVIEW_DATA[idx]?.is_duplicate) cb.checked = true;
-          updateCount();
-        }
-
-        if (data.industry && PREVIEW_DATA[idx]) {
-          PREVIEW_DATA[idx].industry = data.industry;
-          const indCell = document.getElementById('industry-cell-' + idx);
-          if (indCell) {
-            const t = data.industry;
-            indCell.innerHTML = `<span style="font-size:12px;color:var(--muted);">${t.length > 25 ? t.substring(0,25) + '…' : t}</span>`;
-          }
-        }
-      };
-
-      es.addEventListener('done', function () {
-        es.close();
-        sseActive = false;
-        fetchHpBtn.disabled = false;
-        fetchHpBtnText.textContent = 'HP URL取得完了';
-        fetchHpProgress.textContent = hpFoundCount + '件取得';
-      });
-
-      es.onerror = function () {
-        es.close();
-        sseActive = false;
-        fetchHpBtn.disabled = false;
-        fetchHpBtnText.textContent = 'HP URLを取得する（再試行）';
-        fetchHpProgress.textContent = 'エラー';
-      };
+      fetchHpProgress.textContent = '0 / ' + totalRows + '件';
+      if (hpFetchingBar) hpFetchingBar.style.display = 'block';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      document.getElementById('fetchHpForm').submit();
     });
   }
 
