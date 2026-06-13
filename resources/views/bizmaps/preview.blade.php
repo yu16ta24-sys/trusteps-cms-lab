@@ -128,9 +128,6 @@
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
     <div class="badge blue" style="font-size:14px;padding:8px 14px;">{{ count($mainResults) }}件取得</div>
     <div id="hpFoundBadge" style="display:none;" class="badge green">HP取得済 <span id="hpFoundCount">0</span>件</div>
-    @if(!empty($companyExistedResults ?? []))
-    <div class="badge gray" style="font-size:14px;padding:8px 14px;">登録済 {{ count($companyExistedResults) }}件</div>
-    @endif
     <div style="flex:1;"></div>
     <button type="button" class="button secondary" id="fetchHpBtn" style="gap:8px;">
       <span id="fetchHpBtnText">HP URLを取得する</span>
@@ -226,86 +223,6 @@
     </button>
     <div id="saveResult"></div>
   </div>
-
-  {{-- 除外済みsource_record アコーディオン --}}
-  @if(!empty($excludedSourceResults))
-  <details style="margin-top:16px;" id="excludedSourcePanel">
-    <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:12px 16px;border:1px solid var(--line);border-radius:10px;background:#f8fafc;">
-      <span style="font-weight:900;font-size:14px;">除外済み（source_record登録済み）</span>
-      <span class="badge gray" style="font-size:11px;">{{ count($excludedSourceResults) }}件</span>
-      <span style="font-size:12px;color:var(--muted);margin-left:4px;">▼ 以前の取得で除外済み — メインカウントから外しています</span>
-    </summary>
-    <div style="margin-top:8px;">
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>会社名</th>
-              <th>都道府県</th>
-              <th>市区町村</th>
-              <th>業種</th>
-              <th class="tight">詳細</th>
-            </tr>
-          </thead>
-          <tbody>
-            @foreach($excludedSourceResults as $row)
-            <tr>
-              <td style="font-weight:800;opacity:0.6;">{{ $row['name'] ?? '-' }}</td>
-              <td style="opacity:0.6;">{{ $row['pref'] ?? '-' }}</td>
-              <td style="opacity:0.6;">{{ $row['city'] ?? '-' }}</td>
-              <td style="opacity:0.6;"><span style="font-size:12px;color:var(--muted);">{{ Str::limit($row['industry'] ?? '-', 25) }}</span></td>
-              <td class="tight">
-                <a href="{{ $row['detail_url'] }}" target="_blank" class="button small light"
-                  style="font-size:11px;padding:5px 10px;">BIZMAPS</a>
-              </td>
-            </tr>
-            @endforeach
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </details>
-  @endif
-
-  {{-- カンパニー化済みアコーディオン --}}
-  @if(!empty($companyExistedResults ?? []))
-  <details style="margin-top:16px;" id="companyExistedPanel">
-    <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:12px 16px;border:1px solid var(--line);border-radius:10px;background:#f8fafc;">
-      <span style="font-weight:900;font-size:14px;">カンパニー化済み</span>
-      <span class="badge gray" style="font-size:11px;">{{ count($companyExistedResults) }}件</span>
-      <span style="font-size:12px;color:var(--muted);margin-left:4px;">▼ すでにcompanyとして登録済み — メインカウントから外しています</span>
-    </summary>
-    <div style="margin-top:8px;">
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>会社名</th>
-              <th>都道府県</th>
-              <th>市区町村</th>
-              <th>業種</th>
-              <th class="tight">詳細</th>
-            </tr>
-          </thead>
-          <tbody>
-            @foreach($companyExistedResults as $row)
-            <tr>
-              <td style="font-weight:800;opacity:0.6;">{{ $row['name'] ?? '-' }}</td>
-              <td style="opacity:0.6;">{{ $row['pref'] ?? '-' }}</td>
-              <td style="opacity:0.6;">{{ $row['city'] ?? '-' }}</td>
-              <td style="opacity:0.6;"><span style="font-size:12px;color:var(--muted);">{{ Str::limit($row['industry'] ?? '-', 25) }}</span></td>
-              <td class="tight">
-                <a href="{{ $row['detail_url'] }}" target="_blank" class="button small light"
-                  style="font-size:11px;padding:5px 10px;">BIZMAPS</a>
-              </td>
-            </tr>
-            @endforeach
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </details>
-  @endif
 
   {{-- 除外リストアコーディオン --}}
   @if(!empty($excludedResults))
@@ -441,16 +358,16 @@ document.addEventListener('DOMContentLoaded', function () {
       if (data.finished) {
         es.close();
         bar.style.width    = '100%';
-        status.textContent = data.main_count + '件取得完了';
+        status.textContent = 'スキャン済: ' + (data.scanned ?? 0) + '件 / 新規: ' + (data.main_count ?? 0) + '件';
         close.style.display = 'inline-block';
         close.textContent   = '結果を確認する';
         close.onclick       = () => { window.location.href = '/bizmaps/preview-result'; };
         return;
       }
 
-      const pct  = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
+      const pct  = data.total > 0 ? Math.round(((data.new_count ?? 0) / data.total) * 100) : 0;
       bar.style.width    = pct + '%';
-      status.textContent = '取得中: ' + data.done + '/' + data.total + '件';
+      status.textContent = 'スキャン済: ' + (data.scanned ?? 0) + '件 / 新規: ' + (data.new_count ?? 0) + '件';
     };
 
     es.onerror = function () {

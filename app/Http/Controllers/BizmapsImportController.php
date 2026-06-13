@@ -324,59 +324,11 @@ class BizmapsImportController extends Controller
             if (ob_get_level() === 0) ob_start();
 
             $scraper = new BizmapsScraperService();
-            $allRaw  = [];
 
-            foreach ($urls as $url) {
-                if (count($allRaw) >= $limit) break;
-                $baseOffset = count($allRaw);
-                $remaining  = $limit - $baseOffset;
-
-                $fetched = $scraper->fetchListWithProgress(
-                    $url,
-                    $remaining,
-                    function (int $pageDone, int $pageTotal, int $page) use ($baseOffset, $limit) {
-                        $this->sseEmit([
-                            'done'  => $baseOffset + $pageDone,
-                            'total' => $limit,
-                            'page'  => $page,
-                        ]);
-                        if (ob_get_level() > 0) ob_flush();
-                        flush();
-                    }
-                );
-
-                $allRaw = array_merge($allRaw, $fetched);
-            }
-            $allRaw = array_slice($allRaw, 0, $limit);
-
-            // 重複チェック
-            $detailUrls = array_values(array_filter(array_column($allRaw, 'detail_url')));
-            $allUrls    = array_values(array_unique(array_filter(array_merge(
-                $detailUrls,
-                array_column($allRaw, 'hp_url')
-            ))));
-
-            $existingActiveUrls = $allUrls ? DB::table('source_records')
-                ->whereIn('source_url', $allUrls)
-                ->where(fn($q) => $q->whereNull('is_excluded')->orWhere('is_excluded', false))
-                ->pluck('source_url')->toArray() : [];
-
-            $existingExcludedUrls = $allUrls ? DB::table('source_records')
-                ->whereIn('source_url', $allUrls)
-                ->where('is_excluded', true)
-                ->pluck('source_url')->toArray() : [];
-
-            $excludedUrls = $detailUrls ? DB::table('bizmaps_excluded_companies')
-                ->whereIn('detail_url', $detailUrls)
-                ->pluck('detail_url')->toArray() : [];
-
-            $normalizedAllUrls  = array_values(array_unique(array_filter(array_map([$this, 'normalizeUrl'], $allUrls))));
-            $rawDomainUrls      = $normalizedAllUrls
-                ? DB::table('domains')
-                    ->whereIn(DB::raw("LOWER(TRIM(TRAILING '/' FROM url))"), $normalizedAllUrls)
-                    ->pluck('url')->toArray()
-                : [];
-            $existingDomainUrls = array_flip(array_map([$this, 'normalizeUrl'], $rawDomainUrls));
+            // 重複チェック用データをプリロード
+            $excludedDetailUrlSet = array_flip(
+                DB::table('bizmaps_excluded_companies')->pluck('detail_url')->toArray()
+            );
 
             $existingByName = [];
             if ($prefectureName) {
@@ -397,31 +349,62 @@ class BizmapsImportController extends Controller
                     });
             }
 
-            $mainResults           = [];
-            $excludedResults       = [];
-            $excludedSourceResults = [];
-            $companyExistedResults = [];
-
-            foreach ($allRaw as &$r) {
-                $hpUrl = $r['hp_url'] ?? null;
-                $r['is_duplicate'] = in_array($r['detail_url'], $existingActiveUrls)
-                    || ($hpUrl && in_array($hpUrl, $existingActiveUrls));
-                $r['is_excluded_source'] = in_array($r['detail_url'], $existingExcludedUrls)
-                    || ($hpUrl && in_array($hpUrl, $existingExcludedUrls));
-                $r['is_company_existed'] = isset($existingDomainUrls[$this->normalizeUrl($r['detail_url'] ?? null)])
-                    || ($hpUrl && isset($existingDomainUrls[$this->normalizeUrl($hpUrl)]))
-                    || $this->matchesExistingCompany($r, $existingByName);
-                if (in_array($r['detail_url'], $excludedUrls)) {
-                    $excludedResults[] = $r;
-                } elseif ($r['is_excluded_source']) {
-                    $excludedSourceResults[] = $r;
-                } elseif ($r['is_company_existed']) {
-                    $companyExistedResults[] = $r;
-                } else {
-                    $mainResults[] = $r;
+            // ページ単位で重複チェック: source_records をバッチ照会
+            $filterPage = function (array $items) use ($excludedDetailUrlSet, $existingByName): array {
+                $detailUrls = array_values(array_filter(array_column($items, 'detail_url')));
+                $registeredUrlSet = [];
+                if (!empty($detailUrls)) {
+                    $registeredUrlSet = array_flip(
+                        DB::table('source_records')
+                            ->whereIn('source_url', $detailUrls)
+                            ->pluck('source_url')
+                            ->toArray()
+                    );
                 }
+                return array_values(array_filter($items, function ($item) use (
+                    $excludedDetailUrlSet, $registeredUrlSet, $existingByName
+                ) {
+                    $detailUrl = $item['detail_url'] ?? null;
+                    if (isset($excludedDetailUrlSet[$detailUrl])) return false;
+                    if (isset($registeredUrlSet[$detailUrl])) return false;
+                    return !$this->matchesExistingCompany($item, $existingByName);
+                }));
+            };
+
+            $mainResults  = [];
+            $scannedTotal = 0;
+
+            foreach ($urls as $url) {
+                if (count($mainResults) >= $limit) break;
+                $scannedOffset = $scannedTotal;
+                $newOffset     = count($mainResults);
+                $remaining     = $limit - $newOffset;
+                $urlScanned    = 0;
+
+                $fetched = $scraper->fetchListWithProgress(
+                    $url,
+                    $remaining,
+                    function (int $scanned, int $newCount, int $total, int $page) use ($scannedOffset, $newOffset, $limit) {
+                        $this->sseEmit([
+                            'scanned'   => $scannedOffset + $scanned,
+                            'new_count' => $newOffset + $newCount,
+                            'total'     => $limit,
+                            'page'      => $page,
+                        ]);
+                        if (ob_get_level() > 0) ob_flush();
+                        flush();
+                    },
+                    $filterPage,
+                    $urlScanned
+                );
+
+                $scannedTotal += $urlScanned;
+                foreach ($fetched as &$item) {
+                    $item['is_duplicate'] = false;
+                }
+                unset($item);
+                $mainResults = array_merge($mainResults, $fetched);
             }
-            unset($r);
 
             $mainResults = array_slice($mainResults, 0, $limit);
 
@@ -434,14 +417,15 @@ class BizmapsImportController extends Controller
             session([
                 'bizmaps_detail_urls'     => $sseItems,
                 'bizmaps_preview_main'    => $mainResults,
-                'bizmaps_preview_excl'    => $excludedResults,
-                'bizmaps_preview_exclsrc' => $excludedSourceResults,
-                'bizmaps_preview_comp'    => $companyExistedResults,
+                'bizmaps_preview_excl'    => [],
+                'bizmaps_preview_exclsrc' => [],
+                'bizmaps_preview_comp'    => [],
             ]);
             session()->save();
 
             $this->sseEmit([
-                'done'       => $limit,
+                'scanned'    => $scannedTotal,
+                'new_count'  => count($mainResults),
                 'total'      => $limit,
                 'finished'   => true,
                 'main_count' => count($mainResults),

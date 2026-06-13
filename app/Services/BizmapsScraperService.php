@@ -11,28 +11,51 @@ class BizmapsScraperService
 
     /**
      * ページ完了ごとにコールバックを呼び出しながら一覧を取得
-     * @param callable $onPage function(int $fetched, int $total, int $page): void
+     * @param callable      $onPage     function(int $scanned, int $newCount, int $total, int $page): void
+     * @param callable|null $filterPage function(array $pageItems): array — ページアイテムをフィルタして新規のみ返す
+     * @param int|null      $totalScanned スキャン済み総件数（参照で返す）
      */
-    public function fetchListWithProgress(string $startUrl, int $limit, callable $onPage): array
+    public function fetchListWithProgress(string $startUrl, int $limit, callable $onPage, ?callable $filterPage = null, ?int &$totalScanned = null): array
     {
         set_time_limit(300);
 
         $results = [];
+        $scanned = 0;
         $page    = 1;
         $nextUrl = $startUrl;
 
         while (count($results) < $limit && $nextUrl) {
+            $html = null;
             try {
                 $html = $this->fetch($nextUrl);
-                if (!$html) break;
+            } catch (\Throwable $e) {
+                Log::warning('BizmapsScraper fetch exception: ' . $e->getMessage(), ['url' => $nextUrl]);
+            }
 
-                $items = $this->parseListPage($html);
+            if (!$html) {
+                Log::warning('BizmapsScraper: page ' . $page . ' failed after retries, skipping', ['url' => $nextUrl]);
+                $nextUrl = $this->guessNextPageUrl($nextUrl, $page);
+                $page++;
+                if ($nextUrl) sleep(self::SLEEP_SEC);
+                continue;
+            }
+
+            try {
+                $items    = $this->parseListPage($html);
+                $scanned += count($items);
+
+                if ($filterPage) {
+                    $items = $filterPage($items);
+                }
+
                 foreach ($items as $item) {
                     $results[] = $item;
                     if (count($results) >= $limit) break;
                 }
 
-                $onPage(count($results), $limit, $page);
+                $onPage($scanned, count($results), $limit, $page);
+
+                if (count($results) >= $limit) break;
 
                 $nextUrl = $this->getNextPageUrl($html, $nextUrl, $page);
                 $page++;
@@ -44,6 +67,7 @@ class BizmapsScraperService
             }
         }
 
+        $totalScanned = $scanned;
         return $results;
     }
 
@@ -332,7 +356,22 @@ class BizmapsScraperService
             ],
         ]);
 
-        $html = @file_get_contents($url, false, $context);
-        return $html ?: null;
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            if ($attempt > 0) sleep(2);
+            $html = @file_get_contents($url, false, $context);
+            if ($html !== false && $html !== '') return $html;
+            Log::warning('BizmapsScraper fetch attempt ' . ($attempt + 1) . ' failed', ['url' => $url]);
+        }
+        return null;
+    }
+
+    private function guessNextPageUrl(string $currentUrl, int $currentPage): ?string
+    {
+        $parsed = parse_url($currentUrl);
+        if (!$parsed) return null;
+        parse_str($parsed['query'] ?? '', $params);
+        $params['page'] = $currentPage + 1;
+        $base = ($parsed['scheme'] ?? 'https') . '://' . ($parsed['host'] ?? '') . ($parsed['path'] ?? '');
+        return $base . '?' . http_build_query($params);
     }
 }
