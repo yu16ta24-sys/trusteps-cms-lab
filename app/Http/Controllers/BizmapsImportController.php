@@ -82,15 +82,19 @@ class BizmapsImportController extends Controller
 
         // 2. 重複チェック（active と is_excluded を分離）
         $detailUrls = array_values(array_filter(array_column($results, 'detail_url')));
+        $allUrls    = array_values(array_unique(array_filter(array_merge(
+            $detailUrls,
+            array_column($results, 'hp_url')
+        ))));
 
         $existingActiveUrls = DB::table('source_records')
-            ->whereIn('source_url', $detailUrls)
+            ->whereIn('source_url', $allUrls)
             ->where(fn($q) => $q->whereNull('is_excluded')->orWhere('is_excluded', false))
             ->pluck('source_url')
             ->toArray();
 
         $existingExcludedUrls = DB::table('source_records')
-            ->whereIn('source_url', $detailUrls)
+            ->whereIn('source_url', $allUrls)
             ->where('is_excluded', true)
             ->pluck('source_url')
             ->toArray();
@@ -100,17 +104,31 @@ class BizmapsImportController extends Controller
             ->pluck('detail_url')
             ->toArray();
 
+        $existingDomainUrls = DB::table('domains')
+            ->whereIn('url', $allUrls)
+            ->pluck('url')
+            ->flip()
+            ->toArray();
+
         $mainResults           = [];
         $excludedResults       = [];
         $excludedSourceResults = [];
+        $companyExistedResults = [];
 
         foreach ($results as &$r) {
-            $r['is_duplicate']       = in_array($r['detail_url'], $existingActiveUrls);
-            $r['is_excluded_source'] = in_array($r['detail_url'], $existingExcludedUrls);
+            $hpUrl = $r['hp_url'] ?? null;
+            $r['is_duplicate'] = in_array($r['detail_url'], $existingActiveUrls)
+                || ($hpUrl && in_array($hpUrl, $existingActiveUrls));
+            $r['is_excluded_source'] = in_array($r['detail_url'], $existingExcludedUrls)
+                || ($hpUrl && in_array($hpUrl, $existingExcludedUrls));
+            $r['is_company_existed'] = isset($existingDomainUrls[$r['detail_url'] ?? ''])
+                || ($hpUrl && isset($existingDomainUrls[$hpUrl]));
             if (in_array($r['detail_url'], $excludedUrls)) {
                 $excludedResults[] = $r;
             } elseif ($r['is_excluded_source']) {
                 $excludedSourceResults[] = $r;
+            } elseif ($r['is_company_existed']) {
+                $companyExistedResults[] = $r;
             } else {
                 $mainResults[] = $r;
             }
@@ -120,7 +138,7 @@ class BizmapsImportController extends Controller
         // 3. is_excluded / bizmaps_excluded で消費されたスロットを補充フェッチ
         //    BIZMAPS に次ページがある場合のみ有効。同一 URL セットで件数を増やして
         //    再取得し、初回フェッチ済み分をスキップして差分だけ処理する。
-        $shortage = count($excludedSourceResults) + count($excludedResults);
+        $shortage = count($excludedSourceResults) + count($excludedResults) + count($companyExistedResults);
         if ($shortage > 0) {
             $supplementTarget = $limit + $shortage + 5; // +5 は安全マージン
             $allFetched = [];
@@ -139,15 +157,19 @@ class BizmapsImportController extends Controller
 
             if (!empty($suppItems)) {
                 $suppDetailUrls = array_values(array_filter(array_column($suppItems, 'detail_url')));
+                $suppAllUrls    = array_values(array_unique(array_filter(array_merge(
+                    $suppDetailUrls,
+                    array_column($suppItems, 'hp_url')
+                ))));
 
                 $suppActiveUrls = DB::table('source_records')
-                    ->whereIn('source_url', $suppDetailUrls)
+                    ->whereIn('source_url', $suppAllUrls)
                     ->where(fn($q) => $q->whereNull('is_excluded')->orWhere('is_excluded', false))
                     ->pluck('source_url')
                     ->toArray();
 
                 $suppExcludedUrls = DB::table('source_records')
-                    ->whereIn('source_url', $suppDetailUrls)
+                    ->whereIn('source_url', $suppAllUrls)
                     ->where('is_excluded', true)
                     ->pluck('source_url')
                     ->toArray();
@@ -157,13 +179,26 @@ class BizmapsImportController extends Controller
                     ->pluck('detail_url')
                     ->toArray();
 
+                $suppDomainUrls = DB::table('domains')
+                    ->whereIn('url', $suppAllUrls)
+                    ->pluck('url')
+                    ->flip()
+                    ->toArray();
+
                 foreach ($suppItems as &$r) {
-                    $r['is_duplicate']       = in_array($r['detail_url'], $suppActiveUrls);
-                    $r['is_excluded_source'] = in_array($r['detail_url'], $suppExcludedUrls);
+                    $hpUrl = $r['hp_url'] ?? null;
+                    $r['is_duplicate'] = in_array($r['detail_url'], $suppActiveUrls)
+                        || ($hpUrl && in_array($hpUrl, $suppActiveUrls));
+                    $r['is_excluded_source'] = in_array($r['detail_url'], $suppExcludedUrls)
+                        || ($hpUrl && in_array($hpUrl, $suppExcludedUrls));
+                    $r['is_company_existed'] = isset($suppDomainUrls[$r['detail_url'] ?? ''])
+                        || ($hpUrl && isset($suppDomainUrls[$hpUrl]));
                     if (in_array($r['detail_url'], $suppBzmUrls)) {
                         $excludedResults[] = $r;
                     } elseif ($r['is_excluded_source']) {
                         $excludedSourceResults[] = $r;
+                    } elseif ($r['is_company_existed']) {
+                        $companyExistedResults[] = $r;
                     } else {
                         $mainResults[] = $r;
                     }
@@ -197,7 +232,7 @@ class BizmapsImportController extends Controller
 
         $industries = $this->getIndustries();
         $results    = $mainResults; // 後方互換用
-        return view('bizmaps.preview', compact('mainResults', 'excludedResults', 'excludedSourceResults', 'results', 'prefecture', 'limit', 'searchCondition', 'industries'));
+        return view('bizmaps.preview', compact('mainResults', 'excludedResults', 'excludedSourceResults', 'companyExistedResults', 'results', 'prefecture', 'limit', 'searchCondition', 'industries'));
     }
 
     /**
