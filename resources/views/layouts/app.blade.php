@@ -44,7 +44,7 @@
             top: 0;
             height: 100vh;
             width: 44px;
-            background: #2563eb;
+            background: #1a4fa8;
             display: flex;
             flex-direction: column;
             z-index: 100;
@@ -87,8 +87,8 @@
             padding: 0 12px;
             color: rgba(255,255,255,0.55);
             text-decoration: none;
-            font-size: 13px;
-            font-weight: 400;
+            font-size: 14px;
+            font-weight: 500;
             white-space: nowrap;
             overflow: hidden;
             border-left: 3px solid transparent;
