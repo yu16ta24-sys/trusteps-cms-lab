@@ -412,10 +412,10 @@ class ScoreSuggester
 
         // === 5軸算出（加重） ===
         $opportunity = $clamp(
-            $g('site_weakness_score') * 0.40
-            + $g('content_gap_score') * 0.20
-            + $g('conversion_gap_score') * 0.15
-            + $g('freshness_gap_score') * 0.10
+            $g('site_weakness_score') * 0.25
+            + $g('content_gap_score') * 0.25
+            + $g('conversion_gap_score') * 0.20
+            + $g('freshness_gap_score') * 0.15
             + $g('comparison_material_gap_score') * 0.10
             + $g('improvement_room_score') * 0.05
         );
@@ -510,14 +510,14 @@ class ScoreSuggester
 
         // === rank判定 ===
         $hasCritical = count(array_intersect($flags, self::CRITICAL_FLAGS)) > 0;
-        if ($hasCritical || $total < 2.8) {
+        if ($hasCritical || $total < 2.5) {
             $rank = 'D';
-        } elseif ($total >= 4.2) {
+        } elseif ($total >= 3.8) {
             $rank = 'A';
             if ($confidence < 0.70) {
                 $flags[] = 'rank_a_provisional'; // A候補（確定でなく要確認）
             }
-        } elseif ($total >= 3.5) {
+        } elseif ($total >= 3.2) {
             $rank = 'B';
         } else {
             $rank = 'C';
@@ -698,16 +698,16 @@ class ScoreSuggester
         if ($imp < 2.5 || $feas < 2.5 || $reach < 2.0) {
             return 'reject';
         }
-        if (in_array('no_official_site', $flags, true) && $imp >= 3.0 && $reach >= 3.0) {
+        if (in_array('no_official_site', $flags, true) && $imp >= 2.5 && $reach >= 2.5) {
             return 'new_site_candidate';
         }
-        if ($opp >= 3.5 && $imp >= 3.5 && $feas >= 3.0) {
+        if ($opp >= 3.0 && $imp >= 3.0 && $feas >= 2.5) {
             return 'renewal_candidate';
         }
-        if ($feas >= 3.5 && $rec >= 3.5) {
+        if ($feas >= 3.0 && $rec >= 3.0) {
             return 'cms_conversion_candidate';
         }
-        if ($rec >= 3.5 && $opp >= 2.5 && $opp <= 4.0) {
+        if ($rec >= 3.0 && $opp >= 2.0) {
             return 'maintenance_candidate';
         }
 
@@ -854,14 +854,14 @@ class ScoreSuggester
             return $defaults;
         }
 
-        // site_weakness_score: 技術的弱点の大きさ
-        $w = 0.0;
-        if (!$hpFact->ssl_enabled)                                   $w += 1.5;
-        if (!$hpFact->mobile_friendly)                               $w += 1.5;
-        if ($hpFact->cms_type === 'unknown')                         $w += 1.0;
-        if ($hpFact->update_status === 'stale_2y')                   $w += 1.0;
-        elseif ($hpFact->update_status === 'stale_1y')               $w += 0.5;
-        $siteWeakness = min(5.0, $w);
+        // site_weakness_score: 技術的弱点の大きさ（最大8.5を0〜5に正規化）
+        $w = 1.5; // ベーススコア（HPがある時点で最低限の改善余地はある）
+        if (!$hpFact->ssl_enabled)                                                    $w += 2.0;
+        if (!$hpFact->mobile_friendly)                                                $w += 2.0;
+        if (in_array($hpFact->cms_type, ['unknown', 'static', null]))                $w += 1.5;
+        if (($hpFact->hp_word_count ?? 0) < 300)                                     $w += 1.0;
+        if (($hpFact->hp_image_count ?? 0) < 3)                                      $w += 0.5;
+        $siteWeakness = min(5.0, round($w / 8.5 * 5, 1));
 
         // 問い合わせ導線の有無（フォーム/別ページのフォームURL/メール）を統一判定
         $hasContactRoute = $this->hasContactRouteFact($hpFact);
@@ -1033,8 +1033,8 @@ class ScoreSuggester
         // suggestV2() の加重式と完全一致させること
         $weightMaps = [
             'opportunity_score' => [
-                'site_weakness_score' => 0.40, 'content_gap_score' => 0.20, 'conversion_gap_score' => 0.15,
-                'freshness_gap_score' => 0.10, 'comparison_material_gap_score' => 0.10, 'improvement_room_score' => 0.05,
+                'site_weakness_score' => 0.25, 'content_gap_score' => 0.25, 'conversion_gap_score' => 0.20,
+                'freshness_gap_score' => 0.15, 'comparison_material_gap_score' => 0.10, 'improvement_room_score' => 0.05,
             ],
             'impact_score' => [
                 'trust_hp_importance_score' => 0.25, 'portal_independence_score' => 0.20, 'customer_research_depth_score' => 0.20,

@@ -372,10 +372,29 @@ class HpAnalyzerService
                 }
             }
 
-            // 文字コード変換（Shift-JIS等への対応）
-            $encoding = mb_detect_encoding($html, ['UTF-8', 'SJIS', 'EUC-JP', 'ISO-2022-JP'], true);
-            if ($encoding && $encoding !== 'UTF-8') {
-                $html = mb_convert_encoding($html, 'UTF-8', $encoding);
+            // 文字コード検出・UTF-8変換（Content-Typeヘッダー > metaタグ > mb_detect_encoding の順で判定）
+            $charset = null;
+            if (isset($headers['content-type']) && preg_match('/charset\s*=\s*([^\s;]+)/i', $headers['content-type'], $csm)) {
+                $charset = trim($csm[1], '"\'');
+            }
+            if (!$charset) {
+                if (preg_match('/<meta[^>]+charset=["\']?([^"\';\s>]+)/i', $html, $csm)) {
+                    $charset = trim($csm[1]);
+                } elseif (preg_match('/<meta[^>]+content=["\'][^"\']*charset=([^"\';\s]+)/i', $html, $csm)) {
+                    $charset = trim($csm[1]);
+                }
+            }
+            if (!$charset) {
+                $detected = mb_detect_encoding($html, ['UTF-8', 'SJIS', 'EUC-JP', 'ISO-2022-JP'], true);
+                if ($detected && $detected !== 'UTF-8') {
+                    $charset = $detected;
+                }
+            }
+            if ($charset && !in_array(strtolower($charset), ['utf-8', 'utf8'], true)) {
+                $converted = @mb_convert_encoding($html, 'UTF-8', $charset);
+                if ($converted !== false && $converted !== '') {
+                    $html = $converted;
+                }
             }
 
             // SSL（HTTPS）対応の実態判定。ここに到達した時点で正規化後URLの取得は成功している。
