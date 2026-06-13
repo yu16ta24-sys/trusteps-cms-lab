@@ -7,6 +7,7 @@ class HpFact extends Model
     use HasFactory;
     protected $fillable = [
         'hp_snapshot_id',
+        'url_dead',
         'has_ec',
         'has_reservation',
         'has_recruiting',
@@ -63,6 +64,7 @@ class HpFact extends Model
         'hp_subpage_count',
     ];
     protected $casts = [
+        'url_dead' => 'boolean',
         'has_ec' => 'boolean',
         'has_reservation' => 'boolean',
         'has_recruiting' => 'boolean',

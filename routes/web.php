@@ -81,6 +81,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/source-records/{sourceRecord}', [SourceRecordController::class, 'show'])->name('source-records.show');
 
     Route::get('/companies', [CompanyController::class, 'index'])->name('companies.index');
+    Route::post('/companies/recalculate-all', [CompanyController::class, 'recalculateAll'])->name('companies.recalculate-all');
     Route::get('/companies/candidates', [CompanyController::class, 'candidates'])->name('companies.candidates');
     Route::get('/companies/analyze-unanalyzed/stream', [CompanyController::class, 'analyzeUnanalyzedStream'])->name('companies.analyze-unanalyzed.stream');
     Route::get('/companies/{company}/merge', [CompanyController::class, 'mergeForm'])->name('companies.merge-form');

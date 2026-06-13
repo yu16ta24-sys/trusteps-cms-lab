@@ -182,7 +182,7 @@
                 $activeFilterLinks[] = ['label' => '採点', 'value' => $scoreLabels[request('score_state')] ?? request('score_state'), 'url' => route('companies.index', request()->except(['page', 'score_state']))];
             }
             if (request('hp_state')) {
-                $hpStateLabels = ['unanalyzed' => 'HP未解析'];
+                $hpStateLabels = ['unanalyzed' => 'HP未解析', 'url_dead' => 'URL死亡'];
                 $activeFilterLinks[] = ['label' => 'HP解析', 'value' => $hpStateLabels[request('hp_state')] ?? request('hp_state'), 'url' => route('companies.index', request()->except(['page', 'hp_state']))];
             }
             if (request('pref')) {
@@ -213,6 +213,11 @@
                         <div class="actions">
                             <a class="button light" href="{{ route('dashboard') }}">Dashboard</a>
                             <a class="button light" href="{{ route('source-records.index') }}">source_recordsへ</a>
+                            <form method="POST" action="{{ route('companies.recalculate-all') }}"
+                                  onsubmit="return confirm('全{{ $totalCount }}件のスコアを再計算しますか？');">
+                                @csrf
+                                <button class="button light" type="submit">全社スコア再計算</button>
+                            </form>
                         </div>
                     </div>
 
@@ -313,6 +318,7 @@
                                 <select id="hp_state" name="hp_state">
                                     <option value="">すべて</option>
                                     <option value="unanalyzed" @selected(request('hp_state') === 'unanalyzed')>未解析</option>
+                                    <option value="url_dead" @selected(request('hp_state') === 'url_dead')>URL死亡</option>
                                 </select>
                             </div>
                             <div class="field" style="margin-bottom:0;">
@@ -494,7 +500,13 @@
                                         -
                                     @endif
                                 </td>
-                                <td class="tight"><a class="button small light" href="{{ route('companies.show', $company) }}">詳細</a></td>
+                                <td class="tight" style="display:flex; gap:6px; align-items:center;">
+                                    @php
+                                        $googleQ = urlencode(($company->display_name ?? '') . ' ' . ($company->municipality?->prefecture?->name ?? $company->pref ?? ''));
+                                    @endphp
+                                    <a class="button small light" href="https://www.google.com/search?q={{ $googleQ }}" target="_blank" rel="noopener">検索</a>
+                                    <a class="button small light" href="{{ route('companies.show', $company) }}">詳細</a>
+                                </td>
                             </tr>
                         @empty
                             <tr>

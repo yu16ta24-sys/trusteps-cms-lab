@@ -141,6 +141,15 @@ class CompanyController extends Controller
                 ->all();
             $query->whereNotNull('primary_domain_id')
                 ->whereHas('primaryDomain', fn ($q) => $q->whereNotIn('id', $analyzedDomainIds));
+        } elseif ($hpState === 'url_dead') {
+            $deadDomainIds = HpFact::query()
+                ->join('hp_snapshots', 'hp_facts.hp_snapshot_id', '=', 'hp_snapshots.id')
+                ->whereNotNull('hp_facts.extracted_at')
+                ->where('hp_facts.url_dead', true)
+                ->pluck('hp_snapshots.domain_id')
+                ->unique()
+                ->all();
+            $query->whereHas('primaryDomain', fn ($q) => $q->whereIn('id', $deadDomainIds));
         }
 
         $companies = $query->paginate(30)->withQueryString();
@@ -171,6 +180,12 @@ class CompanyController extends Controller
         ));
     }
 
+
+    public function recalculateAll(): RedirectResponse
+    {
+        \Artisan::call('scores:recalculate', ['--all' => true]);
+        return redirect()->route('companies.index')->with('status', '全社のスコア再計算が完了しました。');
+    }
 
     public function candidates(Request $request): View
     {

@@ -103,6 +103,10 @@
             @if ($company->status !== 'merged')
                 <a class="button light small" href="{{ route('companies.edit', $company) }}">編集</a>
             @endif
+            @php
+                $googleQ = urlencode(($company->display_name ?? '') . ' ' . ($company->municipality?->prefecture?->name ?? $company->pref ?? ''));
+            @endphp
+            <a class="button light small" href="https://www.google.com/search?q={{ $googleQ }}" target="_blank" rel="noopener">Google検索</a>
             <form method="POST" action="{{ route('companies.revert', $company) }}" onsubmit="return confirm('このカンパニーを削除しますか？');">
                 @csrf
                 <button class="button small" type="submit" style="background:#dc2626;border-color:#b91c1c;color:#fff;">削除</button>

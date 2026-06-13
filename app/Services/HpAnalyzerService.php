@@ -104,13 +104,46 @@ class HpAnalyzerService
             ]);
         });
 
-        // HTTP取得失敗の場合はここで終了
+        // HTTP取得失敗の場合はurl_deadとして記録して終了
         if (!$fetchResult['success']) {
+            $factData = [
+                'hp_snapshot_id'    => $snapshot->id,
+                'extractor_version' => self::EXTRACTOR_VERSION,
+                'extracted_at'      => now(),
+                'url_dead'          => true,
+            ];
+            DB::transaction(function () use ($snapshot, $factData) {
+                HpFact::where('hp_snapshot_id', $snapshot->id)->delete();
+                HpFact::create($factData);
+            });
             return [
                 'success'     => false,
-                'message'     => 'HP取得失敗：' . ($fetchResult['error_message'] ?? 'Unknown error'),
+                'url_dead'    => true,
+                'message'     => 'HP取得失敗（URL死亡）：' . ($fetchResult['error_message'] ?? 'Unknown error'),
                 'snapshot_id' => $snapshot->id,
-                'fact'        => null,
+                'fact'        => $factData,
+            ];
+        }
+
+        // 404等HTTPエラーの場合もurl_deadとして記録
+        $httpStatus = $fetchResult['http_status'] ?? null;
+        if ($httpStatus !== null && $httpStatus >= 400) {
+            $factData = [
+                'hp_snapshot_id'    => $snapshot->id,
+                'extractor_version' => self::EXTRACTOR_VERSION,
+                'extracted_at'      => now(),
+                'url_dead'          => true,
+            ];
+            DB::transaction(function () use ($snapshot, $factData) {
+                HpFact::where('hp_snapshot_id', $snapshot->id)->delete();
+                HpFact::create($factData);
+            });
+            return [
+                'success'     => false,
+                'url_dead'    => true,
+                'message'     => "HP取得失敗（URL死亡）：HTTPステータス {$httpStatus}",
+                'snapshot_id' => $snapshot->id,
+                'fact'        => $factData,
             ];
         }
 

@@ -101,6 +101,23 @@ class ScoreSuggester
         $company->loadMissing('killFlags', 'industry.parent', 'primaryDomain');
 
         $hpFact = $this->getLatestHpFact($company);
+
+        // url_deadの場合はスコア計算をスキップ
+        if ($hpFact !== null && ($hpFact->url_dead ?? false)) {
+            return [
+                'score_version'  => 'scoring_v1.0',
+                'axes'           => [],
+                'total_score'    => 0.0,
+                'rank'           => 'url_dead',
+                'candidate_type' => 'unclassified',
+                'confidence'     => 0.0,
+                'flags'          => ['url_dead'],
+                'caps_applied'   => [],
+                'reason_summary' => 'URLに到達できないため、スコア計算をスキップしました。',
+                'reason_json'    => ['summary' => 'URLに到達できないため、スコア計算をスキップしました。'],
+            ];
+        }
+
         $hasHp  = $hpFact !== null && !($hpFact->hp_js_rendering_required ?? false);
 
         $industrySig    = $this->loadIndustrySignals($company);
