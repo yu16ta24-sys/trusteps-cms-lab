@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\Company;
 use App\Models\CompanyKillFlag;
 use App\Models\HpFact;
-use App\Models\CompanyScore;
 use App\Models\CompanySourceLink;
 use App\Models\Domain;
 use App\Models\Industry;
@@ -13,7 +12,6 @@ use App\Models\Municipality;
 use App\Models\Prefecture;
 use App\Models\SourceRecord;
 use App\Services\HpAnalyzerService;
-use App\Services\ScoreSuggester;
 use App\Support\NameNormalizer;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -519,36 +517,6 @@ class CompanyController extends Controller
             if ($result['js_rendering_required'] ?? false) {
                 \Artisan::call('scores:recalculate', ['--company_id' => $company->id]);
                 return redirect()->route('companies.show', $company)->with('status', $upgradeMsg . 'JSサイトのため自動解析できませんでした。目視で確認してください。スコアを更新しました。');
-            }
-            $company->load(['industry', 'domains', 'primaryDomain', 'scores']);
-            $suggestions = app(\App\Services\ScoreSuggester::class)->suggest($company);
-            $axisKeys    = array_keys($this->scoreAxisOptions());
-            $savedCount  = 0;
-            foreach ($axisKeys as $axis) {
-                $suggestion = $suggestions[$axis] ?? null;
-                if (!$suggestion || $suggestion['value'] === null) {
-                    continue;
-                }
-                $value      = (int) $suggestion['value'];
-                $confidence = in_array($suggestion['confidence'], ['0.3', '0.6', '0.9']) ? $suggestion['confidence'] : '0.3';
-                $reasonJson = [
-                    'basis'   => 'hp_analysis_auto',
-                    'drivers' => $suggestion['drivers'] ?? [],
-                    'note'    => $suggestion['note'] ?? null,
-                    'auto_suggestion' => [
-                        'algo_version' => \App\Services\ScoreSuggester::ALGO,
-                        'value'        => $value,
-                        'confidence'   => $confidence,
-                        'basis'        => $suggestion['basis'] ?? 'auto',
-                        'drivers'      => $suggestion['drivers'] ?? [],
-                        'note'         => $suggestion['note'] ?? null,
-                    ],
-                ];
-                CompanyScore::updateOrCreate(
-                    ['company_id' => $company->id, 'axis' => $axis, 'algo_version' => 'v1'],
-                    ['value' => $value, 'confidence' => $confidence, 'auto_suggested_value' => $value, 'reason_json' => $reasonJson, 'scored_by' => 'hp_analysis_auto', 'scored_at' => now()]
-                );
-                $savedCount++;
             }
             \Artisan::call('scores:recalculate', ['--company_id' => $company->id]);
             return redirect()->route('companies.show', $company)->with('status', $upgradeMsg . 'HP解析完了。スコアも更新しました。');
