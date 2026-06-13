@@ -10,6 +10,7 @@ use App\Models\CompanySourceLink;
 use App\Models\Domain;
 use App\Models\Industry;
 use App\Models\Municipality;
+use App\Models\Prefecture;
 use App\Models\SourceRecord;
 use App\Services\HpAnalyzerService;
 use App\Services\ScoreSuggester;
@@ -65,6 +66,22 @@ class CompanyController extends Controller
             if ($request->input('kill_state') === 'killed') {
                 $query->where('is_killed', true);
             }
+        }
+
+        if ($request->filled('pref')) {
+            $pref = $request->input('pref');
+            $query->where(function ($q) use ($pref) {
+                $q->where('pref', $pref)
+                  ->orWhereHas('municipality.prefecture', fn ($pq) => $pq->where('name', $pref));
+            });
+        }
+
+        if ($request->filled('city')) {
+            $city = $request->input('city');
+            $query->where(function ($q) use ($city) {
+                $q->where('city', $city)
+                  ->orWhereHas('municipality', fn ($mq) => $mq->where('name', $city));
+            });
         }
 
         $scoreState = (string) $request->input('score_state', '');
@@ -132,6 +149,8 @@ class CompanyController extends Controller
             ->orderBy('id')
             ->get();
 
+        $prefectures = Prefecture::orderBy('code')->with('municipalities')->get();
+
         $totalCount = Company::query()->count();
         $activeCount = Company::query()->where('is_killed', false)->count();
         $killedCount = Company::query()->where('is_killed', true)->count();
@@ -142,6 +161,7 @@ class CompanyController extends Controller
         return view('companies.index', compact(
             'companies',
             'industries',
+            'prefectures',
             'totalCount',
             'activeCount',
             'killedCount',
@@ -246,18 +266,6 @@ class CompanyController extends Controller
         $selectedPref = trim((string) $request->input('pref', ''));
         $selectedCity = trim((string) $request->input('city', ''));
 
-        $prefOptions = $companies
-            ->map(fn (Company $company) => $this->companyPrefLabel($company))
-            ->filter()->unique()->sort(SORT_NATURAL)->values();
-
-        $cityOptionSource = $selectedPref !== ''
-            ? $companies->filter(fn (Company $company) => $this->companyPrefLabel($company) === $selectedPref)
-            : $companies;
-
-        $cityOptions = $cityOptionSource
-            ->map(fn (Company $company) => $this->companyCityLabel($company))
-            ->filter()->unique()->sort(SORT_NATURAL)->values();
-
         if ($selectedPref !== '') {
             $companies = $companies->filter(fn (Company $company) => $this->companyPrefLabel($company) === $selectedPref);
         }
@@ -324,6 +332,8 @@ class CompanyController extends Controller
             ->orderBy('id')
             ->get();
 
+        $prefectures = Prefecture::orderBy('code')->with('municipalities')->get();
+
         $activeBase = Company::query()->where('is_killed', false)->where('status', '!=', 'merged');
         $activeCandidateTotal = (clone $activeBase)->count();
         $rankSCount   = (clone $activeBase)->whereHas('scoreSummary', fn ($q) => $q->where('rank', 'S'))->count();
@@ -334,8 +344,7 @@ class CompanyController extends Controller
         return view('companies.candidates', [
             'companies'            => $pagedCompanies,
             'industries'           => $industries,
-            'prefOptions'          => $prefOptions,
-            'cityOptions'          => $cityOptions,
+            'prefectures'          => $prefectures,
             'activeCandidateTotal' => $activeCandidateTotal,
             'rankSCount'           => $rankSCount,
             'rankACount'           => $rankACount,
@@ -515,7 +524,8 @@ class CompanyController extends Controller
             }
 
             if ($result['js_rendering_required'] ?? false) {
-                return redirect()->route('companies.show', $company)->with('status', $upgradeMsg . 'JSサイトのため自動解析できませんでした。目視で確認してください。');
+                \Artisan::call('scores:recalculate', ['--company_id' => $company->id]);
+                return redirect()->route('companies.show', $company)->with('status', $upgradeMsg . 'JSサイトのため自動解析できませんでした。目視で確認してください。スコアを更新しました。');
             }
             $company->load(['industry', 'domains', 'primaryDomain', 'scores']);
             $suggestions = app(\App\Services\ScoreSuggester::class)->suggest($company);
@@ -547,7 +557,8 @@ class CompanyController extends Controller
                 );
                 $savedCount++;
             }
-            return redirect()->route('companies.show', $company)->with('status', $upgradeMsg . "HP解析完了。{$savedCount}軸のスコアを自動保存しました。");
+            \Artisan::call('scores:recalculate', ['--company_id' => $company->id]);
+            return redirect()->route('companies.show', $company)->with('status', $upgradeMsg . 'HP解析完了。スコアも更新しました。');
         } catch (\Throwable $e) {
             report($e);
             return redirect()->route('companies.show', $company)->with('status', 'HP解析中にエラーが発生しました。');

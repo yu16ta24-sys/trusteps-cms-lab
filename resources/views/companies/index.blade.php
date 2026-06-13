@@ -129,6 +129,30 @@
             .companies-index td { vertical-align:middle; }
             .companies-index .tight { white-space:nowrap; }
             .companies-index .table-wrap table { min-width:1040px; }
+            /* compact pagination */
+            .companies-index .pagination nav > div:first-child { display:none !important; }
+            .companies-index .pagination nav > div:last-child {
+                display:flex !important; align-items:center; justify-content:center; gap:8px; flex-wrap:nowrap;
+            }
+            .companies-index .pagination nav > div:last-child > div:first-child { display:none !important; }
+            .companies-index .pagination nav > div:last-child > div:last-child { display:flex; }
+            .companies-index .pagination span[aria-current] span,
+            .companies-index .pagination a {
+                display:inline-flex; align-items:center; justify-content:center;
+                min-width:28px; height:28px; padding:0 6px;
+                font-size:12px; font-weight:700; line-height:1;
+                border:1px solid #d9e2ee; background:#fff; color:#344054;
+                text-decoration:none; transition:background .15s;
+            }
+            .companies-index .pagination a:hover { background:#f1f5f9; color:#1f5eff; }
+            .companies-index .pagination span[aria-current] span {
+                background:#0f172a; color:#fff; border-color:#0f172a;
+            }
+            .companies-index .pagination span[aria-disabled] span {
+                display:inline-flex; align-items:center; justify-content:center;
+                min-width:28px; height:28px; padding:0 6px;
+                font-size:12px; color:#c0cada; border:1px solid #e4e7ec; background:#f8fafc;
+            }
         </style>
 
         @php
@@ -160,6 +184,12 @@
             if (request('hp_state')) {
                 $hpStateLabels = ['unanalyzed' => 'HP未解析'];
                 $activeFilterLinks[] = ['label' => 'HP解析', 'value' => $hpStateLabels[request('hp_state')] ?? request('hp_state'), 'url' => route('companies.index', request()->except(['page', 'hp_state']))];
+            }
+            if (request('pref')) {
+                $activeFilterLinks[] = ['label' => '都道府県', 'value' => request('pref'), 'url' => route('companies.index', request()->except(['page', 'pref', 'city']))];
+            }
+            if (request('city')) {
+                $activeFilterLinks[] = ['label' => '市区町村', 'value' => request('city'), 'url' => route('companies.index', request()->except(['page', 'city']))];
             }
         @endphp
 
@@ -283,6 +313,21 @@
                                 <select id="hp_state" name="hp_state">
                                     <option value="">すべて</option>
                                     <option value="unanalyzed" @selected(request('hp_state') === 'unanalyzed')>未解析</option>
+                                </select>
+                            </div>
+                            <div class="field" style="margin-bottom:0;">
+                                <label for="pref">都道府県</label>
+                                <select id="pref-select-index" name="pref">
+                                    <option value="">すべて</option>
+                                    @foreach ($prefectures as $pref)
+                                        <option value="{{ $pref->name }}" @selected(request('pref') === $pref->name)>{{ $pref->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="field" style="margin-bottom:0;">
+                                <label for="city-select-index">市区町村</label>
+                                <select id="city-select-index" name="city">
+                                    <option value="">すべて</option>
                                 </select>
                             </div>
                             <div class="field" style="margin-bottom:0; align-self:end;">
@@ -492,6 +537,40 @@
         </div>
     </div>
 
+    <script>
+    const INDEX_PREF_DATA = @json($prefectures->map(fn($p) => ['name' => $p->name, 'cities' => $p->municipalities->pluck('name')]));
+    const INDEX_SELECTED_PREF = @json(request('pref', ''));
+    const INDEX_SELECTED_CITY = @json(request('city', ''));
+    </script>
+    <script>
+    (function () {
+        const prefSelect = document.getElementById('pref-select-index');
+        const citySelect = document.getElementById('city-select-index');
+
+        function populateIndexCities(prefName, selectedCity) {
+            citySelect.innerHTML = '<option value="">すべて</option>';
+            const pref = INDEX_PREF_DATA.find(p => p.name === prefName);
+            if (pref) {
+                pref.cities.forEach(city => {
+                    const opt = document.createElement('option');
+                    opt.value = city;
+                    opt.textContent = city;
+                    if (city === selectedCity) opt.selected = true;
+                    citySelect.appendChild(opt);
+                });
+            }
+        }
+
+        if (prefSelect) {
+            prefSelect.addEventListener('change', function () {
+                populateIndexCities(this.value, '');
+            });
+            if (INDEX_SELECTED_PREF) {
+                populateIndexCities(INDEX_SELECTED_PREF, INDEX_SELECTED_CITY);
+            }
+        }
+    })();
+    </script>
     <script>
     (function () {
         let evtSource = null;

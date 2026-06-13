@@ -566,6 +566,141 @@ class BizmapsImportController extends Controller
         ]);
     }
 
+    /**
+     * チェックした行をカンパニー化、未チェック行を is_excluded=true で保存
+     */
+    public function storeWithExclusionAll(Request $request)
+    {
+        $storeItems   = $request->input('store_items', []);
+        $excludeItems = $request->input('exclude_items', []);
+        $savedCompanies = 0;
+        $savedExcluded  = 0;
+        $skipped        = 0;
+        $now            = now();
+        $mapper         = new BizmapsIndustryMapper();
+
+        foreach ($storeItems as $item) {
+            if ($item['is_duplicate'] ?? false) { $skipped++; continue; }
+
+            $hpUrl     = $item['hp_url']     ?? null;
+            $detailUrl = $item['detail_url'] ?? null;
+            $name      = $item['name']       ?? null;
+            if (!$name) { $skipped++; continue; }
+
+            $checkUrl = $hpUrl ?: $detailUrl;
+            if ($checkUrl && DB::table('domains')->where('url', $checkUrl)->exists()) {
+                $skipped++;
+                continue;
+            }
+
+            $industryText = $item['industry'] ?? null;
+            $industryId   = null;
+            if ($industryText) {
+                $parts      = array_map('trim', explode(',', $industryText));
+                $bigCat     = $parts[0] ?? '';
+                $subCat     = $parts[1] ?? null;
+                $industryId = $mapper->resolveId($bigCat, $subCat);
+            }
+
+            $municipalityId = null;
+            if (!empty($item['pref']) && !empty($item['city'])) {
+                $municipality   = DB::table('municipalities')->where('name', $item['city'])->first();
+                $municipalityId = $municipality?->id;
+            }
+
+            $normalizedDomain = null;
+            if ($hpUrl) {
+                $host             = parse_url($hpUrl, PHP_URL_HOST);
+                $normalizedDomain = $host ? preg_replace('/^www\./', '', $host) : null;
+            }
+
+            DB::transaction(function () use (
+                $item, $hpUrl, $detailUrl, $name, $industryId,
+                $municipalityId, $normalizedDomain, $now, &$savedCompanies
+            ) {
+                $companyId = DB::table('companies')->insertGetId([
+                    'status'            => 'candidate',
+                    'municipality_id'   => $municipalityId,
+                    'industry_id'       => $industryId,
+                    'primary_domain_id' => null,
+                    'legal_name'        => null,
+                    'display_name'      => $name,
+                    'name_norm'         => mb_strtolower(preg_replace('/[\s　]+/u', '', $name)),
+                    'alias_names_json'  => null,
+                    'corporate_number'  => null,
+                    'pref'              => $municipalityId ? null : ($item['pref'] ?? null),
+                    'city'              => $municipalityId ? null : ($item['city'] ?? null),
+                    'is_killed'         => false,
+                    'created_at'        => $now,
+                    'updated_at'        => $now,
+                ]);
+
+                if ($hpUrl) {
+                    $domainId = DB::table('domains')->insertGetId([
+                        'company_id'        => $companyId,
+                        'url'               => $hpUrl,
+                        'normalized_domain' => $normalizedDomain,
+                        'role'              => 'official',
+                        'is_primary'        => true,
+                        'is_portal'         => false,
+                        'created_at'        => $now,
+                        'updated_at'        => $now,
+                    ]);
+                    DB::table('companies')->where('id', $companyId)
+                        ->update(['primary_domain_id' => $domainId]);
+                }
+
+                $savedCompanies++;
+            });
+        }
+
+        foreach ($excludeItems as $item) {
+            $hpUrl     = $item['hp_url']     ?? null;
+            $detailUrl = $item['detail_url'] ?? null;
+            $sourceUrl = $hpUrl ?: $detailUrl;
+            if (!$sourceUrl) { $skipped++; continue; }
+
+            $normalizedDomain = null;
+            if ($hpUrl) {
+                $host             = parse_url($hpUrl, PHP_URL_HOST);
+                $normalizedDomain = $host ? preg_replace('/^www\./', '', $host) : null;
+            }
+
+            $existing = DB::table('source_records')->where('source_url', $sourceUrl)->exists();
+            if ($existing) {
+                DB::table('source_records')
+                    ->where('source_url', $sourceUrl)
+                    ->update(['is_excluded' => true, 'updated_at' => $now]);
+            } else {
+                DB::table('source_records')->insert([
+                    'source_type'       => 'bizmaps',
+                    'source_url'        => $sourceUrl,
+                    'normalized_domain' => $normalizedDomain,
+                    'name_norm'         => $item['name'] ?? null,
+                    'pref'              => $item['pref'] ?? null,
+                    'city'              => $item['city'] ?? null,
+                    'raw_json'          => json_encode([
+                        'hp_url'     => $hpUrl,
+                        'detail_url' => $detailUrl,
+                        'industry'   => $item['industry'] ?? null,
+                        'source'     => 'bizmaps',
+                    ], JSON_UNESCAPED_UNICODE),
+                    'is_excluded' => true,
+                    'fetched_at'  => $now,
+                    'created_at'  => $now,
+                    'updated_at'  => $now,
+                ]);
+            }
+            $savedExcluded++;
+        }
+
+        return response()->json([
+            'saved_companies' => $savedCompanies,
+            'saved_excluded'  => $savedExcluded,
+            'skipped'         => $skipped,
+        ]);
+    }
+
     private function buildUrls(int $prefectureId, array $cityCodes, string $industryType, ?int $industryId): array
     {
         $urls = [];

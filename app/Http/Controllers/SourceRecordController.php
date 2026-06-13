@@ -7,6 +7,7 @@ use App\Models\CompanyKillFlag;
 use App\Models\CompanySourceLink;
 use App\Models\Domain;
 use App\Models\Municipality;
+use App\Models\Prefecture;
 use App\Models\SourceRecord;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -126,22 +127,7 @@ class SourceRecordController extends Controller
             ->orderBy('source_type')
             ->pluck('source_type');
 
-        $prefOptions = SourceRecord::query()
-            ->whereNotNull('pref')
-            ->where('pref', '!=', '')
-            ->select('pref')
-            ->distinct()
-            ->orderBy('pref')
-            ->pluck('pref');
-
-        $cityOptions = SourceRecord::query()
-            ->when($request->filled('pref'), fn ($cityQuery) => $cityQuery->where('pref', $request->input('pref')))
-            ->whereNotNull('city')
-            ->where('city', '!=', '')
-            ->select('city')
-            ->distinct()
-            ->orderBy('city')
-            ->pluck('city');
+        $prefectures = Prefecture::orderBy('code')->with('municipalities')->get();
 
         $rawIndustryOptions = SourceRecord::query()
             ->selectRaw("JSON_UNQUOTE(JSON_EXTRACT(raw_json, '$.canonical.raw_industry')) AS raw_industry")
@@ -157,8 +143,7 @@ class SourceRecordController extends Controller
         return view('source_records.index', compact(
             'sourceRecords',
             'sourceTypes',
-            'prefOptions',
-            'cityOptions',
+            'prefectures',
             'rawIndustryOptions',
             'totalCount',
             'sort',

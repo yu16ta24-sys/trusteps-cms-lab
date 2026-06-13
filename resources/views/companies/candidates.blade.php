@@ -245,20 +245,17 @@
                             </div>
                             <div class="field" style="margin-bottom:0;">
                                 <label for="pref">都道府県</label>
-                                <select id="pref" name="pref">
+                                <select id="pref-select-cand" name="pref">
                                     <option value="">すべて</option>
-                                    @foreach ($prefOptions as $pref)
-                                        <option value="{{ $pref }}" @selected(request('pref') === $pref)>{{ $pref }}</option>
+                                    @foreach ($prefectures as $pref)
+                                        <option value="{{ $pref->name }}" @selected(request('pref') === $pref->name)>{{ $pref->name }}</option>
                                     @endforeach
                                 </select>
                             </div>
                             <div class="field" style="margin-bottom:0;">
-                                <label for="city">市区町村</label>
-                                <select id="city" name="city">
+                                <label for="city-select-cand">市区町村</label>
+                                <select id="city-select-cand" name="city">
                                     <option value="">すべて</option>
-                                    @foreach ($cityOptions as $city)
-                                        <option value="{{ $city }}" @selected(request('city') === $city)>{{ $city }}</option>
-                                    @endforeach
                                 </select>
                             </div>
                             <div class="field" style="margin-bottom:0; align-self:end;">
@@ -450,4 +447,39 @@
             </section>
         </div>
     </main>
+
+    <script>
+    const CAND_PREF_DATA     = @json($prefectures->map(fn($p) => ['name' => $p->name, 'cities' => $p->municipalities->pluck('name')]));
+    const CAND_SELECTED_PREF = @json(request('pref', ''));
+    const CAND_SELECTED_CITY = @json(request('city', ''));
+    </script>
+    <script>
+    (function () {
+        const prefSelect = document.getElementById('pref-select-cand');
+        const citySelect = document.getElementById('city-select-cand');
+
+        function populateCandCities(prefName, selectedCity) {
+            citySelect.innerHTML = '<option value="">すべて</option>';
+            const pref = CAND_PREF_DATA.find(p => p.name === prefName);
+            if (pref) {
+                pref.cities.forEach(city => {
+                    const opt = document.createElement('option');
+                    opt.value = city;
+                    opt.textContent = city;
+                    if (city === selectedCity) opt.selected = true;
+                    citySelect.appendChild(opt);
+                });
+            }
+        }
+
+        if (prefSelect) {
+            prefSelect.addEventListener('change', function () {
+                populateCandCities(this.value, '');
+            });
+            if (CAND_SELECTED_PREF) {
+                populateCandCities(CAND_SELECTED_PREF, CAND_SELECTED_CITY);
+            }
+        }
+    })();
+    </script>
 @endsection

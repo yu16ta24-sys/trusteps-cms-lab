@@ -91,21 +91,18 @@
                 </select>
             </div>
             <div class="field" style="margin-bottom:0;">
-                <label for="pref">都道府県</label>
-                <select id="pref" name="pref">
+                <label for="pref-select-sr">都道府県</label>
+                <select id="pref-select-sr" name="pref">
                     <option value="">すべて</option>
-                    @foreach ($prefOptions as $pref)
-                        <option value="{{ $pref }}" @selected(request('pref') === $pref)>{{ $pref }}</option>
+                    @foreach ($prefectures as $pref)
+                        <option value="{{ $pref->name }}" @selected(request('pref') === $pref->name)>{{ $pref->name }}</option>
                     @endforeach
                 </select>
             </div>
             <div class="field" style="margin-bottom:0;">
-                <label for="city">市区町村</label>
-                <select id="city" name="city">
+                <label for="city-select-sr">市区町村</label>
+                <select id="city-select-sr" name="city">
                     <option value="">すべて</option>
-                    @foreach ($cityOptions as $city)
-                        <option value="{{ $city }}" @selected(request('city') === $city)>{{ $city }}</option>
-                    @endforeach
                 </select>
             </div>
             <div class="field" style="margin-bottom:0;">
@@ -435,6 +432,44 @@
 
 </main>
 
+@push('scripts')
+<script>
+const SR_PREF_DATA     = @json($prefectures->map(fn($p) => ['name' => $p->name, 'cities' => $p->municipalities->pluck('name')]));
+const SR_SELECTED_PREF = @json(request('pref', ''));
+const SR_SELECTED_CITY = @json(request('city', ''));
+</script>
+@endpush
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const srPrefSelect = document.getElementById('pref-select-sr');
+    const srCitySelect = document.getElementById('city-select-sr');
+
+    function populateSrCities(prefName, selectedCity) {
+        srCitySelect.innerHTML = '<option value="">すべて</option>';
+        const pref = SR_PREF_DATA.find(p => p.name === prefName);
+        if (pref) {
+            pref.cities.forEach(city => {
+                const opt = document.createElement('option');
+                opt.value = city;
+                opt.textContent = city;
+                if (city === selectedCity) opt.selected = true;
+                srCitySelect.appendChild(opt);
+            });
+        }
+    }
+
+    if (srPrefSelect) {
+        srPrefSelect.addEventListener('change', function () {
+            populateSrCities(this.value, '');
+        });
+        if (SR_SELECTED_PREF) {
+            populateSrCities(SR_SELECTED_PREF, SR_SELECTED_CITY);
+        }
+    }
+});
+</script>
+@endpush
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function () {

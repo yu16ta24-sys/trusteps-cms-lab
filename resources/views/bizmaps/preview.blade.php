@@ -192,6 +192,10 @@
       style="color:#ef4444;border-color:#fca5a5;">
       選択した0件を除外
     </button>
+    <button type="button" class="button" id="saveCompaniesExcludeAllBtn"
+      style="background:#7c3aed;border-color:#7c3aed;">
+      選択した0件をカンパニー化＋残り0件を除外
+    </button>
     <div id="saveResult"></div>
   </div>
 
@@ -370,7 +374,10 @@ document.addEventListener('DOMContentLoaded', function () {
   updateCount();
 
   function updateCount() {
-    const count = document.querySelectorAll('.row-check:checked').length;
+    const allChecks = document.querySelectorAll('.row-check');
+    const count     = document.querySelectorAll('.row-check:checked').length;
+    const total     = allChecks.length;
+    const unchecked = total - count;
     const el = document.getElementById('selectedCount');
     if (el) el.textContent = count + '件選択中';
     const saveCompaniesBtn = document.getElementById('saveCompaniesBtn');
@@ -382,6 +389,10 @@ document.addEventListener('DOMContentLoaded', function () {
     if (saveExcludeBtn) {
       saveExcludeBtn.disabled = count === 0;
       saveExcludeBtn.textContent = `選択した${count}件を除外`;
+    }
+    const saveAllBtn = document.getElementById('saveCompaniesExcludeAllBtn');
+    if (saveAllBtn) {
+      saveAllBtn.textContent = `選択した${count}件をカンパニー化＋残り${unchecked}件を除外`;
     }
   }
 
@@ -611,6 +622,67 @@ document.addEventListener('DOMContentLoaded', function () {
           `<span class="badge gray" style="font-size:13px;padding:8px 14px;">除外登録 ${data.saved_excluded}件</span>` +
           (data.skipped > 0 ? ` <span class="badge amber" style="font-size:12px;">スキップ ${data.skipped}件</span>` : '');
         markRowsDone(checked, '除外済');
+      })
+      .catch(err => {
+        saveResult.innerHTML = `<span class="badge red">失敗: ${err.message}</span>`;
+        this.disabled = false;
+        updateCount();
+      });
+    });
+  }
+
+  const saveAllBtn = document.getElementById('saveCompaniesExcludeAllBtn');
+  if (saveAllBtn) {
+    saveAllBtn.addEventListener('click', function () {
+      const allChecks  = document.querySelectorAll('.row-check');
+      const storeItems = [];
+      const excludeItems = [];
+
+      allChecks.forEach(cb => {
+        const item = PREVIEW_DATA[parseInt(cb.value)];
+        if (!item || (item.is_duplicate)) return;
+        if (cb.checked) {
+          storeItems.push(item);
+        } else {
+          excludeItems.push(item);
+        }
+      });
+
+      if (storeItems.length === 0 && excludeItems.length === 0) {
+        alert('処理対象がありません');
+        return;
+      }
+
+      if (!confirm(`選択した${storeItems.length}件をカンパニー化＋残り${excludeItems.length}件を除外します。よろしいですか？`)) return;
+
+      this.disabled = true;
+      this.textContent = '処理中...';
+      saveResult.innerHTML = '';
+
+      fetch('/bizmaps/store-with-exclusion-all', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+        },
+        body: JSON.stringify({ store_items: storeItems, exclude_items: excludeItems }),
+      })
+      .then(r => r.json())
+      .then(data => {
+        saveResult.innerHTML =
+          `<span class="badge green" style="font-size:13px;padding:8px 14px;">カンパニー化 ${data.saved_companies}件</span>` +
+          ` <span class="badge gray" style="font-size:13px;padding:8px 14px;">除外 ${data.saved_excluded}件</span>` +
+          (data.skipped > 0 ? ` <span class="badge amber" style="font-size:12px;">スキップ ${data.skipped}件</span>` : '');
+        allChecks.forEach(cb => {
+          const row = document.getElementById('row-' + cb.value);
+          if (row) row.style.opacity = '0.45';
+          const span = document.createElement('span');
+          span.className = 'badge gray';
+          span.style.fontSize = '11px';
+          span.textContent = cb.checked ? '登録済' : '除外済';
+          cb.replaceWith(span);
+        });
+        updateCount();
       })
       .catch(err => {
         saveResult.innerHTML = `<span class="badge red">失敗: ${err.message}</span>`;
