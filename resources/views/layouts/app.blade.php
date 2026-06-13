@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title ?? 'TRUSTEPS CMS Lab' }}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.29.0/dist/tabler-icons.min.css">
     <style>
         /* ─── Design tokens ───────────────────────────────────── */
         :root {
@@ -29,72 +30,102 @@
         * { box-sizing: border-box; }
         html, body { margin: 0; min-height: 100vh; }
         body { background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; letter-spacing: .005em; }
+        body.has-sidebar { padding-left: 44px; }
         a { color: inherit; }
 
         /* ─── Page shell ──────────────────────────────────────── */
         .page { min-height: 100vh; display: flex; flex-direction: column; }
         .content { width: min(1280px, calc(100% - 32px)); margin: 24px auto 48px; flex: 1; }
 
-        /* ─── Topbar / Nav ────────────────────────────────────── */
-        .topbar {
-            min-height: 52px;
-            display: grid;
-            grid-template-columns: auto 1fr auto;
-            gap: 16px;
-            align-items: center;
-            padding: 0 24px;
-            background: #fff;
-            border-bottom: 1px solid var(--line);
-            position: sticky;
+        /* ─── Sidebar ─────────────────────────────────────────── */
+        .sidebar {
+            position: fixed;
+            left: 0;
             top: 0;
-            z-index: 20;
+            height: 100vh;
+            width: 44px;
+            background: #2563eb;
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+            transition: width 0.22s ease;
+            overflow: hidden;
         }
-        .brand {
-            display: inline-flex;
+        .sidebar:hover { width: 168px; }
+
+        .sb-logo {
+            display: flex;
             align-items: center;
-            gap: 8px;
-            font-size: 15px;
-            font-weight: 800;
-            color: var(--text);
-            white-space: nowrap;
-        }
-        .brand::before {
-            content: "";
-            width: 20px;
-            height: 20px;
-            border-radius: 5px;
-            background: var(--primary);
+            gap: 10px;
+            height: 52px;
+            padding: 0 12px;
+            border-bottom: 0.5px solid rgba(255,255,255,0.15);
             flex: 0 0 auto;
-        }
-        .nav { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; justify-content: center; }
-        .nav-link {
-            display: inline-flex;
-            align-items: center;
-            height: 32px;
-            padding: 0 11px;
-            border-radius: var(--radius-sm);
-            text-decoration: none;
-            color: var(--muted);
+            color: #fff;
             font-size: 14px;
-            font-weight: 600;
-            transition: background .1s, color .1s;
+            font-weight: 700;
             white-space: nowrap;
+            overflow: hidden;
+            text-decoration: none;
         }
-        .nav-link:hover { background: #f1f3f7; color: var(--text); }
-        .nav-link.active { background: var(--primary); color: #fff; }
-        .topbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; white-space: nowrap; }
-        .user-chip {
-            display: inline-flex;
+        .sb-logo .ti { font-size: 20px; flex: 0 0 20px; line-height: 1; }
+        .sb-logo-text { opacity: 0; transition: opacity 0.15s ease 0.05s; }
+        .sidebar:hover .sb-logo-text { opacity: 1; }
+
+        .sb-nav {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 8px 0;
+            overflow: hidden;
+        }
+        .sb-link {
+            display: flex;
             align-items: center;
-            height: 28px;
-            padding: 0 10px;
-            border-radius: var(--radius-sm);
-            background: #f1f3f7;
-            color: var(--muted);
-            font-size: 12px;
-            font-weight: 600;
-            border: 1px solid var(--line);
+            gap: 10px;
+            height: 44px;
+            padding: 0 12px;
+            color: rgba(255,255,255,0.55);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 400;
+            white-space: nowrap;
+            overflow: hidden;
+            border-left: 3px solid transparent;
+            transition: color 0.12s, background 0.12s;
         }
+        .sb-link:hover { color: #fff; background: rgba(255,255,255,0.12); }
+        .sb-link.active { color: #fff; background: rgba(255,255,255,0.18); border-left-color: #81D8D0; font-weight: 500; }
+        .sb-link .ti { font-size: 18px; flex: 0 0 20px; line-height: 1; }
+        .sb-text { opacity: 0; transition: opacity 0.15s ease 0.05s; }
+        .sidebar:hover .sb-text { opacity: 1; }
+
+        .sb-bottom {
+            flex: 0 0 auto;
+            padding: 8px 0;
+            border-top: 0.5px solid rgba(255,255,255,0.15);
+        }
+        .sb-logout-btn {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            height: 44px;
+            padding: 0 12px;
+            width: 100%;
+            color: rgba(255,255,255,0.55);
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 400;
+            white-space: nowrap;
+            overflow: hidden;
+            border-left: 3px solid transparent;
+            transition: color 0.12s, background 0.12s;
+            font-family: inherit;
+        }
+        .sb-logout-btn:hover { color: #fff; background: rgba(255,255,255,0.12); }
+        .sb-logout-btn .ti { font-size: 18px; flex: 0 0 20px; line-height: 1; }
 
         /* ─── Card ────────────────────────────────────────────── */
         .card, .section-card {
@@ -331,11 +362,6 @@
         .auth-card .button { width: 100%; }
 
         /* ─── Responsive ──────────────────────────────────────── */
-        @media (max-width: 980px) {
-            .topbar { grid-template-columns: 1fr; align-items: stretch; padding: 6px 16px; min-height: auto; }
-            .nav { justify-content: flex-start; }
-            .topbar-right { justify-content: space-between; }
-        }
         @media (max-width: 900px) {
             .auth-shell { grid-template-columns: 1fr; margin: 24px auto; }
             .auth-hero { min-height: 280px; }
@@ -344,55 +370,66 @@
         @media (max-width: 720px) {
             .content { width: min(100%, calc(100% - 20px)); margin: 14px auto 32px; }
             .card { padding: 16px; }
-            .topbar { padding: 6px 12px; }
-            .nav-link { font-size: 12px; padding: 0 8px; }
-            .user-chip { display: none; }
             .auth-shell { width: min(100%, calc(100% - 20px)); }
             .auth-hero, .auth-card { border-radius: 8px; padding: 20px; }
         }
     </style>
 </head>
-<body>
+<body class="@auth has-sidebar @endauth">
 <div class="page">
     @auth
-        <header class="topbar">
-            <div class="brand">TRUSTEPS CMS Lab</div>
-
-            <nav class="nav" aria-label="グローバルナビゲーション">
-                <a class="nav-link {{ request()->routeIs('dashboard') ? 'active' : '' }}" href="{{ route('dashboard') }}">
-                    Dashboard
+        <nav class="sidebar" aria-label="グローバルナビゲーション">
+            <div class="sb-logo">
+                <i class="ti ti-layout-sidebar"></i>
+                <span class="sb-logo-text">CMS Lab</span>
+            </div>
+            <div class="sb-nav">
+                <a class="sb-link {{ request()->routeIs('dashboard') ? 'active' : '' }}"
+                   href="{{ route('dashboard') }}">
+                    <i class="ti ti-layout-dashboard"></i>
+                    <span class="sb-text">ダッシュボード</span>
                 </a>
-                <a class="nav-link {{ request()->routeIs('source-records.*') ? 'active' : '' }}" href="{{ route('source-records.index') }}">
-                    source_records
+                <a class="sb-link {{ (request()->routeIs('companies.index') || request()->routeIs('companies.show') || request()->routeIs('companies.edit') || request()->routeIs('companies.merge-form') || request()->routeIs('companies.create-from-source') || request()->routeIs('companies.store-from-source')) ? 'active' : '' }}"
+                   href="{{ route('companies.index') }}">
+                    <i class="ti ti-building"></i>
+                    <span class="sb-text">企業マスタ</span>
                 </a>
-                <a class="nav-link {{ request()->routeIs('bizmaps.*') ? 'active' : '' }}" href="{{ route('bizmaps.import') }}">
-                    BIZMAPSインポート
+                <a class="sb-link {{ request()->routeIs('bizmaps.*') ? 'active' : '' }}"
+                   href="{{ route('bizmaps.import') }}">
+                    <i class="ti ti-download"></i>
+                    <span class="sb-text">企業収集</span>
                 </a>
-                <a class="nav-link {{ request()->routeIs('industries.scores.*') ? 'active' : '' }}" href="{{ route('industries.scores.index') }}">
-                    業界スコア
+                <a class="sb-link {{ request()->routeIs('source-records.*') ? 'active' : '' }}"
+                   href="{{ route('source-records.index') }}">
+                    <i class="ti ti-list-search"></i>
+                    <span class="sb-text">HP未確認リスト</span>
                 </a>
-                <a class="nav-link {{ request()->routeIs('system.reset-mvp-data.*') ? 'active' : '' }}" href="{{ route('system.reset-mvp-data.index') }}">
-                    MVPリセット
+                <a class="sb-link {{ request()->routeIs('companies.candidates') ? 'active' : '' }}"
+                   href="{{ route('companies.candidates') }}">
+                    <i class="ti ti-star"></i>
+                    <span class="sb-text">営業候補</span>
                 </a>
-                <a class="nav-link {{ request()->routeIs('companies.index') || request()->routeIs('companies.show') || request()->routeIs('companies.merge-form') ? 'active' : '' }}" href="{{ route('companies.index') }}">
-                    companies
+                <a class="sb-link {{ request()->routeIs('outreach.*') ? 'active' : '' }}"
+                   href="{{ route('outreach.index') }}">
+                    <i class="ti ti-mail"></i>
+                    <span class="sb-text">営業管理</span>
                 </a>
-                <a class="nav-link {{ request()->routeIs('companies.candidates') ? 'active' : '' }}" href="{{ route('companies.candidates') }}">
-                    営業候補
+                <a class="sb-link {{ request()->routeIs('industries.scores.*') ? 'active' : '' }}"
+                   href="{{ route('industries.scores.index') }}">
+                    <i class="ti ti-chart-bar"></i>
+                    <span class="sb-text">業界スコア</span>
                 </a>
-                <a class="nav-link {{ request()->routeIs('outreach.*') ? 'active' : '' }}" href="{{ route('outreach.index') }}">
-                    営業管理
-                </a>
-            </nav>
-
-            <div class="topbar-right">
-                <span class="user-chip">{{ auth()->user()?->email }}</span>
+            </div>
+            <div class="sb-bottom">
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf
-                    <button class="button secondary" type="submit">ログアウト</button>
+                    <button class="sb-logout-btn" type="submit">
+                        <i class="ti ti-logout"></i>
+                        <span class="sb-text">ログアウト</span>
+                    </button>
                 </form>
             </div>
-        </header>
+        </nav>
     @endauth
 
     @yield('content')

@@ -79,6 +79,7 @@
     <div class="db-btn-row">
         <a class="button light small" href="{{ route('source-records.index') }}">source_records</a>
         <a class="button light small" href="{{ route('companies.index') }}">companies</a>
+        <a class="button light small" href="{{ route('system.reset-mvp-data.index') }}">MVPリセット</a>
         <a class="button small" href="{{ route('companies.candidates') }}">営業候補 →</a>
     </div>
 </div>
