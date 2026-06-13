@@ -4,11 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\CompanyKillFlag;
+use App\Models\CompanyScoreSummary;
 use App\Models\HpFact;
+use App\Models\HpSnapshot;
 use App\Models\CompanySourceLink;
 use App\Models\Domain;
 use App\Models\Industry;
 use App\Models\Municipality;
+use App\Models\OutreachContact;
 use App\Models\Prefecture;
 use App\Models\SourceRecord;
 use App\Services\HpAnalyzerService;
@@ -635,6 +638,44 @@ class CompanyController extends Controller
         ]);
 
         return redirect()->route('companies.show', $company)->with('status', '手動候補を解除しました。');
+    }
+
+    public function revert(Company $company): RedirectResponse
+    {
+        $companyId = $company->id;
+
+        DB::transaction(function () use ($company, $companyId) {
+            $sourceRecordIds = CompanySourceLink::where('company_id', $companyId)
+                ->pluck('source_record_id');
+
+            if ($sourceRecordIds->isNotEmpty()) {
+                SourceRecord::whereIn('id', $sourceRecordIds)
+                    ->update(['is_excluded' => false]);
+            }
+
+            $domainIds = Domain::where('company_id', $companyId)->pluck('id');
+
+            if ($domainIds->isNotEmpty()) {
+                $snapshotIds = HpSnapshot::whereIn('domain_id', $domainIds)->pluck('id');
+                if ($snapshotIds->isNotEmpty()) {
+                    HpFact::whereIn('hp_snapshot_id', $snapshotIds)->delete();
+                }
+                HpSnapshot::whereIn('domain_id', $domainIds)->delete();
+                Domain::whereIn('id', $domainIds)->delete();
+            }
+
+            \App\Models\CompanyScore::where('company_id', $companyId)->delete();
+            CompanyScoreSummary::where('company_id', $companyId)->delete();
+            CompanyKillFlag::where('company_id', $companyId)->delete();
+            OutreachContact::where('company_id', $companyId)->delete();
+            CompanySourceLink::where('company_id', $companyId)->delete();
+
+            $company->delete();
+        });
+
+        return redirect()
+            ->route('source-records.index')
+            ->with('status', "company #{$companyId} をsource_recordsに差し戻した。");
     }
 
     public function setPrimaryUrl(Request $request, Company $company): RedirectResponse

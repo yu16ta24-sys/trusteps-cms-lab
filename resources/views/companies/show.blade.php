@@ -109,6 +109,10 @@
                     <button class="button danger small" type="submit">統合Undo</button>
                 </form>
             @endif
+            <form method="POST" action="{{ route('companies.revert', $company) }}" onsubmit="return confirm('このカンパニーをソースレコードに差し戻しますか？');">
+                @csrf
+                <button class="button small" type="submit" style="background:#dc2626;border-color:#b91c1c;color:#fff;">差戻</button>
+            </form>
         </div>
     </div>
 

@@ -69,6 +69,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/source-records/import/cancel', [SourceRecordController::class, 'cancelImport'])->name('source-records.import.cancel');
     Route::post('/source-records/bulk-create-companies', [SourceRecordController::class, 'bulkCreateCompanies'])->name('source-records.bulk-create-companies');
     Route::post('/source-records/bulk-kill', [SourceRecordController::class, 'bulkKill'])->name('source-records.bulk-kill');
+    Route::post('/source-records/bulk-exclude', [SourceRecordController::class, 'bulkExclude'])->name('source-records.bulk-exclude');
+    Route::delete('/source-records/bulk-delete', [SourceRecordController::class, 'bulkDelete'])->name('source-records.bulk-delete');
     Route::patch('/source-records/{sourceRecord}/domain', [SourceRecordController::class, 'updateDomain'])->name('source-records.update-domain');
 
     Route::get('/source-records/{sourceRecord}/create-company', [CompanyController::class, 'createFromSource'])
@@ -92,6 +94,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/companies/{company}/set-primary-url', [CompanyController::class, 'setPrimaryUrl'])->name('companies.set-primary-url');
     Route::post('/companies/{company}/manual-candidate', [CompanyController::class, 'setManualCandidate'])->name('companies.manual-candidate.set');
     Route::delete('/companies/{company}/manual-candidate', [CompanyController::class, 'unsetManualCandidate'])->name('companies.manual-candidate.unset');
+    Route::post('/companies/{company}/revert', [CompanyController::class, 'revert'])->name('companies.revert');
     Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
 
     // 営業管理

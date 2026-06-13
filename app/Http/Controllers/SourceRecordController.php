@@ -266,6 +266,38 @@ class SourceRecordController extends Controller
             ->with('status', "一括除外完了。company kill {$killedCompanyCount} 件 / source_record除外 {$excludedSourceCount} 件。");
     }
 
+    public function bulkExclude(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'source_record_ids'   => ['required', 'array', 'min:1', 'max:200'],
+            'source_record_ids.*' => ['integer', 'exists:source_records,id'],
+        ]);
+
+        $count = SourceRecord::query()
+            ->whereIn('id', $validated['source_record_ids'])
+            ->update(['is_excluded' => true]);
+
+        return redirect()
+            ->route('source-records.index', $request->except(['source_record_ids', '_token']))
+            ->with('status', "kill_flag化（除外）完了。{$count} 件を is_excluded=true に設定した。");
+    }
+
+    public function bulkDelete(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'source_record_ids'   => ['required', 'array', 'min:1', 'max:200'],
+            'source_record_ids.*' => ['integer', 'exists:source_records,id'],
+        ]);
+
+        $count = SourceRecord::query()
+            ->whereIn('id', $validated['source_record_ids'])
+            ->delete();
+
+        return redirect()
+            ->route('source-records.index', $request->except(['source_record_ids', '_token', '_method']))
+            ->with('status', "物理削除完了。{$count} 件を削除した。");
+    }
+
     public function updateDomain(Request $request, SourceRecord $sourceRecord): \Illuminate\Http\JsonResponse
     {
         $input = trim((string) $request->input('url', ''));
