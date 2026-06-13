@@ -99,48 +99,18 @@
     </div>
   @else
 
-  {{-- HP取得中プログレスバー --}}
-  <div id="hpFetchingBar" style="display:none;margin-bottom:16px;">
-    <style>
-      @keyframes indeterminate {
-        0%   { left: -35%; right: 100%; }
-        60%  { left: 100%; right: -90%; }
-        100% { left: 100%; right: -90%; }
-      }
-      .progress-bar-indeterminate {
-        position: relative;
-        height: 4px;
-        background: #e2e6ed;
-        border-radius: 2px;
-        overflow: hidden;
-        margin-bottom: 8px;
-      }
-      .progress-bar-indeterminate::after {
-        content: '';
-        position: absolute;
-        top: 0; bottom: 0;
-        background: var(--primary, #3b82f6);
-        animation: indeterminate 1.5s infinite ease-in-out;
-      }
-    </style>
-    <div class="progress-bar-indeterminate"></div>
-    <p style="font-size:12px;color:var(--muted);margin:0;">HP URLを取得中です。100件の場合、1〜2分かかります。しばらくお待ちください。</p>
+  {{-- HP URL 取得モーダル --}}
+  <div id="hpFetchModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:18px;padding:32px;width:min(480px,90vw);box-shadow:0 20px 60px rgba(0,0,0,.25);">
+      <h3 style="margin:0 0 20px;font-size:16px;font-weight:900;color:var(--text);">HP URL 取得中</h3>
+      <div style="background:#e2e6ed;border-radius:4px;height:8px;margin-bottom:14px;overflow:hidden;">
+        <div id="hpModalBar" style="background:var(--primary,#3b82f6);height:100%;border-radius:4px;width:0%;transition:width .4s ease;"></div>
+      </div>
+      <p id="hpModalStatus" style="font-size:13px;font-weight:700;color:var(--text);margin:0 0 6px;">準備中...</p>
+      <p id="hpModalDetail" style="font-size:12px;color:var(--muted);margin:0 0 22px;min-height:1.5em;"></p>
+      <button id="hpModalClose" class="button light" style="display:none;">閉じる</button>
+    </div>
   </div>
-
-  {{-- HP取得フォーム（隠し） --}}
-  <form id="fetchHpForm" method="POST" action="{{ route('bizmaps.preview') }}" style="display:none;">
-    @csrf
-    <input type="hidden" name="prefecture_id" value="{{ $sc['prefecture_id'] ?? '' }}">
-    @foreach ($sc['city_codes'] ?? [] as $code)
-      <input type="hidden" name="city_codes[]" value="{{ $code }}">
-    @endforeach
-    <input type="hidden" name="industry_type" value="{{ $sc['industry_type'] ?? 'pref' }}">
-    <input type="hidden" name="industry_id"   value="{{ $sc['industry_id'] ?? '' }}">
-    <input type="hidden" name="big_ind_name"  value="{{ $sc['big_ind_name'] ?? '' }}">
-    <input type="hidden" name="m_ind_name"    value="{{ $sc['m_ind_name'] ?? '' }}">
-    <input type="hidden" name="limit"         value="{{ $sc['limit'] ?? 50 }}">
-    <input type="hidden" name="fetch_hp"      value="1">
-  </form>
 
   {{-- サマリーバー --}}
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
@@ -548,22 +518,108 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  // ---- HP URL 取得（フォーム送信） ----
-  const fetchHpBtn      = document.getElementById('fetchHpBtn');
+  // ---- HP URL 取得（SSE + モーダル） ----
+  const fetchHpBtn    = document.getElementById('fetchHpBtn');
   const fetchHpBtnText  = document.getElementById('fetchHpBtnText');
   const fetchHpProgress = document.getElementById('fetchHpProgress');
-  const hpFetchingBar   = document.getElementById('hpFetchingBar');
-  const totalRows       = PREVIEW_DATA.length;
+  const hpFoundBadge    = document.getElementById('hpFoundBadge');
+  const hpFoundCountEl  = document.getElementById('hpFoundCount');
+  const hpFetchModal  = document.getElementById('hpFetchModal');
+  const hpModalBar    = document.getElementById('hpModalBar');
+  const hpModalStatus = document.getElementById('hpModalStatus');
+  const hpModalDetail = document.getElementById('hpModalDetail');
+  const hpModalClose  = document.getElementById('hpModalClose');
+
+  let sseActive    = false;
+  let hpFoundCount = 0;
 
   if (fetchHpBtn) {
     fetchHpBtn.addEventListener('click', function () {
+      if (sseActive) return;
+      sseActive    = true;
+      hpFoundCount = 0;
+
+      // モーダルを開く
+      hpFetchModal.style.display = 'flex';
+      hpModalBar.style.width     = '0%';
+      hpModalStatus.textContent  = '接続中...';
+      hpModalDetail.textContent  = '';
+      hpModalClose.style.display = 'none';
+
       fetchHpBtn.disabled = true;
       fetchHpBtnText.textContent = '取得中...';
-      fetchHpProgress.style.display = 'inline';
-      fetchHpProgress.textContent = '0 / ' + totalRows + '件';
-      if (hpFetchingBar) hpFetchingBar.style.display = 'block';
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      document.getElementById('fetchHpForm').submit();
+      fetchHpProgress.style.display = 'none';
+
+      const es = new EventSource('/bizmaps/fetch-hp-stream');
+
+      es.onmessage = function (e) {
+        const data = JSON.parse(e.data);
+
+        if (data.finished) {
+          es.close();
+          sseActive = false;
+
+          hpModalBar.style.width    = '100%';
+          hpModalStatus.textContent = `完了: ${data.total}件中 ${hpFoundCount}件のHP URLを取得しました`;
+          hpModalDetail.textContent = '';
+          hpModalClose.style.display = 'inline-block';
+
+          fetchHpBtnText.textContent    = 'HP URL取得完了';
+          fetchHpProgress.style.display = 'inline';
+          fetchHpProgress.textContent   = hpFoundCount + '件取得';
+          return;
+        }
+
+        const pct = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
+        hpModalBar.style.width    = pct + '%';
+        hpModalStatus.textContent = `処理中: ${data.company_name ?? ''} (${data.done}/${data.total})`;
+        hpModalDetail.textContent = data.hp_url ? ('HP URL: ' + data.hp_url) : '';
+
+        if (data.hp_url) {
+          hpFoundCount++;
+          if (hpFoundBadge)  hpFoundBadge.style.display = 'inline-flex';
+          if (hpFoundCountEl) hpFoundCountEl.textContent = hpFoundCount;
+
+          const idx     = data.index;
+          const hpCell  = document.getElementById('hp-cell-' + idx);
+          if (hpCell) {
+            const disp = data.hp_url.length > 35 ? data.hp_url.substring(0, 35) + '…' : data.hp_url;
+            hpCell.innerHTML = `<a href="${data.hp_url}" target="_blank" style="font-size:12px;color:var(--primary);word-break:break-all;text-decoration:none;font-weight:700;">${disp}</a>`;
+          }
+          const statusCell = document.getElementById('status-cell-' + idx);
+          if (statusCell) statusCell.innerHTML = '<span class="badge green">HP✓</span>';
+
+          if (PREVIEW_DATA[idx]) PREVIEW_DATA[idx].hp_url = data.hp_url;
+          const cb = document.querySelector(`.row-check[value="${idx}"]`);
+          if (cb && !PREVIEW_DATA[idx]?.is_duplicate) cb.checked = true;
+          updateCount();
+        }
+
+        if (data.industry && PREVIEW_DATA[data.index]) {
+          PREVIEW_DATA[data.index].industry = data.industry;
+          const indCell = document.getElementById('industry-cell-' + data.index);
+          if (indCell) {
+            const t = data.industry;
+            indCell.innerHTML = `<span style="font-size:12px;color:var(--muted);">${t.length > 25 ? t.substring(0,25) + '…' : t}</span>`;
+          }
+        }
+      };
+
+      es.onerror = function () {
+        es.close();
+        sseActive = false;
+        hpModalStatus.textContent  = 'エラーが発生しました。もう一度お試しください。';
+        hpModalDetail.textContent  = '';
+        hpModalClose.style.display = 'inline-block';
+        fetchHpBtn.disabled        = false;
+        fetchHpBtnText.textContent = 'HP URLを取得する（再試行）';
+      };
+    });
+  }
+
+  if (hpModalClose) {
+    hpModalClose.addEventListener('click', function () {
+      hpFetchModal.style.display = 'none';
     });
   }
 

@@ -261,9 +261,12 @@ class BizmapsImportController extends Controller
             $mainResults = array_slice($mainResults, 0, $limit);
         }
 
-        // SSE用にdetail_urlリストをセッションに保存
-        $detailUrlsForSse = array_map(fn($r) => $r['detail_url'], $results);
-        session(['bizmaps_detail_urls' => $detailUrlsForSse]);
+        // SSE用に mainResults の detail_url + name をセッションに保存
+        $sseItems = array_values(array_map(fn($r) => [
+            'detail_url' => $r['detail_url'],
+            'name'       => $r['name'] ?? null,
+        ], $mainResults));
+        session(['bizmaps_detail_urls' => $sseItems]);
 
         // 検索条件をセッションに保存（再取得用）
         $searchCondition = [
@@ -288,14 +291,28 @@ class BizmapsImportController extends Controller
      */
     public function fetchHpStream(Request $request): StreamedResponse
     {
-        $detailUrls = session('bizmaps_detail_urls', []);
+        $items = session('bizmaps_detail_urls', []);
+        // セッションロックを解放してブラウザの他リクエストをブロックしない
+        session()->save();
 
-        return new StreamedResponse(function () use ($detailUrls) {
+        return new StreamedResponse(function () use ($items) {
+            set_time_limit(0);
+            if (ob_get_level() === 0) ob_start();
+
             $scraper = new BizmapsScraperService();
+            $total   = count($items);
+            $done    = 0;
 
-            foreach ($detailUrls as $index => $detailUrl) {
+            foreach ($items as $index => $info) {
+                // 後方互換: 旧形式（文字列）と新形式（配列）両対応
+                $detailUrl = is_string($info) ? $info : ($info['detail_url'] ?? null);
+                $name      = is_string($info) ? null  : ($info['name']       ?? null);
+                $done++;
+
                 if (!$detailUrl) {
-                    $this->sseEmit(['index' => $index, 'hp_url' => null, 'status' => 'skip']);
+                    $this->sseEmit(['done' => $done, 'total' => $total, 'index' => $index, 'company_name' => $name, 'hp_url' => null, 'success' => false]);
+                    if (ob_get_level() > 0) ob_flush();
+                    flush();
                     continue;
                 }
 
@@ -304,22 +321,23 @@ class BizmapsImportController extends Controller
                     $hpUrl    = $detail['hp_url']   ?? null;
                     $industry = $detail['industry'] ?? null;
                     $this->sseEmit([
-                        'index'      => $index,
-                        'hp_url'     => $hpUrl,
-                        'industry'   => $industry,
-                        'detail_url' => $detailUrl,
-                        'status'     => $hpUrl ? 'found' : 'not_found',
+                        'done'         => $done,
+                        'total'        => $total,
+                        'index'        => $index,
+                        'company_name' => $name,
+                        'hp_url'       => $hpUrl,
+                        'industry'     => $industry,
+                        'success'      => $hpUrl !== null,
                     ]);
                 } catch (\Throwable $e) {
-                    $this->sseEmit(['index' => $index, 'hp_url' => null, 'status' => 'error']);
+                    $this->sseEmit(['done' => $done, 'total' => $total, 'index' => $index, 'company_name' => $name, 'hp_url' => null, 'success' => false]);
                 }
 
                 if (ob_get_level() > 0) ob_flush();
                 flush();
             }
 
-            echo "event: done\n";
-            echo "data: " . json_encode(['total' => count($detailUrls)]) . "\n\n";
+            $this->sseEmit(['done' => $total, 'total' => $total, 'finished' => true]);
             if (ob_get_level() > 0) ob_flush();
             flush();
 
