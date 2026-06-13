@@ -266,6 +266,13 @@ class SourceRecordController extends Controller
             ->with('status', "一括除外完了。company kill {$killedCompanyCount} 件 / source_record除外 {$excludedSourceCount} 件。");
     }
 
+    public function updateDomain(Request $request, SourceRecord $sourceRecord): \Illuminate\Http\JsonResponse
+    {
+        $input = trim((string) $request->input('url', ''));
+        $sourceRecord->update(['normalized_domain' => $input !== '' ? $input : null]);
+        return response()->json(['ok' => true, 'normalized_domain' => $input !== '' ? $input : null]);
+    }
+
     public function create(): View
     {
         return view('source_records.create');

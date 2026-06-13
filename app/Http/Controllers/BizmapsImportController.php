@@ -15,9 +15,10 @@ class BizmapsImportController extends Controller
 {
     public function index()
     {
-        $prefectures = DB::table('prefectures')->orderBy('id')->get();
-        $industries  = $this->getIndustries();
-        return view('bizmaps.import', compact('prefectures', 'industries'));
+        $prefectures     = DB::table('prefectures')->orderBy('id')->get();
+        $industries      = $this->getIndustries();
+        $searchCondition = session('bizmaps_search_condition', []);
+        return view('bizmaps.import', compact('prefectures', 'industries', 'searchCondition'));
     }
 
     public function getMunicipalities(Request $request)

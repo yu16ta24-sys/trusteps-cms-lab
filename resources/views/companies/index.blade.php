@@ -384,7 +384,7 @@
                             <th>score</th>
                             <th>判定</th>
                             <th>assets</th>
-                            <th>domain</th>
+                            <th>HP</th>
                             <th></th>
                         </tr>
                         </thead>
@@ -482,7 +482,17 @@
                                     <div class="subtext">kill：{{ $company->kill_flags_count }}</div>
                                 </td>
                                 <td>
-                                    <span class="domain-chip">{{ $company->primaryDomain?->normalized_domain ?? '-' }}</span>
+                                    @if ($company->primaryDomain?->normalized_domain)
+                                        @php
+                                            $hpHref = $company->primaryDomain->url
+                                                ?? (str_starts_with($company->primaryDomain->normalized_domain, 'http')
+                                                    ? $company->primaryDomain->normalized_domain
+                                                    : 'https://' . $company->primaryDomain->normalized_domain);
+                                        @endphp
+                                        <a href="{{ $hpHref }}" target="_blank" class="domain-chip" style="color:#1d4ed8;text-decoration:none;">HP</a>
+                                    @else
+                                        -
+                                    @endif
                                 </td>
                                 <td class="tight"><a class="button small light" href="{{ route('companies.show', $company) }}">詳細</a></td>
                             </tr>

@@ -45,7 +45,7 @@
             <select name="prefecture_id" id="prefectureSelect" required>
               <option value="">選択してください</option>
               @foreach($prefectures as $pref)
-                <option value="{{ $pref->id }}">{{ $pref->name }}</option>
+                <option value="{{ $pref->id }}" {{ ($searchCondition['prefecture_id'] ?? '') == $pref->id ? 'selected' : '' }}>{{ $pref->name }}</option>
               @endforeach
             </select>
           </div>
@@ -77,15 +77,9 @@
           <div class="field">
             <label for="limitSelect">取得上限件数</label>
             <select name="limit" id="limitSelect">
-              <option value="10">10件</option>
-              <option value="25">25件</option>
-              <option value="50" selected>50件</option>
-              <option value="75">75件</option>
-              <option value="100">100件</option>
-              <option value="150">150件</option>
-              <option value="200">200件</option>
-              <option value="300">300件</option>
-              <option value="500">500件</option>
+              @foreach([10,25,50,75,100,150,200,300,500] as $n)
+                <option value="{{ $n }}" {{ ($searchCondition['limit'] ?? 50) == $n ? 'selected' : '' }}>{{ $n }}件</option>
+              @endforeach
             </select>
           </div>
 
@@ -118,6 +112,9 @@
 </div>
 
 @push('scripts')
+<script>
+const IMPORT_SAVED_SC = @json($searchCondition);
+</script>
 @verbatim
 <script>
 document.addEventListener('DOMContentLoaded', function () {
@@ -127,8 +124,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const cityCount   = document.getElementById('citySelectedCount');
   const submitBtn   = document.getElementById('submitBtn');
 
-  prefSelect.addEventListener('change', function () {
-    const prefId = this.value;
+  function loadCities(prefId, savedCodes) {
     cityBox.innerHTML = '<span style="color:var(--muted);font-size:13px;">読み込み中...</span>';
     cityCount.style.display = 'none';
 
@@ -144,9 +140,11 @@ document.addEventListener('DOMContentLoaded', function () {
           cityBox.innerHTML = '<span style="color:var(--muted);font-size:13px;">データがありません</span>';
           return;
         }
+        const savedSet = (savedCodes || []).map(String);
         cityBox.innerHTML = cities.map(c => `
           <label style="display:inline-flex;align-items:center;gap:5px;margin:3px 8px 3px 0;font-size:13px;cursor:pointer;font-weight:600;">
             <input class="city-check" type="checkbox" name="city_codes[]" value="${c.code}"
+              ${savedSet.includes(String(c.code)) ? 'checked' : ''}
               style="accent-color:var(--primary);width:14px;height:14px;">
             ${c.name}
           </label>
@@ -157,7 +155,17 @@ document.addEventListener('DOMContentLoaded', function () {
       .catch(() => {
         cityBox.innerHTML = '<span style="color:var(--danger);font-size:13px;">取得失敗</span>';
       });
+  }
+
+  prefSelect.addEventListener('change', function () {
+    loadCities(this.value, []);
   });
+
+  // 前回の検索条件を復元
+  if (window.IMPORT_SAVED_SC && IMPORT_SAVED_SC.prefecture_id) {
+    prefSelect.value = IMPORT_SAVED_SC.prefecture_id;
+    loadCities(IMPORT_SAVED_SC.prefecture_id, IMPORT_SAVED_SC.city_codes || []);
+  }
 
   document.getElementById('selectAllCities').addEventListener('click', function () {
     cityBox.querySelectorAll('.city-check').forEach(cb => cb.checked = true);

@@ -273,11 +273,33 @@
                         <td>{{ $record->source_type }}</td>
                         <td>{{ $record->name_norm ?? '-' }}</td>
                         <td>{{ data_get($record->raw_json, 'canonical.raw_industry') ?: data_get($record->raw_json, 'raw_industry', '-') }}</td>
-                        <td>
-                            <div>{{ $record->normalized_domain ?? '-' }}</div>
+                        <td style="min-width:180px;">
+                            <div id="domain-display-{{ $record->id }}">
+                                @if ($record->normalized_domain)
+                                    @php
+                                        $domHref = Str::startsWith($record->normalized_domain, 'http')
+                                            ? $record->normalized_domain
+                                            : 'https://' . $record->normalized_domain;
+                                    @endphp
+                                    <a href="{{ $domHref }}" target="_blank"
+                                        style="font-size:12px;font-weight:700;color:var(--primary);text-decoration:none;word-break:break-all;">{{ $record->normalized_domain }}</a>
+                                @else
+                                    <span style="color:var(--muted);font-size:12px;">-</span>
+                                @endif
+                            </div>
                             @if ($record->source_url)
-                                <div class="muted" style="max-width:320px; overflow-wrap:anywhere; font-size:12px;">{{ $record->source_url }}</div>
+                                <div class="muted" style="max-width:300px;overflow-wrap:anywhere;font-size:11px;margin-top:2px;">{{ $record->source_url }}</div>
                             @endif
+                            <div id="domain-edit-{{ $record->id }}" style="display:none;margin-top:6px;">
+                                <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+                                    <input type="text" id="domain-input-{{ $record->id }}"
+                                        placeholder="https://example.com"
+                                        value="{{ $record->normalized_domain ?? '' }}"
+                                        style="height:28px;font-size:12px;padding:0 8px;border:1px solid #d9e2ee;border-radius:6px;min-width:150px;flex:1;">
+                                    <button type="button" class="button small"
+                                        onclick="saveDomainSr({{ $record->id }})">保存</button>
+                                </div>
+                            </div>
                         </td>
                         <td>{{ $record->pref ?? '-' }} / {{ $record->city ?? '-' }}</td>
                         <td>{{ optional($record->fetched_at)->format('Y-m-d H:i') ?? '-' }}</td>
@@ -291,8 +313,14 @@
                                 @endif
                             @endif
                         </td>
-                        <td>
-                            <a class="button small light" href="{{ route('source-records.show', $record) }}">詳細</a>
+                        <td style="white-space:nowrap;">
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <a class="button small light" href="{{ route('source-records.show', $record) }}">詳細</a>
+                                <a class="button small light" target="_blank"
+                                    href="https://www.google.com/search?q={{ urlencode(($record->name_norm ?? '') . ' ' . ($record->pref ?? '')) }}">WEB検索</a>
+                                <button type="button" class="button small light"
+                                    onclick="toggleDomainEditSr({{ $record->id }})">編集</button>
+                            </div>
                         </td>
                     </tr>
                 @empty
@@ -385,6 +413,42 @@
 const SR_PREF_DATA     = @json($prefectures->map(fn($p) => ['name' => $p->name, 'cities' => $p->municipalities->pluck('name')]));
 const SR_SELECTED_PREF = @json(request('pref', ''));
 const SR_SELECTED_CITY = @json(request('city', ''));
+
+function toggleDomainEditSr(id) {
+    const el = document.getElementById('domain-edit-' + id);
+    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function saveDomainSr(id) {
+    const input = document.getElementById('domain-input-' + id);
+    const url   = input ? input.value.trim() : '';
+    fetch('/source-records/' + id + '/domain', {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+        },
+        body: JSON.stringify({ url }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.ok) return;
+        const display = document.getElementById('domain-display-' + id);
+        if (display) {
+            if (data.normalized_domain) {
+                const href = data.normalized_domain.startsWith('http')
+                    ? data.normalized_domain
+                    : 'https://' + data.normalized_domain;
+                display.innerHTML = `<a href="${href}" target="_blank" style="font-size:12px;font-weight:700;color:var(--primary);text-decoration:none;word-break:break-all;">${data.normalized_domain}</a>`;
+            } else {
+                display.innerHTML = '<span style="color:var(--muted);font-size:12px;">-</span>';
+            }
+        }
+        const editDiv = document.getElementById('domain-edit-' + id);
+        if (editDiv) editDiv.style.display = 'none';
+    })
+    .catch(err => alert('更新失敗: ' + err.message));
+}
 </script>
 @endpush
 @push('scripts')

@@ -731,7 +731,8 @@ document.addEventListener('DOMContentLoaded', function () {
         saveResult.innerHTML =
           `<span class="badge green" style="font-size:13px;padding:8px 14px;">カンパニー化 ${data.saved_companies}件</span>` +
           ` <span class="badge gray" style="font-size:13px;padding:8px 14px;">除外 ${data.saved_excluded}件</span>` +
-          (data.skipped > 0 ? ` <span class="badge amber" style="font-size:12px;">スキップ ${data.skipped}件</span>` : '');
+          (data.skipped > 0 ? ` <span class="badge amber" style="font-size:12px;">スキップ ${data.skipped}件</span>` : '') +
+          ` <span class="badge blue" style="font-size:12px;">インポート画面へ移動中...</span>`;
         allChecks.forEach(cb => {
           const row = document.getElementById('row-' + cb.value);
           if (row) row.style.opacity = '0.45';
@@ -742,6 +743,7 @@ document.addEventListener('DOMContentLoaded', function () {
           cb.replaceWith(span);
         });
         updateCount();
+        setTimeout(() => { window.location.href = '/bizmaps/import'; }, 1500);
       })
       .catch(err => {
         saveResult.innerHTML = `<span class="badge red">失敗: ${err.message}</span>`;
