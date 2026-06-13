@@ -104,11 +104,13 @@ class BizmapsImportController extends Controller
             ->pluck('detail_url')
             ->toArray();
 
-        $existingDomainUrls = DB::table('domains')
-            ->whereIn('url', $allUrls)
-            ->pluck('url')
-            ->flip()
-            ->toArray();
+        $normalizedAllUrls  = array_values(array_unique(array_filter(array_map([$this, 'normalizeUrl'], $allUrls))));
+        $rawDomainUrls      = $normalizedAllUrls
+            ? DB::table('domains')
+                ->whereIn(DB::raw("LOWER(TRIM(TRAILING '/' FROM url))"), $normalizedAllUrls)
+                ->pluck('url')->toArray()
+            : [];
+        $existingDomainUrls = array_flip(array_map([$this, 'normalizeUrl'], $rawDomainUrls));
 
         $mainResults           = [];
         $excludedResults       = [];
@@ -121,8 +123,8 @@ class BizmapsImportController extends Controller
                 || ($hpUrl && in_array($hpUrl, $existingActiveUrls));
             $r['is_excluded_source'] = in_array($r['detail_url'], $existingExcludedUrls)
                 || ($hpUrl && in_array($hpUrl, $existingExcludedUrls));
-            $r['is_company_existed'] = isset($existingDomainUrls[$r['detail_url'] ?? ''])
-                || ($hpUrl && isset($existingDomainUrls[$hpUrl]));
+            $r['is_company_existed'] = isset($existingDomainUrls[$this->normalizeUrl($r['detail_url'] ?? null)])
+                || ($hpUrl && isset($existingDomainUrls[$this->normalizeUrl($hpUrl)]));
             if (in_array($r['detail_url'], $excludedUrls)) {
                 $excludedResults[] = $r;
             } elseif ($r['is_excluded_source']) {
@@ -179,11 +181,13 @@ class BizmapsImportController extends Controller
                     ->pluck('detail_url')
                     ->toArray();
 
-                $suppDomainUrls = DB::table('domains')
-                    ->whereIn('url', $suppAllUrls)
-                    ->pluck('url')
-                    ->flip()
-                    ->toArray();
+                $normalizedSuppUrls = array_values(array_unique(array_filter(array_map([$this, 'normalizeUrl'], $suppAllUrls))));
+                $rawSuppDomains     = $normalizedSuppUrls
+                    ? DB::table('domains')
+                        ->whereIn(DB::raw("LOWER(TRIM(TRAILING '/' FROM url))"), $normalizedSuppUrls)
+                        ->pluck('url')->toArray()
+                    : [];
+                $suppDomainUrls     = array_flip(array_map([$this, 'normalizeUrl'], $rawSuppDomains));
 
                 foreach ($suppItems as &$r) {
                     $hpUrl = $r['hp_url'] ?? null;
@@ -191,8 +195,8 @@ class BizmapsImportController extends Controller
                         || ($hpUrl && in_array($hpUrl, $suppActiveUrls));
                     $r['is_excluded_source'] = in_array($r['detail_url'], $suppExcludedUrls)
                         || ($hpUrl && in_array($hpUrl, $suppExcludedUrls));
-                    $r['is_company_existed'] = isset($suppDomainUrls[$r['detail_url'] ?? ''])
-                        || ($hpUrl && isset($suppDomainUrls[$hpUrl]));
+                    $r['is_company_existed'] = isset($suppDomainUrls[$this->normalizeUrl($r['detail_url'] ?? null)])
+                        || ($hpUrl && isset($suppDomainUrls[$this->normalizeUrl($hpUrl)]));
                     if (in_array($r['detail_url'], $suppBzmUrls)) {
                         $excludedResults[] = $r;
                     } elseif ($r['is_excluded_source']) {
@@ -390,7 +394,9 @@ class BizmapsImportController extends Controller
             if (!$name) { $skipped++; continue; }
 
             $checkUrl = $hpUrl ?: $detailUrl;
-            if ($checkUrl && DB::table('domains')->where('url', $checkUrl)->exists()) {
+            if ($checkUrl && DB::table('domains')
+                ->whereRaw("LOWER(TRIM(TRAILING '/' FROM url)) = ?", [$this->normalizeUrl($checkUrl)])
+                ->exists()) {
                 $skipped++;
                 continue;
             }
@@ -453,6 +459,26 @@ class BizmapsImportController extends Controller
                     ]);
                     DB::table('companies')->where('id', $companyId)
                         ->update(['primary_domain_id' => $domainId]);
+                }
+
+                if ($detailUrl && !DB::table('source_records')->where('source_url', $detailUrl)->exists()) {
+                    DB::table('source_records')->insert([
+                        'source_type'       => 'bizmaps',
+                        'source_url'        => $detailUrl,
+                        'normalized_domain' => $normalizedDomain,
+                        'name_norm'         => mb_strtolower(preg_replace('/[\s　]+/u', '', $name)),
+                        'pref'              => $item['pref'] ?? null,
+                        'city'              => $item['city'] ?? null,
+                        'raw_json'          => json_encode([
+                            'hp_url'     => $hpUrl,
+                            'detail_url' => $detailUrl,
+                            'industry'   => $item['industry'] ?? null,
+                            'source'     => 'bizmaps',
+                        ], JSON_UNESCAPED_UNICODE),
+                        'fetched_at'  => $now,
+                        'created_at'  => $now,
+                        'updated_at'  => $now,
+                    ]);
                 }
 
                 $saved++;
@@ -527,7 +553,9 @@ class BizmapsImportController extends Controller
                 if (!$name) { $skipped++; continue; }
 
                 $checkUrl = $hpUrl ?: $detailUrl;
-                if ($checkUrl && DB::table('domains')->where('url', $checkUrl)->exists()) {
+                if ($checkUrl && DB::table('domains')
+                    ->whereRaw("LOWER(TRIM(TRAILING '/' FROM url)) = ?", [$this->normalizeUrl($checkUrl)])
+                    ->exists()) {
                     $skipped++;
                     continue;
                 }
@@ -589,6 +617,26 @@ class BizmapsImportController extends Controller
                             ->update(['primary_domain_id' => $domainId]);
                     }
 
+                    if ($detailUrl && !DB::table('source_records')->where('source_url', $detailUrl)->exists()) {
+                        DB::table('source_records')->insert([
+                            'source_type'       => 'bizmaps',
+                            'source_url'        => $detailUrl,
+                            'normalized_domain' => $normalizedDomain,
+                            'name_norm'         => mb_strtolower(preg_replace('/[\s　]+/u', '', $name)),
+                            'pref'              => $item['pref'] ?? null,
+                            'city'              => $item['city'] ?? null,
+                            'raw_json'          => json_encode([
+                                'hp_url'     => $hpUrl,
+                                'detail_url' => $detailUrl,
+                                'industry'   => $item['industry'] ?? null,
+                                'source'     => 'bizmaps',
+                            ], JSON_UNESCAPED_UNICODE),
+                            'fetched_at'  => $now,
+                            'created_at'  => $now,
+                            'updated_at'  => $now,
+                        ]);
+                    }
+
                     $savedCompanies++;
                 });
             }
@@ -623,7 +671,9 @@ class BizmapsImportController extends Controller
             if (!$name) { $skipped++; continue; }
 
             $checkUrl = $hpUrl ?: $detailUrl;
-            if ($checkUrl && DB::table('domains')->where('url', $checkUrl)->exists()) {
+            if ($checkUrl && DB::table('domains')
+                ->whereRaw("LOWER(TRIM(TRAILING '/' FROM url)) = ?", [$this->normalizeUrl($checkUrl)])
+                ->exists()) {
                 $skipped++;
                 continue;
             }
@@ -685,6 +735,26 @@ class BizmapsImportController extends Controller
                         ->update(['primary_domain_id' => $domainId]);
                 }
 
+                if ($detailUrl && !DB::table('source_records')->where('source_url', $detailUrl)->exists()) {
+                    DB::table('source_records')->insert([
+                        'source_type'       => 'bizmaps',
+                        'source_url'        => $detailUrl,
+                        'normalized_domain' => $normalizedDomain,
+                        'name_norm'         => mb_strtolower(preg_replace('/[\s　]+/u', '', $name)),
+                        'pref'              => $item['pref'] ?? null,
+                        'city'              => $item['city'] ?? null,
+                        'raw_json'          => json_encode([
+                            'hp_url'     => $hpUrl,
+                            'detail_url' => $detailUrl,
+                            'industry'   => $item['industry'] ?? null,
+                            'source'     => 'bizmaps',
+                        ], JSON_UNESCAPED_UNICODE),
+                        'fetched_at'  => $now,
+                        'created_at'  => $now,
+                        'updated_at'  => $now,
+                    ]);
+                }
+
                 $savedCompanies++;
             });
         }
@@ -734,6 +804,12 @@ class BizmapsImportController extends Controller
             'saved_excluded'  => $savedExcluded,
             'skipped'         => $skipped,
         ]);
+    }
+
+    private function normalizeUrl(?string $url): string
+    {
+        if (!$url) return '';
+        return strtolower(rtrim($url, '/'));
     }
 
     private function buildUrls(int $prefectureId, array $cityCodes, string $industryType, ?int $industryId): array
