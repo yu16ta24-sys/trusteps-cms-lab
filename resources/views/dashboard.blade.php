@@ -29,28 +29,52 @@
 .db-item-name { font-size:12px; font-weight:900; color:var(--text); margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .db-item-sub { font-size:11px; color:var(--muted); }
 .db-item-btn { margin-top:6px; }
-.db-cand-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+.db-rank { font-size:10px; font-weight:900; padding:2px 8px; border-radius:999px; display:inline-block; }
+.db-rank-S { background:#fae8ff; color:#86198f; }
+.db-rank-A { background:#dcfce7; color:#166534; }
+.db-rank-B { background:#dbeafe; color:#1d4ed8; }
+.db-rank-C { background:#f2f4f7; color:#475467; }
+.db-rank-D { background:#fee2e2; color:#991b1b; }
+.db-cand-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
 .db-cand-stat { background:#f8fafc; border:1px solid var(--line); border-radius:16px; padding:14px 16px; }
 .db-cand-label { font-size:11px; color:var(--muted); font-weight:900; margin-bottom:6px; }
 .db-cand-num { font-size:28px; font-weight:950; color:var(--text); letter-spacing:-.03em; line-height:1; }
 .db-cand-sub { font-size:11px; color:var(--muted); margin-top:4px; }
+.db-type-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; margin-top:12px; }
+.db-type-stat { border:1px solid var(--line); border-radius:14px; padding:12px 14px; }
+.db-type-label { font-size:10px; color:var(--muted); font-weight:900; margin-bottom:5px; }
+.db-type-num { font-size:22px; font-weight:950; color:var(--text); line-height:1; }
 .db-card-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
 @media(max-width:900px){
     .db-next-grid { grid-template-columns:repeat(2,1fr); }
     .db-work-grid { grid-template-columns:1fr; }
-    .db-cand-grid { grid-template-columns:repeat(2,1fr); }
+    .db-cand-grid { grid-template-columns:repeat(3,1fr); }
+    .db-type-grid { grid-template-columns:repeat(3,1fr); }
 }
 @media(max-width:600px){
     .db-next-grid { grid-template-columns:1fr; }
-    .db-cand-grid { grid-template-columns:1fr; }
+    .db-cand-grid { grid-template-columns:repeat(2,1fr); }
+    .db-type-grid { grid-template-columns:repeat(2,1fr); }
 }
 </style>
+
+@php
+    $rankLabels = ['S' => 'Sランク', 'A' => 'Aランク', 'B' => 'Bランク', 'C' => 'Cランク', 'D' => 'Dランク'];
+    $typeLabels = [
+        'renewal_candidate'        => 'リニューアル',
+        'cms_conversion_candidate' => 'CMS化',
+        'maintenance_candidate'    => '保守',
+        'new_site_candidate'       => '新規サイト',
+        'reject'                   => '対象外',
+        'unclassified'             => '未分類',
+    ];
+@endphp
 
 <div class="db-topbar">
     <div>
         <div class="db-kicker">TRUSTEPS CMS Lab</div>
         <h1 class="db-title">Dashboard</h1>
-        <p class="db-sub">データ投入・採点・候補抽出の進捗</p>
+        <p class="db-sub">データ投入・HP解析・5軸スコアリングの進捗</p>
     </div>
     <div class="db-btn-row">
         <a class="button light small" href="{{ route('source-records.index') }}">source_records</a>
@@ -76,49 +100,49 @@
             </div>
         </div>
         <div class="db-next-card">
-            <span class="db-step db-step-gray">2 · 未採点</span>
-            <div class="db-next-num">{{ number_format($summary['scores']['unscored']) }}</div>
-            <div class="db-next-desc">4軸スコア未入力</div>
+            <span class="db-step db-step-gray">2 · HP解析未実施</span>
+            <div class="db-next-num">{{ number_format($summary['unanalyzed']) }}</div>
+            <div class="db-next-desc">HPあり・未解析のcompany</div>
             <div class="db-next-action">
-                <a class="button light small" href="{{ route('companies.index', ['score_state' => 'unscored']) }}">見る →</a>
+                <a class="button light small" href="{{ route('companies.index', ['hp_state' => 'unanalyzed']) }}">見る →</a>
             </div>
         </div>
         <div class="db-next-card">
-            <span class="db-step db-step-amber">3 · 採点待ち候補</span>
-            <div class="db-next-num">{{ number_format($summary['candidates']['needs_scoring']) }}</div>
-            <div class="db-next-desc">候補一覧で4軸不足</div>
+            <span class="db-step db-step-green">3 · S/Aランク</span>
+            <div class="db-next-num">{{ number_format($summary['top_rank']) }}</div>
+            <div class="db-next-desc">5軸スコア最優先候補</div>
             <div class="db-next-action">
-                <a class="button light small" href="{{ route('companies.candidates', ['preset' => 'needs_scoring']) }}">見る →</a>
+                <a class="button small" href="{{ route('companies.candidates', ['preset' => 'rank_a']) }}">確認する →</a>
             </div>
         </div>
         <div class="db-next-card">
-            <span class="db-step db-step-green">4 · 推奨候補</span>
-            <div class="db-next-num">{{ number_format($summary['candidates']['recommended']) }}</div>
-            <div class="db-next-desc">高機会・低リスク</div>
+            <span class="db-step db-step-amber">4 · 手動候補</span>
+            <div class="db-next-num">{{ number_format($summary['manual']) }}</div>
+            <div class="db-next-desc">手動でフラグした候補</div>
             <div class="db-next-action">
-                <a class="button small" href="{{ route('companies.candidates', ['preset' => 'recommended']) }}">確認する →</a>
+                <a class="button light small" href="{{ route('companies.candidates', ['preset' => 'manual']) }}">見る →</a>
             </div>
         </div>
         <div class="db-next-card">
             <span class="db-step db-step-green">5 · Aランク</span>
-            <div class="db-next-num">{{ number_format($v2Summary['rank_a']) }}</div>
-            <div class="db-next-desc">V2スコア最優先候補</div>
+            <div class="db-next-num">{{ number_format($summary['ranks']['A']) }}</div>
+            <div class="db-next-desc">5軸スコア優先候補</div>
             <div class="db-next-action">
                 <a class="button small" href="{{ route('companies.candidates', ['sort' => 'v2_rank', 'direction' => 'asc']) }}">確認する →</a>
             </div>
         </div>
         <div class="db-next-card">
             <span class="db-step db-step-blue">6 · Bランク</span>
-            <div class="db-next-num">{{ number_format($v2Summary['rank_b']) }}</div>
-            <div class="db-next-desc">V2スコア準優先候補</div>
+            <div class="db-next-num">{{ number_format($summary['ranks']['B']) }}</div>
+            <div class="db-next-desc">5軸スコア準優先候補</div>
             <div class="db-next-action">
-                <a class="button small light" href="{{ route('companies.candidates', ['sort' => 'v2_rank', 'direction' => 'asc']) }}">確認する →</a>
+                <a class="button small light" href="{{ route('companies.candidates', ['preset' => 'rank_b']) }}">確認する →</a>
             </div>
         </div>
-        @if ($v2Summary['rank_a_low_conf'] > 0)
+        @if ($summary['rank_a_low_conf'] > 0)
         <div class="db-next-card">
             <span class="db-step db-step-amber">7 · 目視確認推奨</span>
-            <div class="db-next-num">{{ number_format($v2Summary['rank_a_low_conf']) }}</div>
+            <div class="db-next-num">{{ number_format($summary['rank_a_low_conf']) }}</div>
             <div class="db-next-desc">Aランク・信頼度70%未満</div>
             <div class="db-next-action">
                 <a class="button light small" href="{{ route('companies.candidates', ['sort' => 'v2_rank', 'direction' => 'asc']) }}">確認する →</a>
@@ -165,46 +189,60 @@
             @endforelse
         </div>
 
-        {{-- 次の採点対象 --}}
+        {{-- HP解析待ち --}}
         <div class="db-work-card">
             <div class="db-work-head">
-                <div class="db-work-title">次の採点対象</div>
-                <span class="db-step db-step-gray" style="margin:0">4軸不足</span>
+                <div class="db-work-title">HP解析待ち</div>
+                <span class="db-step db-step-gray" style="margin:0">未解析</span>
             </div>
-            <div class="db-work-desc">スコアが足りないcompany。未採点に近い順。</div>
-            @forelse ($workBoard['scoring_queue'] as $company)
+            <div class="db-work-desc">HPはあるが未解析のcompany。解析でスコアが付く。</div>
+            @forelse ($workBoard['hp_analysis_queue'] as $company)
+                @php
+                    $region = trim(
+                        ($company->municipality?->prefecture?->name ?? $company->pref ?? '')
+                        . ' '
+                        . ($company->municipality?->name ?? $company->city ?? '')
+                    );
+                @endphp
                 <div class="db-item">
                     <div class="db-item-name">#{{ $company->id }} {{ $company->display_name ?? $company->legal_name ?? '名称未設定' }}</div>
-                    <div class="db-item-sub">採点 {{ $company->dashboard_scored_axes_count }} / 4</div>
+                    <div class="db-item-sub">{{ $company->industry?->name ?? '業種未設定' }} · {{ $region !== '' ? $region : '地域未設定' }}</div>
                     <div class="db-item-btn">
-                        <a class="button light small" href="{{ route('companies.show', $company) }}">採点する</a>
+                        <a class="button light small" href="{{ route('companies.show', $company) }}">HP解析する</a>
                     </div>
                 </div>
             @empty
                 <div class="db-item" style="text-align:center;padding:18px 0;color:var(--muted);font-size:13px;">
-                    採点待ちはありません
+                    HP解析待ちはありません
                 </div>
             @endforelse
         </div>
 
-        {{-- 推奨候補 TOP --}}
+        {{-- 営業優先候補 --}}
         <div class="db-work-card">
             <div class="db-work-head">
-                <div class="db-work-title">推奨候補 TOP</div>
-                <span class="db-step db-step-green" style="margin:0">高機会・低リスク</span>
+                <div class="db-work-title">営業優先候補</div>
+                <span class="db-step db-step-green" style="margin:0">S/A/B順</span>
             </div>
-            <div class="db-work-desc">4軸採点済みの中で優先確認したい候補。</div>
-            @forelse ($workBoard['recommended_queue'] as $company)
+            <div class="db-work-desc">5軸スコアの高ランク順。total_score降順。</div>
+            @forelse ($workBoard['priority_queue'] as $s)
+                @php $company = $s->company; @endphp
                 <div class="db-item">
-                    <div class="db-item-name">#{{ $company->id }} {{ $company->display_name ?? $company->legal_name ?? '名称未設定' }}</div>
-                    <div class="db-item-sub">機会 {{ $company->dashboard_opportunity_score }} · リスク {{ $company->dashboard_risk_score }}</div>
+                    <div class="db-item-name">
+                        <span class="db-rank db-rank-{{ $s->rank }}">{{ $s->rank }}</span>
+                        #{{ $company->id }} {{ $company->display_name ?? $company->legal_name ?? '名称未設定' }}
+                    </div>
+                    <div class="db-item-sub">
+                        score {{ number_format((float) $s->total_score, 1) }}
+                        · {{ $typeLabels[$s->candidate_type] ?? ($s->candidate_type ?: '未分類') }}
+                    </div>
                     <div class="db-item-btn">
                         <a class="button small" href="{{ route('companies.show', $company) }}">詳細</a>
                     </div>
                 </div>
             @empty
                 <div class="db-item" style="text-align:center;padding:18px 0;color:var(--muted);font-size:13px;">
-                    推奨候補はまだありません
+                    優先候補はまだありません
                 </div>
             @endforelse
         </div>
@@ -215,30 +253,29 @@
 {{-- 営業候補の状態 --}}
 <section class="card">
     <div class="db-card-head">
-        <div class="db-sec-label" style="margin:0">営業候補の状態</div>
+        <div class="db-sec-label" style="margin:0">営業候補の状態（5軸スコア）</div>
         <div class="db-btn-row">
-            <a class="button small" href="{{ route('companies.candidates', ['preset' => 'recommended']) }}">推奨候補 →</a>
-            <a class="button light small" href="{{ route('companies.candidates', ['preset' => 'needs_scoring']) }}">採点待ち</a>
+            <a class="button small" href="{{ route('companies.candidates', ['preset' => 'rank_a']) }}">S/Aランク →</a>
+            <a class="button light small" href="{{ route('companies.candidates') }}">候補一覧</a>
         </div>
     </div>
+
     <div class="db-cand-grid">
+        @foreach (['S', 'A', 'B', 'C', 'D'] as $rank)
         <div class="db-cand-stat">
-            <div class="db-cand-label">active候補</div>
-            <div class="db-cand-num">{{ number_format($summary['candidates']['total']) }}</div>
+            <div class="db-cand-label">{{ $rankLabels[$rank] }}</div>
+            <div class="db-cand-num">{{ number_format($summary['ranks'][$rank]) }}</div>
         </div>
-        <div class="db-cand-stat">
-            <div class="db-cand-label">推奨</div>
-            <div class="db-cand-num">{{ number_format($summary['candidates']['recommended']) }}</div>
-            <div class="db-cand-sub">高機会・低リスク</div>
+        @endforeach
+    </div>
+
+    <div class="db-type-grid">
+        @foreach ($typeLabels as $key => $label)
+        <div class="db-type-stat">
+            <div class="db-type-label">{{ $label }}</div>
+            <div class="db-type-num">{{ number_format($summary['types'][$key]) }}</div>
         </div>
-        <div class="db-cand-stat">
-            <div class="db-cand-label">高機会</div>
-            <div class="db-cand-num">{{ number_format($summary['candidates']['high_opportunity']) }}</div>
-        </div>
-        <div class="db-cand-stat">
-            <div class="db-cand-label">採点待ち</div>
-            <div class="db-cand-num">{{ number_format($summary['candidates']['needs_scoring']) }}</div>
-        </div>
+        @endforeach
     </div>
 </section>
 

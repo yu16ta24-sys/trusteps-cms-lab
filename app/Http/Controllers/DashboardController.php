@@ -4,189 +4,141 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\CompanyScoreSummary;
+use App\Models\HpFact;
 use App\Models\SourceRecord;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
+    /** company_score_summaries に書き込まれているスコアバージョン（5軸 suggest_v2 由来）。 */
+    private const SCORE_VERSION = 'scoring_v1.0';
+
     public function index(): View
     {
-        $scoreAxes = ['hp_weakness', 'self_update_fit', 'dev_difficulty', 'portal_dependence'];
-
-        $companies = Company::query()
-            ->with(['scores' => fn ($query) => $query->where('algo_version', 'v1')])
-            ->get();
-
-        $activeCompanies = $companies
-            ->filter(fn (Company $company) => !$company->is_killed && $company->status !== 'merged');
-
-        $scoreSummary = [
-            'unscored' => 0,
-            'partial' => 0,
-            'fully_scored' => 0,
-            'has_auto_suggestion' => 0,
-            'manual_adjusted' => 0,
-            'suggestion_as_is' => 0,
-        ];
-
-        $candidateSummary = [
-            'total' => $activeCompanies->count(),
-            'recommended' => 0,
-            'high_opportunity' => 0,
-            'needs_scoring' => 0,
-        ];
-
-        foreach ($activeCompanies as $company) {
-            $scores = $company->scores->whereIn('axis', $scoreAxes)->keyBy('axis');
-
-            $scoredAxesCount = collect($scoreAxes)
-                ->filter(fn (string $axis) => $scores->get($axis)?->value !== null)
-                ->count();
-
-            $autoSuggestionCount = $scores
-                ->filter(fn ($score) => $score->auto_suggested_value !== null)
-                ->count();
-
-            $manualAdjustedCount = $scores
-                ->filter(fn ($score) => $score->auto_suggested_value !== null && (int) $score->value !== (int) $score->auto_suggested_value)
-                ->count();
-
-            if ($scoredAxesCount === 0) {
-                $scoreSummary['unscored']++;
-            } elseif ($scoredAxesCount < count($scoreAxes)) {
-                $scoreSummary['partial']++;
-            } else {
-                $scoreSummary['fully_scored']++;
-            }
-
-            if ($autoSuggestionCount > 0) {
-                $scoreSummary['has_auto_suggestion']++;
-            }
-
-            if ($manualAdjustedCount > 0) {
-                $scoreSummary['manual_adjusted']++;
-            }
-
-            if ($autoSuggestionCount > 0 && $manualAdjustedCount === 0) {
-                $scoreSummary['suggestion_as_is']++;
-            }
-
-            if ($scoredAxesCount < count($scoreAxes)) {
-                $candidateSummary['needs_scoring']++;
-                continue;
-            }
-
-            $hpWeakness = $scores->get('hp_weakness')?->value ?? 0;
-            $selfUpdateFit = $scores->get('self_update_fit')?->value ?? 0;
-            $devDifficulty = $scores->get('dev_difficulty')?->value ?? 0;
-            $portalDependence = $scores->get('portal_dependence')?->value ?? 0;
-
-            $opportunityScore = $hpWeakness + $selfUpdateFit;
-            $riskScore = $devDifficulty + $portalDependence;
-
-            if ($opportunityScore >= 7) {
-                $candidateSummary['high_opportunity']++;
-            }
-
-            if ($opportunityScore >= 7 && $riskScore <= 3) {
-                $candidateSummary['recommended']++;
-            }
-        }
-
-        $summary = [
-            'source_records' => [
-                'total' => SourceRecord::query()->count(),
-                'linked' => SourceRecord::query()->has('sourceLink')->count(),
-                'unlinked' => SourceRecord::query()->doesntHave('sourceLink')->count(),
-            ],
-            'companies' => [
-                'total' => $companies->count(),
-                'active' => $activeCompanies->count(),
-                'killed' => $companies->filter(fn (Company $company) => (bool) $company->is_killed)->count(),
-                'merged' => $companies->filter(fn (Company $company) => $company->status === 'merged')->count(),
-            ],
-            'scores' => $scoreSummary,
-            'candidates' => $candidateSummary,
-        ];
+        // ===== company化待ち（未リンク source_records） =====
+        $unlinkedSourceCount = SourceRecord::query()
+            ->doesntHave('sourceLink')
+            ->where('is_excluded', false)
+            ->count();
 
         $nextSourceRecords = SourceRecord::query()
             ->doesntHave('sourceLink')
+            ->where('is_excluded', false)
             ->orderBy('id')
             ->limit(5)
             ->get();
 
-        $scoringQueue = $activeCompanies
-            ->map(function (Company $company) use ($scoreAxes) {
-                $scores = $company->scores->whereIn('axis', $scoreAxes)->keyBy('axis');
-                $scoredAxesCount = collect($scoreAxes)
-                    ->filter(fn (string $axis) => $scores->get($axis)?->value !== null)
-                    ->count();
+        // ===== active company のIDセット =====
+        $activeIds = Company::query()
+            ->where('is_killed', false)
+            ->where('status', '!=', 'merged')
+            ->pluck('id');
 
-                $company->setAttribute('dashboard_scored_axes_count', $scoredAxesCount);
+        // ===== HP解析の有無（hp_facts 経由） =====
+        // 解析済み = primaryDomain に紐づく hp_snapshot に extracted_at 付き hp_fact が1件以上
+        $analyzedDomainIds = HpFact::query()
+            ->join('hp_snapshots', 'hp_facts.hp_snapshot_id', '=', 'hp_snapshots.id')
+            ->whereNotNull('hp_facts.extracted_at')
+            ->pluck('hp_snapshots.domain_id')
+            ->unique()
+            ->all();
 
-                return $company;
-            })
-            ->filter(fn (Company $company) => $company->dashboard_scored_axes_count < count($scoreAxes))
-            ->sortBy('dashboard_scored_axes_count')
-            ->take(5)
-            ->values();
+        $unanalyzedBase = Company::query()
+            ->whereIn('id', $activeIds)
+            ->whereNotNull('primary_domain_id')
+            ->whereHas('primaryDomain', fn ($q) => $q->whereNotIn('id', $analyzedDomainIds));
 
-        $recommendedQueue = $activeCompanies
-            ->map(function (Company $company) use ($scoreAxes) {
-                $scores = $company->scores->whereIn('axis', $scoreAxes)->keyBy('axis');
-                $scoredAxesCount = collect($scoreAxes)
-                    ->filter(fn (string $axis) => $scores->get($axis)?->value !== null)
-                    ->count();
+        $unanalyzedCount = (clone $unanalyzedBase)->count();
 
-                $hpWeakness = $scores->get('hp_weakness')?->value ?? 0;
-                $selfUpdateFit = $scores->get('self_update_fit')?->value ?? 0;
-                $devDifficulty = $scores->get('dev_difficulty')?->value ?? 0;
-                $portalDependence = $scores->get('portal_dependence')?->value ?? 0;
+        $hpAnalysisQueue = (clone $unanalyzedBase)
+            ->with(['industry', 'municipality.prefecture', 'primaryDomain'])
+            ->orderBy('id')
+            ->limit(5)
+            ->get();
 
-                $opportunityScore = $hpWeakness + $selfUpdateFit;
-                $riskScore = $devDifficulty + $portalDependence;
-
-                $company->setAttribute('dashboard_scored_axes_count', $scoredAxesCount);
-                $company->setAttribute('dashboard_opportunity_score', $opportunityScore);
-                $company->setAttribute('dashboard_risk_score', $riskScore);
-                $company->setAttribute('dashboard_priority_score', ($opportunityScore * 10) - ($riskScore * 6));
-
-                return $company;
-            })
-            ->filter(fn (Company $company) =>
-                $company->dashboard_scored_axes_count === count($scoreAxes)
-                && $company->dashboard_opportunity_score >= 7
-                && $company->dashboard_risk_score <= 3
-            )
-            ->sortByDesc('dashboard_priority_score')
-            ->take(5)
-            ->values();
-
-        $workBoard = [
-            'next_source_records' => $nextSourceRecords,
-            'scoring_queue' => $scoringQueue,
-            'recommended_queue' => $recommendedQueue,
-        ];
-
-        $activeIds = $activeCompanies->pluck('id');
-        $v2RankCounts = CompanyScoreSummary::query()
-            ->where('score_version', 'scoring_v1.0')
+        // ===== 5軸スコア（company_score_summaries）集計 =====
+        $rankCounts = CompanyScoreSummary::query()
+            ->where('score_version', self::SCORE_VERSION)
             ->whereIn('company_id', $activeIds)
             ->selectRaw('`rank`, COUNT(*) as cnt')
             ->groupByRaw('`rank`')
             ->pluck('cnt', 'rank');
 
-        $v2Summary = [
-            'rank_a'          => (int) ($v2RankCounts['A'] ?? 0),
-            'rank_b'          => (int) ($v2RankCounts['B'] ?? 0),
-            'rank_a_low_conf' => CompanyScoreSummary::query()
-                ->where('score_version', 'scoring_v1.0')
-                ->whereIn('company_id', $activeIds)
-                ->where('rank', 'A')
-                ->where('confidence', '<', 0.70)
-                ->count(),
+        $rankSummary = [
+            'S' => (int) ($rankCounts['S'] ?? 0),
+            'A' => (int) ($rankCounts['A'] ?? 0),
+            'B' => (int) ($rankCounts['B'] ?? 0),
+            'C' => (int) ($rankCounts['C'] ?? 0),
+            'D' => (int) ($rankCounts['D'] ?? 0),
+        ];
+        $topRankCount = $rankSummary['S'] + $rankSummary['A'];
+
+        $rankALowConf = CompanyScoreSummary::query()
+            ->where('score_version', self::SCORE_VERSION)
+            ->whereIn('company_id', $activeIds)
+            ->where('rank', 'A')
+            ->where('confidence', '<', 0.70)
+            ->count();
+
+        $typeCounts = CompanyScoreSummary::query()
+            ->where('score_version', self::SCORE_VERSION)
+            ->whereIn('company_id', $activeIds)
+            ->selectRaw('candidate_type, COUNT(*) as cnt')
+            ->groupBy('candidate_type')
+            ->pluck('cnt', 'candidate_type');
+
+        $typeSummary = [
+            'renewal_candidate'        => (int) ($typeCounts['renewal_candidate'] ?? 0),
+            'cms_conversion_candidate' => (int) ($typeCounts['cms_conversion_candidate'] ?? 0),
+            'maintenance_candidate'    => (int) ($typeCounts['maintenance_candidate'] ?? 0),
+            'new_site_candidate'       => (int) ($typeCounts['new_site_candidate'] ?? 0),
+            'reject'                   => (int) ($typeCounts['reject'] ?? 0),
+            'unclassified'             => (int) ($typeCounts['unclassified'] ?? 0),
         ];
 
-        return view('dashboard', compact('summary', 'workBoard', 'v2Summary'));
+        // ===== 手動候補 =====
+        $manualCount = Company::query()
+            ->whereIn('id', $activeIds)
+            ->where('is_manual_candidate', true)
+            ->count();
+
+        // ===== 営業優先候補 TOP5（rank S/A/B → total_score 降順） =====
+        $rankOrder = ['S' => 0, 'A' => 1, 'B' => 2, 'C' => 3, 'D' => 4];
+        $priorityQueue = CompanyScoreSummary::query()
+            ->where('score_version', self::SCORE_VERSION)
+            ->whereIn('company_id', $activeIds)
+            ->whereIn('rank', ['S', 'A', 'B'])
+            ->with(['company.industry', 'company.municipality.prefecture'])
+            ->get()
+            ->sort(function ($a, $b) use ($rankOrder) {
+                $ra = $rankOrder[$a->rank] ?? 9;
+                $rb = $rankOrder[$b->rank] ?? 9;
+                if ($ra !== $rb) {
+                    return $ra <=> $rb;
+                }
+                return ($b->total_score ?? 0) <=> ($a->total_score ?? 0);
+            })
+            ->filter(fn ($s) => $s->company !== null)
+            ->take(5)
+            ->values();
+
+        $summary = [
+            'source_records'  => ['unlinked' => $unlinkedSourceCount],
+            'companies'       => ['active' => $activeIds->count()],
+            'unanalyzed'      => $unanalyzedCount,
+            'top_rank'        => $topRankCount,
+            'manual'          => $manualCount,
+            'ranks'           => $rankSummary,
+            'rank_a_low_conf' => $rankALowConf,
+            'types'           => $typeSummary,
+        ];
+
+        $workBoard = [
+            'next_source_records' => $nextSourceRecords,
+            'hp_analysis_queue'   => $hpAnalysisQueue,
+            'priority_queue'      => $priorityQueue,
+        ];
+
+        return view('dashboard', compact('summary', 'workBoard'));
     }
 }
