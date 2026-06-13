@@ -306,7 +306,7 @@
             'maintenance_candidate'    => '保守・更新候補',
             'new_site_candidate'       => '新規制作候補',
             'reject'                   => '優先度低',
-            'unclassified'             => '未分類',
+            'unclassified'             => '提案内容要検討',
         ];
         $v2RankColors = ['S' => 'purple', 'A' => 'green', 'B' => 'blue', 'C' => 'amber', 'D' => 'red'];
         $v2Rank       = $scoreSummary?->rank;
@@ -324,7 +324,7 @@
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 <span style="font-size:13px;font-weight:600;">総合 {{ number_format((float)$v2Total, 1) }} / 5.0</span>
                 <span class="badge {{ $v2RankColor }}">ランク {{ $v2Rank }}</span>
-                <span class="badge blue" style="font-size:11px;">{{ $v2TypeLabel }}</span>
+                <span class="badge {{ $v2TypeKey === 'unclassified' ? 'amber' : 'blue' }}" style="font-size:11px;">{{ $v2TypeLabel }}</span>
                 @if ($v2Conf !== null)
                     <span style="font-size:11px;color:var(--muted);">信頼度 {{ (int)round($v2Conf * 100) }}%</span>
                     @if ($v2Conf < 0.70)

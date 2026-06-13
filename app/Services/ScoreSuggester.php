@@ -535,6 +535,9 @@ class ScoreSuggester
             $confidence,
             $flags
         );
+        if ($candidateType === 'unclassified') {
+            $reason['summary'] = '各軸のスコアは一定水準にあるが、提案タイプが自動判定できませんでした。HP・業種・規模を目視確認のうえ、最適な提案内容を検討してください。';
+        }
         $reason['evidence'] = [
             'industry_key'        => $company->industry?->slug,
             'has_industry_scores' => $hasIndustrySig,

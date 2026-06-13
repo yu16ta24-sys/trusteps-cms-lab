@@ -97,7 +97,7 @@
                 'maintenance_candidate'    => '保守・更新',
                 'new_site_candidate'       => '新規制作',
                 'reject'                   => '優先度低',
-                'unclassified'             => '未分類',
+                'unclassified'             => '要検討',
             ];
             $v2RankColors = ['S' => 'purple', 'A' => 'green', 'B' => 'blue', 'C' => 'amber', 'D' => 'red'];
             $presetLabels = [
@@ -373,7 +373,7 @@
                                 {{-- 提案タイプ --}}
                                 <td>
                                     @if ($company->v2_candidate_type)
-                                        <span class="badge gray" style="font-size:11px;">{{ $v2TypeLabels[$company->v2_candidate_type] ?? $company->v2_candidate_type }}</span>
+                                        <span class="badge {{ $company->v2_candidate_type === 'unclassified' ? 'amber' : 'gray' }}" style="font-size:11px;">{{ $v2TypeLabels[$company->v2_candidate_type] ?? $company->v2_candidate_type }}</span>
                                     @else
                                         <span style="font-size:12px;color:var(--muted);">—</span>
                                     @endif
