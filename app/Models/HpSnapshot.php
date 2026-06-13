@@ -41,9 +41,4 @@ class HpSnapshot extends Model
     {
         return $this->hasOne(HpFact::class);
     }
-
-    public function updateTargets()
-    {
-        return $this->hasMany(SnapshotUpdateTarget::class);
-    }
 }
