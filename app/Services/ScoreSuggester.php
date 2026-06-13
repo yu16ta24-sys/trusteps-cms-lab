@@ -1131,13 +1131,9 @@ class ScoreSuggester
                 if ($hp) {
                     if (!$hp->ssl_enabled) {
                         $P('SSL未対応', 1.5 * 0.40, 'site_weakness');
-                    } else {
-                        $N('SSL対応済み（改善余地なし）', -1.5 * 0.40, 'site_weakness');
                     }
                     if (!$hp->mobile_friendly) {
                         $P('スマホ非対応', 1.5 * 0.40, 'site_weakness');
-                    } else {
-                        $N('スマホ対応済み（改善余地なし）', -1.5 * 0.40, 'site_weakness');
                     }
                     if (in_array($hp->cms_type, ['unknown', 'static', null], true)) {
                         $P('静的HTML/CMS未使用', 1.0 * 0.40, 'site_weakness');
