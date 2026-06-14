@@ -1,4 +1,4 @@
-@extends('layouts.app', ['title' => 'company統合 | TRUSTEPS CMS Lab'])
+@extends('layouts.app', ['title' => '企業統合 | TRUSTEPS CMS Lab'])
 
 @section('content')
     <main class="content">
@@ -6,9 +6,9 @@
             <div class="row">
                 <div>
                     <p class="muted" style="margin:0;">Phase0-7 / 手動company統合</p>
-                    <h1 style="margin:6px 0 0;">company統合</h1>
+                    <h1 style="margin:6px 0 0;">企業統合</h1>
                 </div>
-                <a class="button light" href="{{ route('companies.show', $company) }}">company詳細へ戻る</a>
+                <a class="button light" href="{{ route('companies.show', $company) }}">企業詳細へ戻る</a>
             </div>
 
             @if ($errors->any())

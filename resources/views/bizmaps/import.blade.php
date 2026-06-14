@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'BIZMAPSインポート')
+@section('title', '企業収集')
 
 @section('content')
 <div class="content">
@@ -8,7 +8,7 @@
   {{-- ページヘッダー --}}
   <div style="margin-bottom:28px;">
     <p class="page-kicker">データ収集</p>
-    <h1 class="page-title">BIZMAPS インポート</h1>
+    <h1 class="page-title">企業収集</h1>
     <p class="page-subtitle">BIZMAPSから企業情報を収集してsource_recordsに保存します。都道府県・市区町村で絞り込みができます。</p>
   </div>
 

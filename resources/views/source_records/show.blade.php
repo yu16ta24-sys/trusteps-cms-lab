@@ -1,4 +1,4 @@
-@extends('layouts.app', ['title' => 'source_record詳細 | TRUSTEPS CMS Lab'])
+@extends('layouts.app', ['title' => 'HP未確認詳細 | TRUSTEPS CMS Lab'])
 
 @section('content')
     <main class="content">
@@ -6,7 +6,7 @@
             <div class="row">
                 <div>
                     <p class="page-kicker">source record / intake review</p>
-                    <h1 class="page-title">source_record #{{ $sourceRecord->id }}</h1>
+                    <h1 class="page-title">HP未確認 #{{ $sourceRecord->id }}</h1>
                     <p class="page-subtitle">
                         外部取得データの原典確認画面。ここでは生データを壊さず、company化するかどうかだけを判断する。
                     </p>

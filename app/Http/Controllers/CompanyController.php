@@ -154,6 +154,20 @@ class CompanyController extends Controller
 
         $companies = $query->paginate(30)->withQueryString();
 
+        $primaryDomainIds = $companies->pluck('primary_domain_id')->filter()->values()->all();
+        $deadDomainIdSet = [];
+        if (!empty($primaryDomainIds)) {
+            $deadIds = HpFact::query()
+                ->join('hp_snapshots', 'hp_facts.hp_snapshot_id', '=', 'hp_snapshots.id')
+                ->whereNotNull('hp_facts.extracted_at')
+                ->where('hp_facts.url_dead', true)
+                ->whereIn('hp_snapshots.domain_id', $primaryDomainIds)
+                ->pluck('hp_snapshots.domain_id')
+                ->unique()
+                ->all();
+            $deadDomainIdSet = array_flip($deadIds);
+        }
+
         $industries = Industry::query()
             ->where('is_active', true)
             ->orderBy('sort_order')
@@ -176,7 +190,8 @@ class CompanyController extends Controller
             'totalCount',
             'activeCount',
             'killedCount',
-            'scoredCount'
+            'scoredCount',
+            'deadDomainIdSet'
         ));
     }
 

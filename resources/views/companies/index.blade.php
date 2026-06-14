@@ -1,4 +1,4 @@
-@extends('layouts.app', ['title' => 'Companies | TRUSTEPS CMS Lab'])
+@extends('layouts.app', ['title' => '企業マスタ | TRUSTEPS CMS Lab'])
 
 @section('content')
     <main class="content companies-index">
@@ -198,8 +198,8 @@
                 <div class="hero-inner">
                     <div class="row">
                         <div>
-                            <p class="page-kicker">Company Master</p>
-                            <h1 class="page-title">companies</h1>
+                            <p class="page-kicker">企業マスタ</p>
+                            <h1 class="page-title">企業マスタ</h1>
                             <p class="page-subtitle">
                                 source_recordから作成された企業・屋号を、地域・業種・4軸スコア・kill状態で俯瞰する正規化マスタ。
                             </p>
@@ -211,8 +211,8 @@
                             </details>
                         </div>
                         <div class="actions">
-                            <a class="button light" href="{{ route('dashboard') }}">Dashboard</a>
-                            <a class="button light" href="{{ route('source-records.index') }}">source_recordsへ</a>
+                            <a class="button light" href="{{ route('dashboard') }}">ダッシュボード</a>
+                            <a class="button light" href="{{ route('source-records.index') }}">HP未確認リストへ</a>
                             <form method="POST" action="{{ route('companies.recalculate-all') }}"
                                   onsubmit="return confirm('全{{ $totalCount }}件のスコアを再計算しますか？');">
                                 @csrf
@@ -356,12 +356,18 @@
                 </div>
             </section>
 
+            @if (request('hp_state') === 'url_dead')
+            <div style="padding:14px 20px; background:#fef2f2; border:1px solid #fca5a5; border-radius:14px;">
+                ⚠️ URL死亡のみ表示中 — HP URLが無効な企業です。Google検索で正しいURLを探してください。
+            </div>
+            @endif
+
             <section class="card">
                 <div class="row" style="margin-bottom:16px;">
                     <div>
                         <p class="section-label">List</p>
                         <div class="table-title">
-                            <h2 style="margin:0; font-size:26px;">company一覧</h2>
+                            <h2 style="margin:0; font-size:26px;">企業一覧</h2>
                             <span class="badge gray">表示 {{ $companies->count() }} / {{ number_format($companies->total()) }}</span>
                         </div>
                     </div>
@@ -482,7 +488,14 @@
                                         </div>
                                     @endif
                                 </td>
-                                <td><span class="judgment {{ $judgmentClass }}">{{ $judgment }}</span></td>
+                                <td>
+                                    <div style="display:grid; gap:6px; justify-items:start;">
+                                        @if (isset($deadDomainIdSet[$company->primary_domain_id]))
+                                            <span style="background:#ef4444;color:#fff;border-radius:4px;padding:2px 8px;font-size:12px;">URL死亡</span>
+                                        @endif
+                                        <span class="judgment {{ $judgmentClass }}">{{ $judgment }}</span>
+                                    </div>
+                                </td>
                                 <td class="tight">
                                     <div class="subtext">source：{{ $company->source_links_count }}</div>
                                     <div class="subtext">domain：{{ $company->domains_count }}</div>

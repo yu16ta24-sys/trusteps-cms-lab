@@ -1,4 +1,4 @@
-@extends('layouts.app', ['title' => 'company作成 | TRUSTEPS CMS Lab'])
+@extends('layouts.app', ['title' => '企業作成 | TRUSTEPS CMS Lab'])
 
 @section('content')
     <main class="content">
@@ -6,7 +6,7 @@
             <div class="row">
                 <div>
                     <p class="page-kicker">source record → company</p>
-                    <h1 class="page-title">company作成</h1>
+                    <h1 class="page-title">企業作成</h1>
                     <p class="page-subtitle">
                         source_recordを正規化された事業者マスタへ変換する。迷う場合は無理に統合せず、新規candidateとして残す。
                     </p>

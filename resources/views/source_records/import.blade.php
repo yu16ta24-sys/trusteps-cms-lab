@@ -6,7 +6,7 @@
             <div class="row">
                 <div>
                     <p class="page-kicker">Phase1-1 / data intake</p>
-                    <h1 class="page-title">source_records CSV取り込み</h1>
+                    <h1 class="page-title">HP未確認リスト CSV取り込み</h1>
                     <p class="page-subtitle">
                         実データをまとめて取り込む入口。アップロード後は必ずプレビューし、確認後にだけDB登録する。
                     </p>

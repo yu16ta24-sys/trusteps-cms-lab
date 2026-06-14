@@ -1,4 +1,4 @@
-@extends('layouts.app', ['title' => 'Source Records | TRUSTEPS CMS Lab'])
+@extends('layouts.app', ['title' => 'HP未確認リスト | TRUSTEPS CMS Lab'])
 
 @section('content')
 <main class="content sr">
@@ -48,7 +48,7 @@
 <div class="sr-topbar">
     <div>
         <div class="sr-kicker">Phase1 / Intake</div>
-        <h1 class="sr-title">source_records</h1>
+        <h1 class="sr-title">HP未確認リスト</h1>
         <p class="sr-sub">外部から取った生データを整理する入口。company化前の営業先候補を確認する。</p>
     </div>
     <div class="sr-btn-row">

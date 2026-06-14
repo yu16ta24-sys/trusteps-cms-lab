@@ -1,4 +1,4 @@
-@extends('layouts.app', ['title' => 'company編集 | TRUSTEPS CMS Lab'])
+@extends('layouts.app', ['title' => '企業編集 | TRUSTEPS CMS Lab'])
 
 @section('content')
 <main class="content ce">
@@ -13,7 +13,7 @@
 
 <div class="ce-topbar">
     <div>
-        <div class="ce-kicker">Company #{{ $company->id }} · 編集</div>
+        <div class="ce-kicker">企業 #{{ $company->id }} · 編集</div>
         <h1 class="ce-title">{{ $company->display_name }}</h1>
         <p class="ce-sub">基本情報を編集する。スコア・kill_flagsは詳細画面から変更する。</p>
     </div>

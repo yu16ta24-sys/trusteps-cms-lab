@@ -1,4 +1,4 @@
-@extends('layouts.app', ['title' => 'source_record手動登録 | TRUSTEPS CMS Lab'])
+@extends('layouts.app', ['title' => 'HP未確認手動登録 | TRUSTEPS CMS Lab'])
 
 @section('content')
     <main class="content">
@@ -6,7 +6,7 @@
             <div class="row">
                 <div>
                     <p class="page-kicker">manual intake / source record</p>
-                    <h1 class="page-title">source_record 手動登録</h1>
+                    <h1 class="page-title">HP未確認 手動登録</h1>
                     <p class="page-subtitle">
                         CSVにしづらい単発データを登録する入口。ここでは外部取得の生データとして残し、整形や判断はcompany側で行う。
                     </p>

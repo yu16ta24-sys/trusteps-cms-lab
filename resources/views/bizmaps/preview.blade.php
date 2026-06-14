@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'BIZMAPSインポート - プレビュー')
+@section('title', '企業収集 - プレビュー')
 
 @section('content')
 <div class="content">

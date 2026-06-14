@@ -1,4 +1,4 @@
-@extends('layouts.app', ['title' => 'company詳細 | TRUSTEPS CMS Lab'])
+@extends('layouts.app', ['title' => '企業詳細 | TRUSTEPS CMS Lab'])
 
 @section('content')
 <main class="content cs">

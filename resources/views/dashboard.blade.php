@@ -1,4 +1,4 @@
-@extends('layouts.app', ['title' => 'Dashboard | TRUSTEPS CMS Lab'])
+@extends('layouts.app', ['title' => 'ダッシュボード | TRUSTEPS CMS Lab'])
 
 @section('content')
 <main class="content db">
@@ -73,12 +73,12 @@
 <div class="db-topbar">
     <div>
         <div class="db-kicker">TRUSTEPS CMS Lab</div>
-        <h1 class="db-title">Dashboard</h1>
+        <h1 class="db-title">ダッシュボード</h1>
         <p class="db-sub">データ投入・HP解析・5軸スコアリングの進捗</p>
     </div>
     <div class="db-btn-row">
-        <a class="button light small" href="{{ route('source-records.index') }}">source_records</a>
-        <a class="button light small" href="{{ route('companies.index') }}">companies</a>
+        <a class="button light small" href="{{ route('source-records.index') }}">HP未確認リスト</a>
+        <a class="button light small" href="{{ route('companies.index') }}">企業マスタ</a>
         <a class="button light small" href="{{ route('system.reset-mvp-data.index') }}">MVPリセット</a>
         <a class="button small" href="{{ route('companies.candidates') }}">営業候補 →</a>
     </div>
@@ -164,7 +164,7 @@
         {{-- 次の source_records --}}
         <div class="db-work-card">
             <div class="db-work-head">
-                <div class="db-work-title">次の source_records</div>
+                <div class="db-work-title">次のHP未確認リスト</div>
                 <span class="db-step db-step-blue" style="margin:0">未リンク</span>
             </div>
             <div class="db-work-desc">まずcompany化する候補。IDが古い順。</div>
